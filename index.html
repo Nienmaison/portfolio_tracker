@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Portfolio Tracker</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #0d0f12;
+    --surface: #13161b;
+    --surface2: #1a1e25;
+    --border: rgba(255,255,255,0.07);
+    --border2: rgba(255,255,255,0.12);
+    --text: #e8eaf0;
+    --muted: #6b7280;
+    --accent: #4ade80;
+    --accent2: #60a5fa;
+    --red: #f87171;
+    --amber: #fbbf24;
+    --mono: 'DM Mono', monospace;
+    --sans: 'DM Sans', sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 14px; min-height: 100vh; }
+
+  header {
+    border-bottom: 1px solid var(--border);
+    padding: 0 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 56px;
+    position: sticky;
+    top: 0;
+    background: var(--bg);
+    z-index: 100;
+  }
+  .logo { font-family: var(--mono); font-size: 13px; letter-spacing: 0.08em; color: var(--accent); text-transform: uppercase; }
+  .header-right { display: flex; align-items: center; gap: 16px; }
+  .status-pill {
+    display: flex; align-items: center; gap: 6px;
+    font-family: var(--mono); font-size: 11px; color: var(--muted);
+    background: var(--surface); border: 1px solid var(--border);
+    padding: 4px 10px; border-radius: 20px;
+  }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); }
+  .dot.live { background: var(--accent); animation: pulse 2s infinite; }
+  .dot.loading { background: var(--amber); }
+  .dot.error { background: var(--red); }
+  @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.3;} }
+  .btn-refresh {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.05em;
+    background: transparent; border: 1px solid var(--border2); color: var(--text);
+    padding: 5px 14px; border-radius: 4px; cursor: pointer; transition: all 0.15s;
+  }
+  .btn-refresh:hover { background: var(--surface2); border-color: var(--accent); color: var(--accent); }
+
+  main { max-width: 1100px; margin: 0 auto; padding: 2rem; }
+
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    margin-bottom: 1.5rem;
+  }
+  .metric {
+    background: var(--surface);
+    padding: 1.25rem 1.5rem;
+    transition: background 0.15s;
+  }
+  .metric:hover { background: var(--surface2); }
+  .metric-label { font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em; color: var(--muted); text-transform: uppercase; margin-bottom: 8px; }
+  .metric-value { font-family: var(--mono); font-size: 20px; font-weight: 500; color: var(--text); }
+  .metric-sub { font-family: var(--mono); font-size: 11px; margin-top: 3px; }
+  .green { color: var(--accent); }
+  .red { color: var(--red); }
+  .amber { color: var(--amber); }
+
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem; }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.25rem 1.5rem;
+  }
+  .card-title {
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.12em;
+    color: var(--muted); text-transform: uppercase; margin-bottom: 1rem;
+  }
+
+  .tabs { display: flex; gap: 0; margin-bottom: 1.5rem; border-bottom: 1px solid var(--border); }
+  .tab {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+    padding: 10px 20px; cursor: pointer; background: transparent; border: none;
+    color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px;
+    transition: all 0.15s;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  .section { display: none; }
+  .section.active { display: block; }
+
+  table { width: 100%; border-collapse: collapse; }
+  th {
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--muted); padding: 8px 12px; border-bottom: 1px solid var(--border);
+    text-align: left; font-weight: 400;
+  }
+  td { padding: 12px 12px; border-bottom: 1px solid var(--border); font-family: var(--mono); font-size: 13px; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: var(--surface2); }
+  .ticker-cell { font-weight: 500; color: var(--text); }
+  .badge {
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase;
+    padding: 2px 7px; border-radius: 3px; font-weight: 500;
+  }
+  .badge-stock { background: rgba(96,165,250,0.12); color: var(--accent2); border: 1px solid rgba(96,165,250,0.2); }
+  .badge-crypto { background: rgba(251,191,36,0.1); color: var(--amber); border: 1px solid rgba(251,191,36,0.2); }
+  .live-tag { font-size: 9px; color: var(--accent); margin-left: 5px; letter-spacing: 0.05em; }
+  .err-tag { font-size: 9px; color: var(--red); margin-left: 5px; }
+
+  .form-grid { display: grid; grid-template-columns: 1.5fr 1fr 1fr 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+  .form-group { display: flex; flex-direction: column; gap: 5px; }
+  .form-group label { font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+  input, select {
+    background: var(--bg); border: 1px solid var(--border2); color: var(--text);
+    font-family: var(--mono); font-size: 13px; padding: 8px 10px; border-radius: 4px;
+    outline: none; transition: border-color 0.15s; width: 100%;
+  }
+  input:focus, select:focus { border-color: var(--accent); }
+  select option { background: var(--bg); }
+
+  .btn-primary {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+    background: var(--accent); color: #0d0f12; border: none;
+    padding: 9px 20px; border-radius: 4px; cursor: pointer; font-weight: 500;
+    transition: opacity 0.15s;
+  }
+  .btn-primary:hover { opacity: 0.85; }
+  .btn-ghost {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+    background: transparent; color: var(--text); border: 1px solid var(--border2);
+    padding: 9px 20px; border-radius: 4px; cursor: pointer; transition: all 0.15s;
+  }
+  .btn-ghost:hover { border-color: var(--accent2); color: var(--accent2); }
+  .btn-danger {
+    font-family: var(--mono); font-size: 10px; background: transparent;
+    border: 1px solid transparent; color: var(--muted); padding: 3px 8px;
+    border-radius: 3px; cursor: pointer; transition: all 0.15s;
+  }
+  .btn-danger:hover { color: var(--red); border-color: rgba(248,113,113,0.3); background: rgba(248,113,113,0.06); }
+
+  .add-msg { font-family: var(--mono); font-size: 12px; margin-left: 12px; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 10px; }
+  .legend-item { display: flex; align-items: center; gap: 5px; font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .legend-dot { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+
+  .ai-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1.25rem 1.5rem; margin-bottom: 1rem; }
+  .ai-output {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 1.25rem 1.5rem;
+    font-size: 14px; line-height: 1.8; color: var(--text); min-height: 80px;
+    font-family: var(--sans);
+  }
+  .ai-idle { color: var(--muted); font-style: italic; font-size: 13px; }
+  .ai-btn-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+  .api-status { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 1rem; }
+  .api-row {
+    display: flex; align-items: center; justify-content: space-between;
+    background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 8px 12px;
+    font-family: var(--mono); font-size: 11px;
+  }
+  .api-name { color: var(--muted); }
+  .api-val { color: var(--text); }
+
+  .empty { text-align: center; color: var(--muted); font-family: var(--mono); font-size: 12px; padding: 3rem; letter-spacing: 0.05em; }
+
+  .last-updated { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+
+  @media (max-width: 768px) {
+    main { padding: 1rem; }
+    .metrics-grid { grid-template-columns: 1fr 1fr; }
+    .grid-2 { grid-template-columns: 1fr; }
+    .form-grid { grid-template-columns: 1fr 1fr; }
+    header { padding: 0 1rem; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Portfolio.track</div>
+  <div class="header-right">
+    <div class="status-pill">
+      <div class="dot" id="status-dot"></div>
+      <span id="status-text">Initialising</span>
+    </div>
+    <span class="last-updated" id="last-updated"></span>
+    <button class="btn-refresh" onclick="refreshAll()">Refresh prices</button>
+  </div>
+</header>
+
+<main>
+  <div class="metrics-grid" id="metrics">
+    <div class="metric"><div class="metric-label">Total value</div><div class="metric-value">—</div></div>
+    <div class="metric"><div class="metric-label">Total P&L</div><div class="metric-value">—</div></div>
+    <div class="metric"><div class="metric-label">Stocks / ETFs</div><div class="metric-value">—</div></div>
+    <div class="metric"><div class="metric-label">Crypto</div><div class="metric-value">—</div></div>
+    <div class="metric"><div class="metric-label">Assets held</div><div class="metric-value">—</div></div>
+  </div>
+
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-title">Allocation by value</div>
+      <div class="legend" id="legend-alloc"></div>
+      <div style="position:relative;width:100%;height:200px;"><canvas id="chartAlloc" role="img" aria-label="Donut chart of portfolio allocation by asset value"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Asset type split</div>
+      <div class="legend" id="legend-type"></div>
+      <div style="position:relative;width:100%;height:200px;"><canvas id="chartType" role="img" aria-label="Donut chart of stocks vs crypto allocation"></canvas></div>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" onclick="showTab('holdings')">Holdings</button>
+    <button class="tab" onclick="showTab('add')">Add asset</button>
+    <button class="tab" onclick="showTab('ai')">AI analysis</button>
+  </div>
+
+  <div id="tab-holdings" class="section active">
+    <div class="card" style="overflow-x:auto;">
+      <table>
+        <thead><tr>
+          <th>Asset</th><th>Type</th><th>Qty</th><th>Buy price</th><th>Live price</th><th>Value</th><th>P&L</th><th></th>
+        </tr></thead>
+        <tbody id="holdings-body"></tbody>
+      </table>
+      <div id="holdings-empty" class="empty" style="display:none;">No holdings yet — add your first asset above.</div>
+    </div>
+  </div>
+
+  <div id="tab-add" class="section">
+    <div class="card">
+      <div class="card-title">New position</div>
+      <div class="form-grid">
+        <div class="form-group"><label>Ticker / symbol</label><input type="text" id="f-ticker" placeholder="AAPL, BTC, VOO..." /></div>
+        <div class="form-group"><label>Type</label><select id="f-type"><option value="stock">Stock / ETF</option><option value="crypto">Crypto</option></select></div>
+        <div class="form-group"><label>Quantity</label><input type="number" id="f-qty" placeholder="10" min="0" step="any" /></div>
+        <div class="form-group"><label>Buy price</label><input type="number" id="f-buy" placeholder="150.00" min="0" step="any" /></div>
+        <div class="form-group"><label>Currency</label><select id="f-currency"><option value="eur">EUR (€)</option><option value="usd">USD ($)</option></select></div>
+      </div>
+      <p style="font-family:var(--mono);font-size:11px;color:var(--muted);margin-bottom:12px;letter-spacing:0.03em;">Live price will be fetched automatically from Finnhub (stocks) or CoinGecko (crypto).</p>
+      <div style="display:flex;align-items:center;">
+        <button class="btn-primary" onclick="addHolding()">Add position</button>
+        <span class="add-msg" id="add-msg"></span>
+      </div>
+    </div>
+    <div class="card" style="margin-top:1rem;">
+      <div class="card-title">API connections</div>
+      <div class="api-status">
+        <div class="api-row"><span class="api-name">Finnhub (stocks)</span><span class="api-val" id="finnhub-status">—</span></div>
+        <div class="api-row"><span class="api-name">CoinGecko (crypto)</span><span class="api-val" id="coingecko-status">—</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="tab-ai" class="section">
+    <div class="ai-card">
+      <div class="card-title">AI analysis</div>
+      <p style="color:var(--muted);font-size:13px;line-height:1.6;">Powered by Claude. Analysis always runs on the latest live prices — refresh first for best results.</p>
+      <div class="ai-btn-row">
+        <button class="btn-primary" onclick="runAI('analysis')">Portfolio analysis</button>
+        <button class="btn-ghost" onclick="runAI('risk')">Risk assessment</button>
+        <button class="btn-ghost" onclick="runAI('rebalance')">Rebalancing ideas</button>
+      </div>
+    </div>
+    <div class="ai-output" id="ai-output">
+      <span class="ai-idle">Select an analysis type above to get AI insights on your live portfolio.</span>
+    </div>
+  </div>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+const FINNHUB_KEY = 'd7j746pr01qp3g1s2f0gd7j746pr01qp3g1s2f10';
+const ANTHROPIC_KEY = ''; // Add your Anthropic API key here for AI features
+
+const COLORS = ['#4ade80','#60a5fa','#fbbf24','#f472b6','#a78bfa','#34d399','#fb923c','#94a3b8','#2dd4bf','#e879f9'];
+const CRYPTO_IDS = {
+  BTC:'bitcoin',ETH:'ethereum',SOL:'solana',BNB:'binancecoin',XRP:'ripple',
+  ADA:'cardano',DOGE:'dogecoin',DOT:'polkadot',MATIC:'matic-network',AVAX:'avalanche-2',
+  LINK:'chainlink',UNI:'uniswap',LTC:'litecoin',ATOM:'cosmos',ALGO:'algorand',
+  NEAR:'near',FTM:'fantom',SAND:'the-sandbox',MANA:'decentraland',CRO:'crypto-com-chain'
+};
+
+let holdings = [];
+let charts = {};
+let refreshTimer = null;
+
+function setStatus(state, text) {
+  document.getElementById('status-dot').className = 'dot ' + state;
+  document.getElementById('status-text').textContent = text;
+}
+
+async function fetchStockPrice(ticker) {
+  const r = await fetch(`https://finnhub.io/api/v1/quote?symbol=${ticker.toUpperCase()}&token=${FINNHUB_KEY}`);
+  const d = await r.json();
+  if (d.c && d.c > 0) return d.c;
+  throw new Error('No price returned');
+}
+
+async function fetchCryptoPrice(ticker, currency = 'eur') {
+  const id = CRYPTO_IDS[ticker.toUpperCase()] || ticker.toLowerCase();
+  const r = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${id}&vs_currencies=${currency}`);
+  const d = await r.json();
+  const price = d[id]?.[currency];
+  if (price) return price;
+  throw new Error('Crypto not found');
+}
+
+async function fetchPrice(h) {
+  if (h.type === 'stock') return fetchStockPrice(h.ticker);
+  return fetchCryptoPrice(h.ticker, h.currency || 'eur');
+}
+
+async function refreshAll() {
+  if (!holdings.length) { setStatus('', 'No holdings'); return; }
+  setStatus('loading', 'Fetching prices...');
+  let ok = 0, fail = 0;
+  await Promise.all(holdings.map(async (h, i) => {
+    try {
+      holdings[i].cur = await fetchPrice(h);
+      holdings[i].priceOk = true; ok++;
+    } catch (e) {
+      holdings[i].priceOk = false; fail++;
+    }
+  }));
+  save(); render();
+  const now = new Date().toLocaleTimeString();
+  document.getElementById('last-updated').textContent = now;
+  if (fail === 0) {
+    setStatus('live', `Live · ${ok} prices`);
+    document.getElementById('finnhub-status').textContent = 'Connected';
+    document.getElementById('coingecko-status').textContent = 'Connected';
+  } else {
+    setStatus('error', `${ok} ok · ${fail} failed`);
+  }
+}
+
+function load() {
+  try {
+    const raw = localStorage.getItem('portfolio-tracker-v1');
+    if (raw) holdings = JSON.parse(raw);
+  } catch (e) { holdings = []; }
+  render();
+  if (holdings.length) refreshAll();
+  refreshTimer = setInterval(refreshAll, 60000);
+}
+
+function save() {
+  try { localStorage.setItem('portfolio-tracker-v1', JSON.stringify(holdings)); } catch (e) {}
+}
+
+function fmt(n) { return n.toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+
+function render() {
+  renderMetrics();
+  renderHoldings();
+  renderCharts();
+}
+
+function renderMetrics() {
+  const total = holdings.reduce((s, h) => s + h.qty * (h.cur || 0), 0);
+  const cost = holdings.reduce((s, h) => s + h.qty * (h.buy || 0), 0);
+  const pl = total - cost;
+  const plPct = cost > 0 ? (pl / cost * 100) : 0;
+  const stocks = holdings.filter(h => h.type === 'stock').reduce((s, h) => s + h.qty * (h.cur || 0), 0);
+  const crypto = holdings.filter(h => h.type === 'crypto').reduce((s, h) => s + h.qty * (h.cur || 0), 0);
+  document.getElementById('metrics').innerHTML = `
+    <div class="metric"><div class="metric-label">Total value</div><div class="metric-value">€${fmt(total)}</div></div>
+    <div class="metric"><div class="metric-label">Total P&L</div><div class="metric-value ${pl >= 0 ? 'green' : 'red'}">${pl >= 0 ? '+' : ''}€${fmt(pl)}</div><div class="metric-sub ${pl >= 0 ? 'green' : 'red'}">${pl >= 0 ? '+' : ''}${plPct.toFixed(2)}%</div></div>
+    <div class="metric"><div class="metric-label">Stocks / ETFs</div><div class="metric-value">€${fmt(stocks)}</div></div>
+    <div class="metric"><div class="metric-label">Crypto</div><div class="metric-value">€${fmt(crypto)}</div></div>
+    <div class="metric"><div class="metric-label">Assets held</div><div class="metric-value">${holdings.length}</div></div>
+  `;
+}
+
+function renderHoldings() {
+  const body = document.getElementById('holdings-body');
+  const empty = document.getElementById('holdings-empty');
+  if (!holdings.length) { body.innerHTML = ''; empty.style.display = 'block'; return; }
+  empty.style.display = 'none';
+  body.innerHTML = holdings.map((h, i) => {
+    const cur = h.cur || 0;
+    const val = h.qty * cur;
+    const pl = (cur - h.buy) * h.qty;
+    const plPct = h.buy > 0 ? ((cur - h.buy) / h.buy * 100) : 0;
+    const tag = h.priceOk === true ? `<span class="live-tag">LIVE</span>` : h.priceOk === false ? `<span class="err-tag">ERR</span>` : '';
+    return `<tr>
+      <td class="ticker-cell">${h.ticker.toUpperCase()}</td>
+      <td><span class="badge badge-${h.type}">${h.type === 'stock' ? 'Stock' : 'Crypto'}</span></td>
+      <td>${h.qty}</td>
+      <td>€${h.buy.toFixed(2)}</td>
+      <td>€${cur.toFixed(2)}${tag}</td>
+      <td>€${fmt(val)}</td>
+      <td class="${pl >= 0 ? 'green' : 'red'}">${pl >= 0 ? '+' : ''}€${pl.toFixed(2)} <span style="opacity:0.6;">(${pl >= 0 ? '+' : ''}${plPct.toFixed(1)}%)</span></td>
+      <td><button class="btn-danger" onclick="remove(${i})">remove</button></td>
+    </tr>`;
+  }).join('');
+}
+
+function renderCharts() {
+  if (charts.alloc) { charts.alloc.destroy(); delete charts.alloc; }
+  if (charts.type) { charts.type.destroy(); delete charts.type; }
+  if (!holdings.length) return;
+
+  const labels = holdings.map(h => h.ticker.toUpperCase());
+  const values = holdings.map(h => h.qty * (h.cur || 0));
+  const colors = holdings.map((_, i) => COLORS[i % COLORS.length]);
+  const total = values.reduce((a, b) => a + b, 0);
+
+  document.getElementById('legend-alloc').innerHTML = labels.map((l, i) =>
+    `<div class="legend-item"><span class="legend-dot" style="background:${colors[i]}"></span>${l} ${total > 0 ? (values[i] / total * 100).toFixed(1) + '%' : ''}</div>`
+  ).join('');
+
+  charts.alloc = new Chart(document.getElementById('chartAlloc'), {
+    type: 'doughnut',
+    data: { labels, datasets: [{ data: values, backgroundColor: colors, borderWidth: 0 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, cutout: '65%' }
+  });
+
+  const sv = holdings.filter(h => h.type === 'stock').reduce((s, h) => s + h.qty * (h.cur || 0), 0);
+  const cv = holdings.filter(h => h.type === 'crypto').reduce((s, h) => s + h.qty * (h.cur || 0), 0);
+  const tTotal = sv + cv;
+
+  document.getElementById('legend-type').innerHTML = [['Stocks/ETFs', '#60a5fa', sv], ['Crypto', '#fbbf24', cv]].map(([l, c, v]) =>
+    `<div class="legend-item"><span class="legend-dot" style="background:${c}"></span>${l} ${tTotal > 0 ? (v / tTotal * 100).toFixed(1) + '%' : ''}</div>`
+  ).join('');
+
+  charts.type = new Chart(document.getElementById('chartType'), {
+    type: 'doughnut',
+    data: { labels: ['Stocks/ETFs', 'Crypto'], datasets: [{ data: [sv, cv], backgroundColor: ['#60a5fa', '#fbbf24'], borderWidth: 0 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, cutout: '65%' }
+  });
+}
+
+async function addHolding() {
+  const ticker = document.getElementById('f-ticker').value.trim().toUpperCase();
+  const type = document.getElementById('f-type').value;
+  const qty = parseFloat(document.getElementById('f-qty').value);
+  const buy = parseFloat(document.getElementById('f-buy').value);
+  const currency = document.getElementById('f-currency').value;
+  const msg = document.getElementById('add-msg');
+
+  if (!ticker || isNaN(qty) || isNaN(buy) || qty <= 0 || buy <= 0) {
+    msg.style.color = 'var(--red)'; msg.textContent = 'Please fill all fields correctly.'; return;
+  }
+  msg.style.color = 'var(--muted)'; msg.textContent = 'Fetching live price...';
+
+  let cur = buy, priceOk = false;
+  try {
+    const tmp = { ticker, type, currency };
+    cur = await fetchPrice(tmp);
+    priceOk = true;
+    msg.style.color = 'var(--accent)'; msg.textContent = `${ticker} added at €${cur.toFixed(2)}`;
+  } catch (e) {
+    msg.style.color = 'var(--amber)'; msg.textContent = 'Price fetch failed — using buy price as current.';
+  }
+
+  holdings.push({ ticker, type, qty, buy, cur, currency, priceOk });
+  save(); render();
+  ['f-ticker', 'f-qty', 'f-buy'].forEach(id => document.getElementById(id).value = '');
+  setTimeout(() => msg.textContent = '', 3500);
+}
+
+function remove(i) { holdings.splice(i, 1); save(); render(); }
+
+function showTab(name) {
+  ['holdings', 'add', 'ai'].forEach((n, idx) => {
+    document.querySelectorAll('.tab')[idx].classList.toggle('active', n === name);
+    document.getElementById('tab-' + n).classList.toggle('active', n === name);
+  });
+}
+
+async function runAI(mode) {
+  const out = document.getElementById('ai-output');
+  if (!holdings.length) { out.innerHTML = '<span class="ai-idle">Add some holdings first to get AI analysis.</span>'; return; }
+  if (!ANTHROPIC_KEY) {
+    out.innerHTML = '<span style="color:var(--amber);font-family:var(--mono);font-size:12px;">No Anthropic API key set. Add it to the ANTHROPIC_KEY variable in the HTML source.</span>';
+    return;
+  }
+
+  out.innerHTML = '<span class="ai-idle">Analysing with live prices...</span>';
+  const total = holdings.reduce((s, h) => s + h.qty * (h.cur || 0), 0);
+  const summary = holdings.map(h => {
+    const val = (h.qty * (h.cur || 0)).toFixed(2);
+    const pl = h.buy > 0 ? (((h.cur || 0) - h.buy) / h.buy * 100).toFixed(1) : 'n/a';
+    const pct = total > 0 ? ((h.qty * (h.cur || 0)) / total * 100).toFixed(1) : 'n/a';
+    return `${h.ticker} (${h.type}): qty ${h.qty}, buy €${h.buy}, live €${(h.cur || 0).toFixed(2)}, value €${val}, P&L ${pl}%, weight ${pct}%`;
+  }).join('\n');
+
+  const prompts = {
+    analysis: `You are a portfolio analyst. Portfolio:\n\n${summary}\n\nTotal: €${total.toFixed(2)}\n\nProvide concise analysis: (1) diversification quality, (2) risk profile, (3) P&L highlights, (4) 2-3 actionable suggestions. Plain text, under 260 words. End with a brief disclaimer.`,
+    risk: `You are a risk analyst. Portfolio:\n\n${summary}\n\nTotal: €${total.toFixed(2)}\n\nAssess: (1) concentration risk, (2) volatility profile given stocks/crypto mix, (3) correlation risks, (4) downside scenarios. Plain text, under 260 words. End with a brief disclaimer.`,
+    rebalance: `You are a portfolio strategist. Portfolio:\n\n${summary}\n\nTotal: €${total.toFixed(2)}\n\nSuggest: (1) current allocation assessment, (2) 2-3 specific rebalancing moves with rationale, (3) target allocation range. Plain text, under 260 words. End with a brief disclaimer.`
+  };
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_KEY, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 1000, messages: [{ role: 'user', content: prompts[mode] }] })
+    });
+    const data = await res.json();
+    const text = data.content?.find(b => b.type === 'text')?.text || 'No response received.';
+    out.innerHTML = text.replace(/\n/g, '<br>');
+  } catch (e) {
+    out.innerHTML = '<span style="color:var(--red);">Error reaching AI. Check your API key and try again.</span>';
+  }
+}
+
+load();
+</script>
+</body>
+</html>
