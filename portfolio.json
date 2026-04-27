@@ -18,5 +18,15 @@
     "currency": "eur",
     "cur": 54.96,
     "priceOk": false
+  },
+  {
+    "ticker": "TSM",
+    "type": "stock",
+    "qty": 0.54183227,
+    "buy": 368.75,
+    "buyEur": 339.25,
+    "currency": "usd",
+    "cur": 370.2632,
+    "priceOk": true
   }
 ]
