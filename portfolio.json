@@ -32,11 +32,11 @@
   {
     "ticker": "MRVL",
     "type": "stock",
-    "qty": 1.423,
-    "buy": 82.83,
-    "buyEur": 76.20360000000001,
+    "qty": 2.0648,
+    "buy": 74.77378597442852,
+    "buyEur": 74.77378597442852,
     "currency": "usd",
-    "cur": 144.3388,
+    "cur": 144.2468,
     "priceOk": true
   }
 ]
