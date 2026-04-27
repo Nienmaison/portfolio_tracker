@@ -38,5 +38,15 @@
     "currency": "usd",
     "cur": 144.026,
     "priceOk": true
+  },
+  {
+    "ticker": "MSFT",
+    "type": "stock",
+    "qty": 0.1234,
+    "buy": 404.87,
+    "buyEur": 372.48040000000003,
+    "currency": "usd",
+    "cur": 390.05240000000003,
+    "priceOk": true
   }
 ]
