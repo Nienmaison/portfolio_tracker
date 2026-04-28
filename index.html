@@ -1,0 +1,1077 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Portfolio Tracker</title>
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Portfolio" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="theme-color" content="#0d0f12" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<style>
+:root {
+  --bg: #0A0A0F;
+  --surface: #111118;
+  --surface2: #1A1A24;
+  --border: rgba(255,255,255,0.06);
+  --border2: rgba(255,255,255,0.10);
+  --text: #F0F0F5;
+  --muted: #7A7A8A;
+  --accent: #4C8BF5;
+  --accent2: #4C8BF5;
+  --red: #E05250;
+  --amber: #C9A84C;
+  --mono: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 14px; min-height: 100vh; }
+header {
+  border-bottom: 1px solid var(--border);
+  padding: 0 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 56px;
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  z-index: 100;
+}
+.logo { font-family: var(--sans); font-size: 18px; font-weight: 600; letter-spacing: -0.03em; color: var(--text); }
+.header-right { display: flex; align-items: center; gap: 16px; }
+.status-pill {
+  display: flex; align-items: center; gap: 6px;
+  font-family: var(--mono); font-size: 11px; color: var(--muted);
+  background: var(--surface); border: 1px solid var(--border);
+  padding: 4px 10px; border-radius: 20px;
+}
+.dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); }
+.dot.live { background: var(--accent); animation: pulse 2s infinite; }
+.dot.loading { background: var(--amber); }
+.dot.error { background: var(--red); }
+@keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.3;} }
+.btn-refresh {
+  font-family: var(--mono); font-size: 11px; letter-spacing: 0.05em;
+  background: transparent; border: 1px solid var(--border2); color: var(--text);
+  padding: 5px 14px; border-radius: 4px; cursor: pointer; transition: all 0.15s;
+}
+.btn-refresh:hover { background: var(--surface2); border-color: var(--accent); color: var(--accent); }
+main { max-width: 1100px; margin: 0 auto; padding: 2rem; }
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 1px;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 1.5rem;
+}
+.metric { background: var(--surface); padding: 1.25rem 1.5rem; transition: background 0.15s; }
+.metric:hover { background: var(--surface2); }
+.metric-label { font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em; color: var(--muted); text-transform: uppercase; margin-bottom: 8px; }
+.metric-value { font-family: var(--mono); font-size: 20px; font-weight: 500; color: var(--text); }
+.metric-sub { font-family: var(--mono); font-size: 11px; margin-top: 3px; }
+.green { color: #30B87A; }
+.red { color: var(--red); }
+.amber { color: var(--amber); }
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1.25rem 1.5rem; }
+.card-title { font-family: var(--mono); font-size: 10px; letter-spacing: 0.12em; color: var(--muted); text-transform: uppercase; margin-bottom: 1rem; }
+.filter-bar { display: flex; gap: 8px; margin-bottom: 1rem; }
+.filter-btn {
+  font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+  background: var(--surface); border: 1px solid var(--border); color: var(--muted);
+  padding: 7px 16px; border-radius: 4px; cursor: pointer; transition: all 0.15s;
+}
+.filter-btn:hover { border-color: var(--border2); color: var(--text); }
+.filter-btn.active { background: var(--surface2); border-color: var(--accent); color: var(--accent); }
+.tabs { display: flex; gap: 0; margin-bottom: 1.5rem; border-bottom: 1px solid var(--border); }
+.tab {
+  font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+  padding: 10px 20px; cursor: pointer; background: transparent; border: none;
+  color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px;
+  transition: all 0.15s;
+}
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.section { display: none; }
+.section.active { display: block; }
+table { width: 100%; border-collapse: collapse; }
+th {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--muted); padding: 8px 12px; border-bottom: 1px solid var(--border);
+  text-align: left; font-weight: 400;
+}
+td { padding: 12px 12px; border-bottom: 1px solid var(--border); font-family: var(--mono); font-size: 13px; position: relative; }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: var(--surface2); }
+.ticker-cell { font-weight: 500; color: var(--text); }
+.badge {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase;
+  padding: 2px 7px; border-radius: 3px; font-weight: 500;
+}
+.badge-stock { background: rgba(96,165,250,0.12); color: var(--accent2); border: 1px solid rgba(96,165,250,0.2); }
+.badge-crypto { background: rgba(251,191,36,0.1); color: var(--amber); border: 1px solid rgba(251,191,36,0.2); }
+.live-tag { font-size: 9px; color: var(--accent); margin-left: 5px; letter-spacing: 0.05em; }
+.err-tag { font-size: 9px; color: var(--red); margin-left: 5px; }
+.form-grid { display: grid; grid-template-columns: 1.5fr 1fr 1fr 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+.form-group { display: flex; flex-direction: column; gap: 5px; }
+.form-group label { font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+input, select {
+  background: var(--bg); border: 1px solid var(--border2); color: var(--text);
+  font-family: var(--mono); font-size: 13px; padding: 8px 10px; border-radius: 4px;
+  outline: none; transition: border-color 0.15s; width: 100%;
+}
+input:focus, select:focus { border-color: var(--accent); }
+select option { background: var(--bg); }
+.btn-primary {
+  font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+  background: var(--accent); color: #fff; border: none;
+  padding: 9px 20px; border-radius: 4px; cursor: pointer; font-weight: 500;
+  transition: opacity 0.15s;
+}
+.btn-primary:hover { opacity: 0.85; }
+.btn-ghost {
+  font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+  background: transparent; color: var(--text); border: 1px solid var(--border2);
+  padding: 9px 20px; border-radius: 4px; cursor: pointer; transition: all 0.15s;
+}
+.btn-ghost:hover { border-color: var(--accent2); color: var(--accent2); }
+.btn-danger {
+  font-family: var(--mono); font-size: 10px; background: transparent;
+  border: 1px solid transparent; color: var(--muted); padding: 3px 8px;
+  border-radius: 3px; cursor: pointer; transition: all 0.15s;
+}
+.btn-danger:hover { color: var(--red); border-color: rgba(248,113,113,0.3); background: rgba(248,113,113,0.06); }
+.btn-edit {
+  font-family: var(--mono); font-size: 10px; background: transparent;
+  border: 1px solid transparent; color: var(--muted); padding: 3px 8px;
+  border-radius: 3px; cursor: pointer; transition: all 0.15s; margin-right: 4px;
+}
+.btn-edit:hover { color: var(--accent2); border-color: rgba(96,165,250,0.3); background: rgba(96,165,250,0.06); }
+.add-msg { font-family: var(--mono); font-size: 12px; margin-left: 12px; }
+.legend { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 10px; }
+.legend-item { display: flex; align-items: center; gap: 5px; font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.legend-dot { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+.ai-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1.25rem 1.5rem; margin-bottom: 1rem; }
+.ai-output {
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 8px; padding: 1.25rem 1.5rem;
+  font-size: 14px; line-height: 1.8; color: var(--text); min-height: 80px;
+  font-family: var(--sans);
+}
+.ai-idle { color: var(--muted); font-style: italic; font-size: 13px; }
+.ai-btn-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+.api-status { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 1rem; }
+.api-row {
+  display: flex; align-items: center; justify-content: space-between;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 8px 12px;
+  font-family: var(--mono); font-size: 11px;
+}
+.api-name { color: var(--muted); }
+.api-val { color: var(--text); }
+.empty { text-align: center; color: var(--muted); font-family: var(--mono); font-size: 12px; padding: 3rem; letter-spacing: 0.05em; }
+.guest-blur td:nth-child(6) { color: transparent !important; transition: color 0.2s ease; position: relative; }
+.guest-blur td:nth-child(6)::after { content: '–'; color: var(--muted); position: absolute; left: 50%; transform: translateX(-50%); }
+.guest-blur .pl-eur { color: transparent !important; }
+#guest-btn.active { color: var(--amber) !important; border-color: var(--amber) !important; }
+.chart-range-btn {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em;
+  background: var(--surface); border: 1px solid var(--border); color: var(--muted);
+  padding: 5px 10px; border-radius: 4px; cursor: pointer; transition: all 0.15s;
+}
+.chart-range-btn:hover { border-color: var(--border2); color: var(--text); }
+.chart-range-btn.active { background: var(--surface2); border-color: var(--accent2); color: var(--accent2); }
+.last-updated { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+/* Edit modal */
+.modal-overlay {
+  display: none; position: fixed; inset: 0;
+  background: rgba(0,0,0,0.7); z-index: 200;
+  align-items: center; justify-content: center;
+}
+.modal-overlay.open { display: flex; }
+.modal {
+  background: var(--surface); border: 1px solid var(--border2);
+  border-radius: 10px; padding: 1.5rem; width: 420px; max-width: 95vw;
+}
+.modal-title { font-family: var(--mono); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin-bottom: 1rem; }
+.modal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 1rem; }
+.modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 1rem; }
+@media (max-width: 768px) {
+  main { padding: 1rem; }
+  .metrics-grid { grid-template-columns: 1fr 1fr; }
+  .grid-2 { grid-template-columns: 1fr; }
+  .form-grid { grid-template-columns: 1fr 1fr; }
+  header { padding: 0 1rem; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Portfolio.track</div>
+  <div class="header-right">
+    <button class="btn-refresh" id="guest-btn" onclick="toggleGuest()">Guest mode</button>
+    <div class="status-pill">
+      <div class="dot" id="status-dot"></div>
+      <span id="status-text">Initialising</span>
+    </div>
+    <span class="last-updated" id="last-updated"></span>
+    <button class="btn-refresh" onclick="refreshAll()">Refresh prices</button>
+  </div>
+</header>
+
+<!-- Edit Modal -->
+<div class="modal-overlay" id="edit-modal">
+  <div class="modal" style="width:520px;">
+    <div class="modal-title">Edit position</div>
+    <div class="modal-grid">
+      <div class="form-group"><label>Ticker</label><input type="text" id="e-ticker" /></div>
+      <div class="form-group"><label>Type</label>
+        <select id="e-type">
+          <option value="stock">Stock / ETF</option>
+          <option value="crypto">Crypto</option>
+        </select>
+      </div>
+    </div>
+    <!-- Individual transactions -->
+    <div style="margin-bottom:1rem;">
+      <div style="font-family:var(--mono);font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted);margin-bottom:8px;">Buy transactions</div>
+      <div id="e-transactions" style="display:flex;flex-direction:column;gap:6px;max-height:240px;overflow-y:auto;"></div>
+      <button class="btn-ghost" onclick="addTxRow()" style="margin-top:8px;font-size:11px;padding:5px 12px;">+ Add transaction</button>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-ghost" onclick="closeEdit()">Cancel</button>
+      <button class="btn-primary" onclick="saveEdit()">Save changes</button>
+    </div>
+  </div>
+</div>
+
+<main>
+  <div class="metrics-grid" id="metrics">
+    <div class="metric"><div class="metric-label">Total value</div><div class="metric-value">—</div></div>
+    <div class="metric"><div class="metric-label">Total P&L</div><div class="metric-value">—</div></div>
+    <div class="metric"><div class="metric-label">Stocks / ETFs</div><div class="metric-value">—</div></div>
+    <div class="metric"><div class="metric-label">Crypto</div><div class="metric-value">—</div></div>
+    <div class="metric"><div class="metric-label">Assets held</div><div class="metric-value">—</div></div>
+  </div>
+
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-title">Allocation by value</div>
+      <div class="legend" id="legend-alloc"></div>
+      <div style="position:relative;width:100%;height:200px;"><canvas id="chartAlloc"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Asset type split</div>
+      <div class="legend" id="legend-type"></div>
+      <div style="position:relative;width:100%;height:200px;"><canvas id="chartType"></canvas></div>
+    </div>
+  </div>
+
+  <div class="filter-bar">
+    <button class="filter-btn active" id="filter-all" onclick="setFilter('all')">All assets</button>
+    <button class="filter-btn" id="filter-stock" onclick="setFilter('stock')">Stocks / ETFs</button>
+    <button class="filter-btn" id="filter-crypto" onclick="setFilter('crypto')">Crypto</button>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" onclick="showTab('holdings')">Holdings</button>
+    <button class="tab" onclick="showTab('add')">Add asset</button>
+    <button class="tab" onclick="showTab('charts')">Charts</button>
+    <button class="tab" onclick="showTab('ai')">AI analysis</button>
+  </div>
+
+  <div id="tab-holdings" class="section active">
+    <div class="card" style="overflow-x:auto;">
+      <table>
+        <thead><tr>
+          <th>Asset</th><th>Type</th><th>Qty</th><th>Buy price</th><th>Live price</th><th>Value</th><th>P&L</th><th></th>
+        </tr></thead>
+        <tbody id="holdings-body"></tbody>
+      </table>
+      <div id="holdings-empty" class="empty" style="display:none;">No holdings yet — add your first asset above.</div>
+    </div>
+  </div>
+
+  <div id="tab-add" class="section">
+    <div class="card">
+      <div class="card-title">New position</div>
+      <div class="form-grid">
+        <div class="form-group"><label>Ticker / symbol</label><input type="text" id="f-ticker" placeholder="AAPL, BTC, VOO..." /></div>
+        <div class="form-group"><label>Type</label>
+          <select id="f-type">
+            <option value="stock">Stock / ETF</option>
+            <option value="crypto">Crypto</option>
+          </select>
+        </div>
+        <div class="form-group"><label>Quantity</label><input type="number" id="f-qty" placeholder="10" min="0" step="any" /></div>
+        <div class="form-group"><label>Buy price (EUR)</label><input type="number" id="f-buy" placeholder="150.00" min="0" step="any" /></div>
+        <div class="form-group"><label>Currency</label>
+          <select id="f-currency">
+            <option value="eur">EUR (€)</option>
+            <option value="usd">USD ($)</option>
+          </select>
+        </div>
+      </div>
+      <p style="font-family:var(--mono);font-size:11px;color:var(--muted);margin-bottom:12px;letter-spacing:0.03em;">
+        Live prices: Finnhub (stocks, USD→EUR converted) · CoinGecko (crypto, EUR direct).
+      </p>
+      <div style="display:flex;align-items:center;">
+        <button class="btn-primary" onclick="addHolding()">Add position</button>
+        <span class="add-msg" id="add-msg"></span>
+      </div>
+    </div>
+    <div class="card" style="margin-top:1rem;">
+      <div class="card-title">API connections</div>
+      <div class="api-status">
+        <div class="api-row"><span class="api-name">Finnhub (stocks)</span><span class="api-val" id="finnhub-status">—</span></div>
+        <div class="api-row"><span class="api-name">CoinGecko (crypto)</span><span class="api-val" id="coingecko-status">—</span></div>
+        <div class="api-row"><span class="api-name">EUR/USD rate</span><span class="api-val" id="fx-status">—</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="tab-charts" class="section">
+    <div class="card" style="margin-bottom:1rem;">
+      <div class="card-title">Price chart</div>
+      <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:1rem;">
+        <select id="chart-ticker" onchange="loadChart()" style="width:160px;">
+          <option value="">Select asset...</option>
+        </select>
+        <div style="display:flex;gap:6px;">
+          <button class="chart-range-btn active" onclick="setRange('1W',this)">1W</button>
+          <button class="chart-range-btn" onclick="setRange('1M',this)">1M</button>
+          <button class="chart-range-btn" onclick="setRange('3M',this)">3M</button>
+          <button class="chart-range-btn" onclick="setRange('6M',this)">6M</button>
+          <button class="chart-range-btn" onclick="setRange('1Y',this)">1Y</button>
+        </div>
+        <span id="chart-status" style="font-family:var(--mono);font-size:11px;color:var(--muted);"></span>
+      </div>
+      <div style="position:relative;width:100%;height:320px;">
+        <canvas id="chartPrice"></canvas>
+      </div>
+      <div id="chart-buy-marker" style="font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:10px;display:none;"></div>
+    </div>
+  </div>
+
+  <div id="tab-ai" class="section">
+    <div class="ai-card" style="margin-bottom:1rem;">
+      <div class="card-title">GitHub sync</div>
+      <p style="color:var(--muted);font-size:13px;line-height:1.6;margin-bottom:12px;">Your portfolio data is saved to <code style="font-family:var(--mono);font-size:12px;color:var(--accent2);">portfolio.json</code> in your GitHub repo — synced across all devices.</p>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+        <input type="password" id="github-key-input" placeholder="ghp_..." style="flex:1;min-width:260px;max-width:420px;" />
+        <button class="btn-primary" onclick="saveGithubKey()">Save token</button>
+        <button class="btn-ghost" onclick="clearGithubKey()" id="btn-clear-github" style="display:none;">Clear</button>
+      </div>
+      <div id="github-key-status" style="font-family:var(--mono);font-size:11px;margin-top:8px;color:var(--muted);"></div>
+    </div>
+    <div class="ai-card" id="key-panel">
+      <div class="card-title">OpenAI API key</div>
+      <p style="color:var(--muted);font-size:13px;line-height:1.6;margin-bottom:12px;">Stored only in your browser's local storage — never in the source code or on GitHub.</p>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+        <input type="password" id="key-input" placeholder="sk-..." style="flex:1;min-width:260px;max-width:420px;" />
+        <button class="btn-primary" onclick="saveKey()">Save key</button>
+        <button class="btn-ghost" onclick="clearKey()" id="btn-clear-key" style="display:none;">Clear key</button>
+      </div>
+      <div id="key-status" style="font-family:var(--mono);font-size:11px;margin-top:8px;color:var(--muted);"></div>
+    </div>
+
+    <div class="ai-card" style="margin-top:1rem;">
+      <div class="card-title">Analysis</div>
+      <p style="color:var(--muted);font-size:13px;line-height:1.6;">Powered by GPT-4o. Refresh prices first for best results.</p>
+      <div class="ai-btn-row">
+        <button class="btn-primary" onclick="runAI('analysis')">Portfolio analysis</button>
+        <button class="btn-ghost" onclick="runAI('risk')">Risk assessment</button>
+        <button class="btn-ghost" onclick="runAI('rebalance')">Rebalancing ideas</button>
+      </div>
+    </div>
+
+    <div class="ai-output" id="ai-output">
+      <span class="ai-idle">Set your OpenAI API key above, then select an analysis type to get AI insights on your live portfolio.</span>
+    </div>
+  </div>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+const FINNHUB_KEY = 'd7j746pr01qp3g1s2f0gd7j746pr01qp3g1s2f10';
+let OPENAI_KEY  = localStorage.getItem('openai-key')   || '';
+let GITHUB_TOKEN = localStorage.getItem('github-token') || '';
+let transactions = JSON.parse(localStorage.getItem('portfolio-transactions') || '[]');
+const COLORS = ['#4C8BF5','#6B7FA3','#8B9EC9','#3D6B9E','#5E7DA8','#A3B4CC','#2E5480','#7B8FA8','#4A6D99','#90A4BE'];
+const CRYPTO_IDS = {
+  BTC:'bitcoin',ETH:'ethereum',SOL:'solana',BNB:'binancecoin',XRP:'ripple',
+  ADA:'cardano',DOGE:'dogecoin',DOT:'polkadot',MATIC:'matic-network',AVAX:'avalanche-2',
+  LINK:'chainlink',UNI:'uniswap',LTC:'litecoin',ATOM:'cosmos',ALGO:'algorand',
+  NEAR:'near',FTM:'fantom',SAND:'the-sandbox',MANA:'decentraland',CRO:'crypto-com-chain'
+};
+
+let holdings = [];
+let charts = {};
+let eurUsdRate = null;
+let editIndex = null;
+let activeFilter = 'all'; // 'all' | 'stock' | 'crypto'
+
+// ── FX rate ──────────────────────────────────────────────────────────────────
+async function fetchEurUsd() {
+  try {
+    const r = await fetch(`https://finnhub.io/api/v1/forex/rates?base=USD&token=${FINNHUB_KEY}`);
+    const d = await r.json();
+    const eur = d?.quote?.EUR;
+    if (eur && eur > 0) {
+      eurUsdRate = eur; // EUR per 1 USD  (e.g. 0.92)
+      document.getElementById('fx-status').textContent = `1 USD = €${eur.toFixed(4)}`;
+    }
+  } catch(e) { /* use fallback */ }
+  if (!eurUsdRate) {
+    eurUsdRate = 0.92;
+    document.getElementById('fx-status').textContent = 'Fallback: €0.9200';
+  }
+}
+
+// ── Price fetchers ────────────────────────────────────────────────────────────
+// FIX: Finnhub returns USD. We convert to EUR using live FX rate.
+async function fetchStockPrice(ticker) {
+  const r = await fetch(`https://finnhub.io/api/v1/quote?symbol=${ticker.toUpperCase()}&token=${FINNHUB_KEY}`);
+  const d = await r.json();
+  if (d.c && d.c > 0) {
+    const usdPrice = d.c;
+    return usdPrice * (eurUsdRate || 0.92); // convert to EUR
+  }
+  throw new Error('No price returned');
+}
+
+async function fetchCryptoPrice(ticker) {
+  const id = CRYPTO_IDS[ticker.toUpperCase()] || ticker.toLowerCase();
+  const r = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${id}&vs_currencies=eur`);
+  const d = await r.json();
+  const price = d[id]?.eur;
+  if (price) return price;
+  throw new Error('Crypto not found');
+}
+
+async function fetchPrice(h) {
+  if (h.type === 'stock') return fetchStockPrice(h.ticker);
+  return fetchCryptoPrice(h.ticker);
+}
+
+// ── Status helpers ────────────────────────────────────────────────────────────
+function setStatus(state, text) {
+  document.getElementById('status-dot').className = 'dot ' + state;
+  document.getElementById('status-text').textContent = text;
+}
+
+// ── Refresh all prices ────────────────────────────────────────────────────────
+async function refreshAll() {
+  if (!holdings.length) { setStatus('', 'No holdings'); return; }
+  setStatus('loading', 'Fetching prices...');
+  if (!eurUsdRate) await fetchEurUsd();
+  let ok = 0, fail = 0;
+  await Promise.all(holdings.map(async (h, i) => {
+    try {
+      holdings[i].cur = await fetchPrice(h);
+      holdings[i].priceOk = true; ok++;
+    } catch(e) {
+      holdings[i].priceOk = false; fail++;
+    }
+  }));
+  save(); render();
+  document.getElementById('last-updated').textContent = new Date().toLocaleTimeString();
+  if (fail === 0) {
+    setStatus('live', `Live · ${ok} prices`);
+    document.getElementById('finnhub-status').textContent = 'Connected';
+    document.getElementById('coingecko-status').textContent = 'Connected';
+  } else {
+    setStatus('error', `${ok} ok · ${fail} failed`);
+  }
+}
+
+// ── Persistence ───────────────────────────────────────────────────────────────
+// ── GitHub Storage ────────────────────────────────────────────────────────────
+const GITHUB_OWNER = 'Nienmaison';
+const GITHUB_REPO  = 'portfolio_tracker';
+const GITHUB_FILE  = 'portfolio.json';
+let portfolioFileSha = null;
+
+async function githubRequest(method, body) {
+  const url = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_FILE}`;
+  const res = await fetch(url, {
+    method,
+    headers: {
+      'Authorization': `token ${GITHUB_TOKEN}`,
+      'Content-Type': 'application/json',
+      'Accept': 'application/vnd.github.v3+json'
+    },
+    body: body ? JSON.stringify(body) : undefined
+  });
+  if (!res.ok) { const e = await res.json(); throw new Error(e.message || res.statusText); }
+  return res.json();
+}
+
+async function loadFromGitHub() {
+  try {
+    const data = await githubRequest('GET');
+    portfolioFileSha = data.sha;
+    return JSON.parse(atob(data.content.replace(/\n/g,'')));
+  } catch(e) {
+    if (e.message && e.message.includes('Not Found')) return [];
+    throw e;
+  }
+}
+
+async function saveToGitHub(data) {
+  const body = {
+    message: `Portfolio update ${new Date().toISOString()}`,
+    content: btoa(JSON.stringify(data, null, 2)),
+    branch: 'main'
+  };
+  if (portfolioFileSha) body.sha = portfolioFileSha;
+  const result = await githubRequest('PUT', body);
+  portfolioFileSha = result.content.sha;
+}
+
+async function load() {
+  setStatus('loading', 'Loading from GitHub...');
+  try {
+    if (GITHUB_TOKEN) {
+      holdings = await loadFromGitHub();
+      setStatus('live', `Loaded ${holdings.length} positions`);
+    } else {
+      // fallback to localStorage if no token yet
+      const raw = localStorage.getItem('portfolio-tracker-v1');
+      if (raw) holdings = JSON.parse(raw);
+      setStatus('error', 'No GitHub token — set it in Settings tab');
+    }
+  } catch(e) {
+    const raw = localStorage.getItem('portfolio-tracker-v1');
+    if (raw) holdings = JSON.parse(raw);
+    setStatus('error', 'GitHub load failed — using local data');
+  }
+  render();
+  if (holdings.length) fetchEurUsd().then(refreshAll);
+  setInterval(refreshAll, 60000);
+}
+
+async function save() {
+  // always save to localStorage as backup
+  try { localStorage.setItem('portfolio-tracker-v1', JSON.stringify(holdings)); } catch(e) {}
+  // save to GitHub if token available
+  if (GITHUB_TOKEN) {
+    try { await saveToGitHub(holdings); } catch(e) { console.warn('GitHub save failed:', e.message); }
+  }
+}
+
+// ── Formatting ────────────────────────────────────────────────────────────────
+function fmt(n) { return n.toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+
+// ── Filter ────────────────────────────────────────────────────────────────────
+function setFilter(f) {
+  activeFilter = f;
+  ['all','stock','crypto'].forEach(id => {
+    document.getElementById('filter-' + id).classList.toggle('active', id === f);
+  });
+  render();
+}
+
+function filteredHoldings() {
+  if (activeFilter === 'all') return holdings;
+  return holdings.filter(h => h.type === activeFilter);
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+function render() { renderMetrics(); renderHoldings(); renderCharts(); }
+
+function renderMetrics() {
+  const fh = filteredHoldings();
+  const label = activeFilter === 'all' ? 'Total' : activeFilter === 'stock' ? 'Stocks' : 'Crypto';
+  const total = fh.reduce((s, h) => s + h.qty * (h.cur || 0), 0);
+  const cost  = fh.reduce((s, h) => s + h.qty * (h.buyEur || h.buy || 0), 0);
+  const pl    = total - cost;
+  const plPct = cost > 0 ? (pl / cost * 100) : 0;
+  const stocks = fh.filter(h => h.type === 'stock').reduce((s, h) => s + h.qty * (h.cur || 0), 0);
+  const crypto = fh.filter(h => h.type === 'crypto').reduce((s, h) => s + h.qty * (h.cur || 0), 0);
+  document.getElementById('metrics').innerHTML = `
+    <div class="metric"><div class="metric-label">${label} value</div><div class="metric-value">€${fmt(total)}</div></div>
+    <div class="metric"><div class="metric-label">${label} P&L</div>
+      <div class="metric-value ${pl >= 0 ? 'green' : 'red'}">${pl >= 0 ? '+' : ''}€${fmt(pl)}</div>
+      <div class="metric-sub ${pl >= 0 ? 'green' : 'red'}">${pl >= 0 ? '+' : ''}${plPct.toFixed(2)}%</div>
+    </div>
+    <div class="metric"><div class="metric-label">Stocks / ETFs</div><div class="metric-value">€${fmt(stocks)}</div></div>
+    <div class="metric"><div class="metric-label">Crypto</div><div class="metric-value">€${fmt(crypto)}</div></div>
+    <div class="metric"><div class="metric-label">Assets held</div><div class="metric-value">${holdings.length}</div></div>
+  `;
+}
+
+function renderHoldings() {
+  const body  = document.getElementById('holdings-body');
+  const empty = document.getElementById('holdings-empty');
+  const fh = filteredHoldings();
+  if (!fh.length) { body.innerHTML = ''; empty.style.display = 'block'; return; }
+  empty.style.display = 'none';
+  body.innerHTML = fh.map((h) => {
+    const i    = holdings.indexOf(h); // use real index for edit/remove
+    const cur    = h.cur || 0;
+    const buyEur = h.buyEur || h.buy || 0; // FIX: always compare EUR to EUR
+    const val    = h.qty * cur;
+    const pl     = (cur - buyEur) * h.qty;
+    const plPct  = buyEur > 0 ? ((cur - buyEur) / buyEur * 100) : 0;
+    const tag    = h.priceOk === true ? `<span class="live-tag">LIVE</span>` : h.priceOk === false ? `<span class="err-tag">ERR</span>` : '';
+    return `<tr>
+      <td class="ticker-cell">${h.ticker.toUpperCase()}</td>
+      <td><span class="badge badge-${h.type}">${h.type === 'stock' ? 'Stock' : 'Crypto'}</span></td>
+      <td>${h.qty}</td>
+      <td>€${buyEur.toFixed(2)}</td>
+      <td>€${cur.toFixed(2)}${tag}</td>
+      <td>€${fmt(val)}</td>
+      <td class="${pl >= 0 ? 'green' : 'red'}"><span class="pl-eur">${pl >= 0 ? '+' : ''}€${pl.toFixed(2)}</span> <span style="opacity:0.6;">(${pl >= 0 ? '+' : ''}${plPct.toFixed(1)}%)</span></td>
+      <td>
+        <button class="btn-edit" onclick="openEdit(${i})">edit</button>
+        <button class="btn-danger" onclick="remove(${i})">remove</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function renderCharts() {
+  if (charts.alloc) { charts.alloc.destroy(); delete charts.alloc; }
+  if (charts.type)  { charts.type.destroy();  delete charts.type;  }
+  const fh = filteredHoldings();
+  if (!fh.length) return;
+  const labels = fh.map(h => h.ticker.toUpperCase());
+  const values = fh.map(h => h.qty * (h.cur || 0));
+  const colors = fh.map((_, i) => COLORS[i % COLORS.length]);
+  const total  = values.reduce((a, b) => a + b, 0);
+  document.getElementById('legend-alloc').innerHTML = labels.map((l, i) =>
+    `<div class="legend-item"><span class="legend-dot" style="background:${colors[i]}"></span>${l} ${total > 0 ? (values[i]/total*100).toFixed(1)+'%' : ''}</div>`
+  ).join('');
+  charts.alloc = new Chart(document.getElementById('chartAlloc'), {
+    type: 'doughnut',
+    data: { labels, datasets: [{ data: values, backgroundColor: colors, borderWidth: 0 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, cutout: '65%' }
+  });
+  const sv = holdings.filter(h => h.type === 'stock').reduce((s, h) => s + h.qty*(h.cur||0), 0);
+  const cv = holdings.filter(h => h.type === 'crypto').reduce((s, h) => s + h.qty*(h.cur||0), 0);
+  const tt = sv + cv;
+  document.getElementById('legend-type').innerHTML = [['Stocks/ETFs','#4C8BF5',sv],['Crypto','#6B7FA3',cv]].map(([l,c,v]) =>
+    `<div class="legend-item"><span class="legend-dot" style="background:${c}"></span>${l} ${tt > 0 ? (v/tt*100).toFixed(1)+'%' : ''}</div>`
+  ).join('');
+  charts.type = new Chart(document.getElementById('chartType'), {
+    type: 'doughnut',
+    data: { labels: ['Stocks/ETFs','Crypto'], datasets: [{ data: [sv,cv], backgroundColor: ['#4C8BF5','#6B7FA3'], borderWidth: 0 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, cutout: '65%' }
+  });
+}
+
+// ── Add holding ───────────────────────────────────────────────────────────────
+async function addHolding() {
+  const ticker   = document.getElementById('f-ticker').value.trim().toUpperCase();
+  const type     = document.getElementById('f-type').value;
+  const qty      = parseFloat(document.getElementById('f-qty').value);
+  const buy      = parseFloat(document.getElementById('f-buy').value);
+  const currency = document.getElementById('f-currency').value;
+  const msg      = document.getElementById('add-msg');
+  if (!ticker || isNaN(qty) || isNaN(buy) || qty <= 0 || buy <= 0) {
+    msg.style.color = 'var(--red)'; msg.textContent = 'Please fill all fields correctly.'; return;
+  }
+  // FIX: convert buy price to EUR if entered in USD
+  const buyEur = currency === 'usd' ? buy * (eurUsdRate || 0.92) : buy;
+  msg.style.color = 'var(--muted)'; msg.textContent = 'Fetching live price...';
+  let cur = buyEur, priceOk = false;
+  try {
+    cur = await fetchPrice({ ticker, type });
+    priceOk = true;
+    msg.style.color = 'var(--accent)'; msg.textContent = `${ticker} added at €${cur.toFixed(2)}`;
+  } catch(e) {
+    msg.style.color = 'var(--amber)'; msg.textContent = 'Price fetch failed — using buy price as current.';
+  }
+  // Record individual transaction with today's date
+  const today = new Date().toISOString().split('T')[0];
+  transactions.push({ ticker, type, qty, buyEur, date: today });
+  localStorage.setItem('portfolio-transactions', JSON.stringify(transactions));
+
+  // Merge if ticker already exists — weighted average buy price
+  const existing = holdings.findIndex(h => h.ticker === ticker && h.type === type);
+  if (existing >= 0) {
+    const prev = holdings[existing];
+    const totalQty = prev.qty + qty;
+    const avgBuyEur = ((prev.buyEur || prev.buy) * prev.qty + buyEur * qty) / totalQty;
+    holdings[existing] = { ...prev, qty: totalQty, buy: avgBuyEur, buyEur: avgBuyEur, cur, priceOk };
+    msg.style.color = 'var(--accent)';
+    msg.textContent = `${ticker} merged — avg buy €${avgBuyEur.toFixed(2)}, total qty ${totalQty.toFixed(6)}`;
+  } else {
+    holdings.push({ ticker, type, qty, buy, buyEur, currency, cur, priceOk });
+  }
+  save(); render();
+  ['f-ticker','f-qty','f-buy'].forEach(id => document.getElementById(id).value = '');
+  setTimeout(() => msg.textContent = '', 3500);
+}
+
+// ── Remove ────────────────────────────────────────────────────────────────────
+function remove(i) { holdings.splice(i, 1); save(); render(); }
+
+// ── Edit ──────────────────────────────────────────────────────────────────────
+function openEdit(i) {
+  editIndex = i;
+  const h = holdings[i];
+  document.getElementById('e-ticker').value = h.ticker;
+  document.getElementById('e-type').value   = h.type;
+  renderTxRows(h.ticker);
+  document.getElementById('edit-modal').classList.add('open');
+}
+
+function renderTxRows(ticker) {
+  const container = document.getElementById('e-transactions');
+  const txs = transactions.filter(t => t.ticker === ticker);
+  // If no transactions yet, seed one from holding
+  if (txs.length === 0) {
+    const h = holdings[editIndex];
+    transactions.push({ ticker: h.ticker, type: h.type, qty: h.qty, buyEur: h.buyEur || h.buy, date: new Date().toISOString().split('T')[0] });
+    localStorage.setItem('portfolio-transactions', JSON.stringify(transactions));
+  }
+  container.innerHTML = transactions.filter(t => t.ticker === ticker).map((tx, idx) => {
+    const globalIdx = transactions.indexOf(tx);
+    return `<div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:6px;align-items:end;">
+      <div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-bottom:3px;">Date</div>
+        <input type="date" value="${tx.date || ''}" onchange="updateTx(${globalIdx},'date',this.value)"
+          style="width:100%;background:var(--bg);border:1px solid var(--border2);color:var(--text);font-family:var(--mono);font-size:12px;padding:6px 8px;border-radius:4px;" />
+      </div>
+      <div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-bottom:3px;">Qty</div>
+        <input type="number" value="${tx.qty}" step="any" min="0" onchange="updateTx(${globalIdx},'qty',parseFloat(this.value))"
+          style="width:100%;background:var(--bg);border:1px solid var(--border2);color:var(--text);font-family:var(--mono);font-size:12px;padding:6px 8px;border-radius:4px;" />
+      </div>
+      <div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-bottom:3px;">Buy price (€)</div>
+        <input type="number" value="${tx.buyEur.toFixed(2)}" step="any" min="0" onchange="updateTx(${globalIdx},'buyEur',parseFloat(this.value))"
+          style="width:100%;background:var(--bg);border:1px solid var(--border2);color:var(--text);font-family:var(--mono);font-size:12px;padding:6px 8px;border-radius:4px;" />
+      </div>
+      <button onclick="removeTx(${globalIdx})" style="font-family:var(--mono);font-size:11px;background:transparent;border:1px solid transparent;color:var(--muted);padding:6px 8px;border-radius:3px;cursor:pointer;margin-bottom:0;" onmouseover="this.style.color='var(--red)';this.style.borderColor='rgba(248,113,113,0.3)'" onmouseout="this.style.color='var(--muted)';this.style.borderColor='transparent'">✕</button>
+    </div>`;
+  }).join('');
+}
+
+function updateTx(globalIdx, field, value) {
+  transactions[globalIdx][field] = value;
+  localStorage.setItem('portfolio-transactions', JSON.stringify(transactions));
+}
+
+function removeTx(globalIdx) {
+  const ticker = transactions[globalIdx].ticker;
+  transactions.splice(globalIdx, 1);
+  localStorage.setItem('portfolio-transactions', JSON.stringify(transactions));
+  renderTxRows(ticker);
+}
+
+function addTxRow() {
+  const ticker = document.getElementById('e-ticker').value.trim().toUpperCase();
+  const type   = document.getElementById('e-type').value;
+  transactions.push({ ticker, type, qty: 0, buyEur: 0, date: new Date().toISOString().split('T')[0] });
+  localStorage.setItem('portfolio-transactions', JSON.stringify(transactions));
+  renderTxRows(ticker);
+}
+
+function closeEdit() {
+  document.getElementById('edit-modal').classList.remove('open');
+  editIndex = null;
+}
+
+async function saveEdit() {
+  if (editIndex === null) return;
+  const ticker = document.getElementById('e-ticker').value.trim().toUpperCase();
+  const type   = document.getElementById('e-type').value;
+  // Recalculate holding from transactions
+  const txs = transactions.filter(t => t.ticker === ticker);
+  if (!txs.length) return;
+  const totalQty = txs.reduce((s, t) => s + (t.qty || 0), 0);
+  const totalCost = txs.reduce((s, t) => s + (t.qty || 0) * (t.buyEur || 0), 0);
+  const avgBuyEur = totalQty > 0 ? totalCost / totalQty : 0;
+  holdings[editIndex] = { ...holdings[editIndex], ticker, type, qty: totalQty, buy: avgBuyEur, buyEur: avgBuyEur };
+  closeEdit();
+  save();
+  try {
+    holdings[editIndex].cur = await fetchPrice(holdings[editIndex]);
+    holdings[editIndex].priceOk = true;
+  } catch(e) {
+    holdings[editIndex].priceOk = false;
+  }
+  save(); render();
+}
+
+// Close modal on overlay click
+document.getElementById('edit-modal').addEventListener('click', function(e) {
+  if (e.target === this) closeEdit();
+});
+
+// ── Guest mode ────────────────────────────────────────────────────────────────
+let guestMode = false;
+function toggleGuest() {
+  guestMode = !guestMode;
+  document.querySelector('main').classList.toggle('guest-blur', guestMode);
+  const btn = document.getElementById('guest-btn');
+  btn.textContent = guestMode ? 'Exit guest' : 'Guest mode';
+  btn.classList.toggle('active', guestMode);
+}
+
+// ── Tab switcher ──────────────────────────────────────────────────────────────
+function showTab(name) {
+  ['holdings','add','charts','ai'].forEach((n, idx) => {
+    document.querySelectorAll('.tab')[idx].classList.toggle('active', n === name);
+    document.getElementById('tab-' + n).classList.toggle('active', n === name);
+  });
+  if (name === 'charts') populateChartSelect();
+}
+
+// ── AI analysis (OpenAI) ──────────────────────────────────────────────────────
+async function runAI(mode) {
+  const out = document.getElementById('ai-output');
+  if (!holdings.length) { out.innerHTML = '<span class="ai-idle">Add some holdings first to get AI analysis.</span>'; return; }
+  if (!OPENAI_KEY) {
+    out.innerHTML = '<span style="color:var(--amber);font-family:var(--mono);font-size:12px;">No API key set. Enter your OpenAI key above.</span>';
+    return;
+  }
+  out.innerHTML = '<span class="ai-idle">Analysing with live prices...</span>';
+  const total = holdings.reduce((s, h) => s + h.qty * (h.cur || 0), 0);
+  const summary = holdings.map(h => {
+    const buyEur = h.buyEur || h.buy || 0;
+    const val  = (h.qty * (h.cur || 0)).toFixed(2);
+    const pl   = buyEur > 0 ? (((h.cur || 0) - buyEur) / buyEur * 100).toFixed(1) : 'n/a';
+    const pct  = total > 0 ? ((h.qty * (h.cur || 0)) / total * 100).toFixed(1) : 'n/a';
+    return `${h.ticker} (${h.type}): qty ${h.qty}, buy €${buyEur.toFixed(2)}, live €${(h.cur||0).toFixed(2)}, value €${val}, P&L ${pl}%, weight ${pct}%`;
+  }).join('\n');
+  const prompts = {
+    analysis:  `You are a portfolio analyst. Portfolio:\n\n${summary}\n\nTotal: €${total.toFixed(2)}\n\nProvide concise analysis: (1) diversification quality, (2) risk profile, (3) P&L highlights, (4) 2-3 actionable suggestions. Plain text, under 260 words. End with a brief disclaimer.`,
+    risk:      `You are a risk analyst. Portfolio:\n\n${summary}\n\nTotal: €${total.toFixed(2)}\n\nAssess: (1) concentration risk, (2) volatility profile given stocks/crypto mix, (3) correlation risks, (4) downside scenarios. Plain text, under 260 words. End with a brief disclaimer.`,
+    rebalance: `You are a portfolio strategist. Portfolio:\n\n${summary}\n\nTotal: €${total.toFixed(2)}\n\nSuggest: (1) current allocation assessment, (2) 2-3 specific rebalancing moves with rationale, (3) target allocation range. Plain text, under 260 words. End with a brief disclaimer.`
+  };
+  try {
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${OPENAI_KEY}`
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o',
+        max_tokens: 1000,
+        messages: [{ role: 'user', content: prompts[mode] }]
+      })
+    });
+    const data = await res.json();
+    const text = data.choices?.[0]?.message?.content || 'No response received.';
+    out.innerHTML = text.replace(/\n/g, '<br>');
+  } catch(e) {
+    out.innerHTML = '<span style="color:var(--red);">Error reaching OpenAI. Check your API key and try again.</span>';
+  }
+}
+
+// ── Key management ────────────────────────────────────────────────────────────
+function saveGithubKey() {
+  const val = document.getElementById('github-key-input').value.trim();
+  if (!val.startsWith('ghp_') && !val.startsWith('github_pat_')) {
+    document.getElementById('github-key-status').style.color = 'var(--red)';
+    document.getElementById('github-key-status').textContent = 'Invalid token — should start with ghp_';
+    return;
+  }
+  GITHUB_TOKEN = val;
+  localStorage.setItem('github-token', val);
+  document.getElementById('github-key-input').value = '';
+  document.getElementById('github-key-status').style.color = 'var(--accent)';
+  document.getElementById('github-key-status').textContent = 'Token saved. Loading your portfolio from GitHub...';
+  document.getElementById('btn-clear-github').style.display = 'inline-block';
+  load();
+}
+
+function clearGithubKey() {
+  GITHUB_TOKEN = '';
+  localStorage.removeItem('github-token');
+  document.getElementById('github-key-input').value = '';
+  document.getElementById('github-key-status').style.color = 'var(--muted)';
+  document.getElementById('github-key-status').textContent = 'Token cleared.';
+  document.getElementById('btn-clear-github').style.display = 'none';
+}
+
+function initGithubPanel() {
+  if (GITHUB_TOKEN) {
+    document.getElementById('github-key-status').style.color = 'var(--accent)';
+    document.getElementById('github-key-status').textContent = 'Token active — portfolio syncs to GitHub automatically.';
+    document.getElementById('btn-clear-github').style.display = 'inline-block';
+  }
+}
+
+function saveKey() {
+  const val = document.getElementById('key-input').value.trim();
+  if (!val.startsWith('sk-')) {
+    document.getElementById('key-status').style.color = 'var(--red)';
+    document.getElementById('key-status').textContent = 'Invalid key — OpenAI keys start with sk-';
+    return;
+  }
+  OPENAI_KEY = val;
+  localStorage.setItem('openai-key', val);
+  document.getElementById('key-input').value = '';
+  document.getElementById('key-status').style.color = 'var(--accent)';
+  document.getElementById('key-status').textContent = 'Key saved to local storage. Never stored in source code.';
+  document.getElementById('btn-clear-key').style.display = 'inline-block';
+}
+
+function clearKey() {
+  OPENAI_KEY = '';
+  localStorage.removeItem('openai-key');
+  document.getElementById('key-input').value = '';
+  document.getElementById('key-status').style.color = 'var(--muted)';
+  document.getElementById('key-status').textContent = 'Key cleared.';
+  document.getElementById('btn-clear-key').style.display = 'none';
+}
+
+function initKeyPanel() {
+  if (OPENAI_KEY) {
+    document.getElementById('key-status').style.color = 'var(--accent)';
+    document.getElementById('key-status').textContent = 'Key loaded from local storage.';
+    document.getElementById('btn-clear-key').style.display = 'inline-block';
+    document.getElementById('ai-output').innerHTML = '<span class="ai-idle">Select an analysis type above to get AI insights on your live portfolio.</span>';
+  }
+}
+
+// ── Charts ────────────────────────────────────────────────────────────────────
+let chartRange = '1M';
+let priceChart = null;
+
+function populateChartSelect() {
+  const sel = document.getElementById('chart-ticker');
+  const current = sel.value;
+  sel.innerHTML = '<option value="">Select asset...</option>';
+  holdings.forEach(h => {
+    const opt = document.createElement('option');
+    opt.value = JSON.stringify({ ticker: h.ticker, type: h.type, buyEur: h.buyEur || h.buy });
+    opt.textContent = h.ticker.toUpperCase();
+    if (current && JSON.parse(current)?.ticker === h.ticker) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+
+function setRange(r, btn) {
+  chartRange = r;
+  document.querySelectorAll('.chart-range-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  loadChart();
+}
+
+async function loadChart() {
+  const sel = document.getElementById('chart-ticker');
+  if (!sel.value) return;
+  const { ticker, type, buyEur } = JSON.parse(sel.value);
+  const status = document.getElementById('chart-status');
+  status.textContent = 'Loading...';
+  status.style.color = 'var(--muted)';
+  const days = { '1W': 7, '1M': 30, '3M': 90, '6M': 180, '1Y': 365 };
+  const d = days[chartRange] || 30;
+  try {
+    let labels = [], prices = [], timestamps = [];
+    if (type === 'crypto') {
+      const id = ({ BTC:'bitcoin', ETH:'ethereum', SOL:'solana', BNB:'binancecoin', XRP:'ripple', ADA:'cardano', DOGE:'dogecoin' })[ticker.toUpperCase()] || ticker.toLowerCase();
+      const r = await fetch(`https://api.coingecko.com/api/v3/coins/${id}/market_chart?vs_currency=eur&days=${d}`);
+      const data = await r.json();
+      data.prices.forEach(([ts, p]) => {
+        timestamps.push(new Date(ts).toISOString().split('T')[0]);
+        labels.push(new Date(ts).toLocaleDateString('en', { month:'short', day:'numeric' }));
+        prices.push(parseFloat(p.toFixed(2)));
+      });
+    } else {
+      // Yahoo Finance via corsproxy for stock historical data (Finnhub free tier doesn't support candles)
+      const rangeMap = { '1W':'5d', '1M':'1mo', '3M':'3mo', '6M':'6mo', '1Y':'1y' };
+      const intervalMap = { '1W':'1h', '1M':'1d', '3M':'1d', '6M':'1wk', '1Y':'1wk' };
+      const yRange = rangeMap[chartRange] || '1mo';
+      const yInterval = intervalMap[chartRange] || '1d';
+      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=${yInterval}&range=${yRange}`;
+      const r = await fetch('https://corsproxy.io/?' + encodeURIComponent(url));
+      const data = await r.json();
+      const result = data?.chart?.result?.[0];
+      if (!result) throw new Error('No data from Yahoo');
+      const fxRate = result.meta.currency === 'USD' ? (eurUsdRate || 0.92) : 1;
+      result.timestamp.forEach((ts, i) => {
+        const close = result.indicators.quote[0].close[i];
+        if (close === null) return;
+        timestamps.push(new Date(ts*1000).toISOString().split('T')[0]);
+        labels.push(new Date(ts*1000).toLocaleDateString('en', { month:'short', day:'numeric' }));
+        prices.push(parseFloat((close * fxRate).toFixed(2)));
+      });
+    }
+    // Build buy dots from transactions
+    const txForTicker = transactions.filter(t => t.ticker === ticker);
+    const buyDots = Array(labels.length).fill(null);
+    txForTicker.forEach(tx => {
+      let closest = -1, minDiff = Infinity;
+      timestamps.forEach((ts, i) => {
+        const diff = Math.abs(new Date(ts) - new Date(tx.date));
+        if (diff < minDiff) { minDiff = diff; closest = i; }
+      });
+      if (closest >= 0) buyDots[closest] = tx.buyEur;
+    });
+    const ctx = document.getElementById('chartPrice').getContext('2d');
+    if (priceChart) priceChart.destroy();
+    const isUp = prices[prices.length - 1] >= prices[0];
+    const col = isUp ? '#30B87A' : '#E05250';
+    const grad = ctx.createLinearGradient(0, 0, 0, 320);
+    grad.addColorStop(0, isUp ? 'rgba(48,184,122,0.2)' : 'rgba(224,82,80,0.2)');
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    priceChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          { label: ticker.toUpperCase(), data: prices, borderColor: col, borderWidth: 2, backgroundColor: grad, fill: true, pointRadius: 0, pointHoverRadius: 4, tension: 0.3 },
+          { label: 'Avg buy', data: Array(labels.length).fill(buyEur), borderColor: 'rgba(251,191,36,0.5)', borderWidth: 1, borderDash: [6, 4], backgroundColor: 'transparent', fill: false, pointRadius: 0, tension: 0 },
+          { label: 'Buy', data: buyDots, borderColor: '#C9A84C', backgroundColor: '#C9A84C', pointRadius: buyDots.map(v => v !== null ? 7 : 0), pointHoverRadius: buyDots.map(v => v !== null ? 9 : 0), showLine: false, fill: false }
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#1a1e25', borderColor: 'rgba(255,255,255,0.1)', borderWidth: 1,
+            titleColor: '#6b7280', bodyColor: '#e8eaf0',
+            filter: item => item.dataset.label !== 'Avg buy' && item.parsed.y !== null,
+            callbacks: {
+              label: ctx => {
+                if (ctx.dataset.label === 'Buy') return `  Buy: €${ctx.parsed.y.toFixed(2)}`;
+                if (ctx.dataset.label === ticker.toUpperCase()) return `  Price: €${ctx.parsed.y.toFixed(2)}`;
+                return null;
+              }
+            }
+          }
+        },
+        scales: {
+          x: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#6b7280', font: { family: 'Inter', size: 10 }, maxTicksLimit: 8 } },
+          y: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#6b7280', font: { family: 'Inter', size: 10 }, callback: v => '€' + v } }
+        }
+      }
+    });
+    const cur = prices[prices.length - 1];
+    const chg = ((cur - prices[0]) / prices[0] * 100).toFixed(2);
+    status.style.color = isUp ? 'var(--accent)' : 'var(--red)';
+    status.textContent = `${isUp ? '▲' : '▼'} ${chg}% over ${chartRange}`;
+    const marker = document.getElementById('chart-buy-marker');
+    if (buyEur) {
+      marker.style.display = 'block';
+      const diff = ((cur - buyEur) / buyEur * 100).toFixed(1);
+      marker.innerHTML = `<span style="color:var(--amber)">— Avg buy: €${buyEur.toFixed(2)}</span>  ·  Current: €${cur.toFixed(2)}  ·  P&L: <span style="color:${parseFloat(diff) >= 0 ? 'var(--accent)' : 'var(--red)'}">${parseFloat(diff) >= 0 ? '+' : ''}${diff}%</span>  ·  <span style="color:var(--muted)">${txForTicker.length} buy moment${txForTicker.length !== 1 ? 's' : ''}</span>`;
+    }
+  } catch(e) {
+    status.style.color = 'var(--red)';
+    status.textContent = 'Failed to load chart data — ' + e.message;
+  }
+}
+
+load();
+initKeyPanel();
+initGithubPanel();
+</script>
+</body>
+</html>
