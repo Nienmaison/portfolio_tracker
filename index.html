@@ -178,6 +178,10 @@ select option { background: var(--bg); }
 .guest-blur td:nth-child(6) { color: transparent !important; transition: color 0.2s ease; position: relative; }
 .guest-blur td:nth-child(6)::after { content: '–'; color: var(--muted); position: absolute; left: 50%; transform: translateX(-50%); }
 .guest-blur .pl-eur { color: transparent !important; }
+/* Metrics block — hide EUR values, keep P&L % */
+.guest-blur .metric-value { color: transparent !important; position: relative; }
+.guest-blur .metric-value::after { content: '–'; color: var(--muted); position: absolute; left: 0; }
+.guest-blur .metric-sub { color: inherit !important; opacity: 1 !important; }
 #guest-btn.active { color: var(--amber) !important; border-color: var(--amber) !important; }
 .chart-range-btn {
   font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em;
@@ -996,16 +1000,23 @@ async function loadChart() {
         prices.push(parseFloat(p.toFixed(2)));
       });
     } else {
-      // Yahoo Finance via corsproxy for stock historical data (Finnhub free tier doesn't support candles)
+      // Yahoo Finance via corsproxy — tries European exchange suffixes for ETFs like 4COP.DE
       const rangeMap = { '1W':'5d', '1M':'1mo', '3M':'3mo', '6M':'6mo', '1Y':'1y' };
       const intervalMap = { '1W':'1h', '1M':'1d', '3M':'1d', '6M':'1wk', '1Y':'1wk' };
       const yRange = rangeMap[chartRange] || '1mo';
       const yInterval = intervalMap[chartRange] || '1d';
-      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=${yInterval}&range=${yRange}`;
-      const r = await fetch('https://corsproxy.io/?' + encodeURIComponent(url));
-      const data = await r.json();
-      const result = data?.chart?.result?.[0];
-      if (!result) throw new Error('No data from Yahoo');
+      const suffixes = ['', '.DE', '.AS', '.PA', '.L'];
+      let result = null;
+      for (const suffix of suffixes) {
+        try {
+          const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}${suffix}?interval=${yInterval}&range=${yRange}`;
+          const r = await fetch('https://corsproxy.io/?' + encodeURIComponent(url));
+          const d = await r.json();
+          const res = d?.chart?.result?.[0];
+          if (res?.timestamp?.length > 0) { result = res; break; }
+        } catch(e) {}
+      }
+      if (!result) throw new Error('No chart data found');
       const fxRate = result.meta.currency === 'USD' ? (eurUsdRate || 0.92) : 1;
       result.timestamp.forEach((ts, i) => {
         const close = result.indicators.quote[0].close[i];
