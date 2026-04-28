@@ -6,7 +6,7 @@
     "buy": 57523,
     "buyEur": 57523,
     "currency": "eur",
-    "cur": 65052,
+    "cur": 65032,
     "priceOk": true
   },
   {
@@ -16,8 +16,8 @@
     "buy": 57.34411804946497,
     "buyEur": 57.34411804946497,
     "currency": "eur",
-    "cur": 54.96,
-    "priceOk": false
+    "cur": 52.55,
+    "priceOk": true
   },
   {
     "ticker": "TSM",
@@ -26,7 +26,7 @@
     "buy": 368.75,
     "buyEur": 339.25,
     "currency": "usd",
-    "cur": 360.8516,
+    "cur": 360.8884,
     "priceOk": true
   },
   {
@@ -36,7 +36,7 @@
     "buy": 74.77378597442852,
     "buyEur": 74.77378597442852,
     "currency": "usd",
-    "cur": 140.61280000000002,
+    "cur": 140.7416,
     "priceOk": true
   },
   {
@@ -46,7 +46,7 @@
     "buy": 404.87,
     "buyEur": 372.48040000000003,
     "currency": "usd",
-    "cur": 393.576,
+    "cur": 393.56680000000006,
     "priceOk": true
   }
 ]
