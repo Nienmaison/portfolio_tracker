@@ -437,13 +437,27 @@ async function fetchEurUsd() {
 // ── Price fetchers ────────────────────────────────────────────────────────────
 // FIX: Finnhub returns USD. We convert to EUR using live FX rate.
 async function fetchStockPrice(ticker) {
-  const r = await fetch(`https://finnhub.io/api/v1/quote?symbol=${ticker.toUpperCase()}&token=${FINNHUB_KEY}`);
-  const d = await r.json();
-  if (d.c && d.c > 0) {
-    const usdPrice = d.c;
-    return usdPrice * (eurUsdRate || 0.92); // convert to EUR
+  // Try Finnhub first (fast, works for US tickers)
+  try {
+    const r = await fetch(`https://finnhub.io/api/v1/quote?symbol=${ticker.toUpperCase()}&token=${FINNHUB_KEY}`);
+    const d = await r.json();
+    if (d.c && d.c > 0) return d.c * (eurUsdRate || 0.92);
+  } catch(e) {}
+  // Fallback: Yahoo Finance via corsproxy — tries European exchange suffixes for ETFs like 4COP
+  const suffixes = ['', '.DE', '.AS', '.PA', '.L'];
+  for (const suffix of suffixes) {
+    try {
+      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}${suffix}?interval=1d&range=1d`;
+      const r = await fetch('https://corsproxy.io/?' + encodeURIComponent(url));
+      const d = await r.json();
+      const meta = d?.chart?.result?.[0]?.meta;
+      if (meta?.regularMarketPrice > 0) {
+        const fxRate = meta.currency === 'USD' ? (eurUsdRate || 0.92) : 1;
+        return meta.regularMarketPrice * fxRate;
+      }
+    } catch(e) {}
   }
-  throw new Error('No price returned');
+  throw new Error('No price found');
 }
 
 async function fetchCryptoPrice(ticker) {
@@ -657,12 +671,12 @@ function renderCharts() {
   const sv = holdings.filter(h => h.type === 'stock').reduce((s, h) => s + h.qty*(h.cur||0), 0);
   const cv = holdings.filter(h => h.type === 'crypto').reduce((s, h) => s + h.qty*(h.cur||0), 0);
   const tt = sv + cv;
-  document.getElementById('legend-type').innerHTML = [['Stocks/ETFs','#4C8BF5',sv],['Crypto','#6B7FA3',cv]].map(([l,c,v]) =>
+  document.getElementById('legend-type').innerHTML = [['Stocks/ETFs','#1E3F6F',sv],['Crypto','#5E85B0',cv]].map(([l,c,v]) =>
     `<div class="legend-item"><span class="legend-dot" style="background:${c}"></span>${l} ${tt > 0 ? (v/tt*100).toFixed(1)+'%' : ''}</div>`
   ).join('');
   charts.type = new Chart(document.getElementById('chartType'), {
     type: 'doughnut',
-    data: { labels: ['Stocks/ETFs','Crypto'], datasets: [{ data: [sv,cv], backgroundColor: ['#4C8BF5','#6B7FA3'], borderWidth: 0 }] },
+    data: { labels: ['Stocks/ETFs','Crypto'], datasets: [{ data: [sv,cv], backgroundColor: ['#1E3F6F','#5E85B0'], borderWidth: 0 }] },
     options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, cutout: '65%' }
   });
 }
