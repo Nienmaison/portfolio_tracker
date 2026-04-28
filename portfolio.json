@@ -6,7 +6,7 @@
     "buy": 57523,
     "buyEur": 57523,
     "currency": "eur",
-    "cur": 65032,
+    "cur": 65042,
     "priceOk": true
   },
   {
@@ -26,7 +26,7 @@
     "buy": 368.75,
     "buyEur": 339.25,
     "currency": "usd",
-    "cur": 360.8884,
+    "cur": 360.824,
     "priceOk": true
   },
   {
@@ -46,7 +46,7 @@
     "buy": 404.87,
     "buyEur": 372.48040000000003,
     "currency": "usd",
-    "cur": 393.56680000000006,
+    "cur": 393.5944,
     "priceOk": true
   }
 ]
