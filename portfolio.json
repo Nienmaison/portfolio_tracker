@@ -48,5 +48,15 @@
     "currency": "usd",
     "cur": 394.91,
     "priceOk": true
+  },
+  {
+    "ticker": "NOW",
+    "type": "stock",
+    "qty": 3.93312002,
+    "buy": 88.9,
+    "buyEur": 81.78800000000001,
+    "currency": "usd",
+    "cur": 83.2508,
+    "priceOk": true
   }
 ]
