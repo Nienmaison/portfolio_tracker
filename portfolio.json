@@ -86,8 +86,8 @@
     "buy": 0.46068037860509964,
     "buyEur": 0.46068037860509964,
     "currency": "eur",
-    "cur": 0.46068037860509964,
-    "priceOk": false
+    "cur": 0.05016,
+    "priceOk": true
   },
   {
     "ticker": "HOT",
@@ -107,7 +107,7 @@
     "buyEur": 0.4708658823388327,
     "currency": "eur",
     "cur": 0.113271,
-    "priceOk": true
+    "priceOk": false
   },
   {
     "ticker": "W",
@@ -116,8 +116,8 @@
     "buy": 0.09663770099736031,
     "buyEur": 0.09663770099736031,
     "currency": "eur",
-    "cur": 0.09663770099736031,
-    "priceOk": false
+    "cur": 0.01103909,
+    "priceOk": true
   },
   {
     "ticker": "NEAR",
