@@ -879,7 +879,7 @@ function syncHoldingsToFunnel() {
   if (!apiKey) return;
   const txs = JSON.parse(localStorage.getItem('portfolio-transactions') || '[]');
   const holdings = [...new Set(txs.map(t => t.ticker))];
-  fetch('https://178.105.43.242:5000/holdings', {
+  fetch('https://fincr.duckdns.org/holdings', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
     body: JSON.stringify({ holdings: holdings, watchlist: [] })
