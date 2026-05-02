@@ -334,6 +334,103 @@ select option { background: var(--bg); }
         <div class="api-row"><span class="api-name">EUR/USD rate</span><span class="api-val" id="fx-status">—</span></div>
       </div>
     </div>
+
+    <div class="card" style="margin-top:1rem;">
+      <div class="card-title">Import from any broker</div>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.6;">
+        Works with any broker CSV — Bitvavo, DEGIRO, Trading 212, Revolut, Kraken and others.
+        Export your transaction history, upload it here, and map the columns once.
+        The importer calculates your DCA and net holdings automatically.
+      </p>
+
+      <!-- Step 1: Upload -->
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+        <label class="btn-primary" style="cursor:pointer;margin:0;">
+          Choose CSV file
+          <input type="file" id="csv-upload" accept=".csv" style="display:none;" onchange="handleCsvUpload(event)"/>
+        </label>
+        <span id="csv-filename" style="font-size:12px;color:var(--muted);">No file selected</span>
+      </div>
+
+      <!-- Step 2: Column mapping -->
+      <div id="csv-mapper" style="display:none;margin-bottom:20px;">
+        <p style="font-size:11px;color:var(--muted);letter-spacing:0.06em;text-transform:uppercase;margin-bottom:12px;">Map your columns</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
+          <div>
+            <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">Ticker / symbol column</label>
+            <select id="map-ticker" style="width:100%;"></select>
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">Quantity column</label>
+            <select id="map-qty" style="width:100%;"></select>
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">Price per unit column <span style="color:var(--muted);font-style:italic;">(leave blank if using total cost)</span></label>
+            <select id="map-price" style="width:100%;"></select>
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">Total cost column <span style="color:var(--muted);font-style:italic;">(leave blank if using price)</span></label>
+            <select id="map-total" style="width:100%;"></select>
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">Transaction type column</label>
+            <select id="map-type" style="width:100%;"></select>
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">Asset type (stock or crypto?)</label>
+            <select id="map-asset-type" style="width:100%;">
+              <option value="crypto">Crypto</option>
+              <option value="stock">Stock / ETF</option>
+              <option value="auto">Auto-detect (crypto if no price feed)</option>
+            </select>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px;">
+          <div>
+            <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">Value that means "buy"</label>
+            <input type="text" id="map-buy-val" placeholder="buy" style="width:100%;box-sizing:border-box;"/>
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">Value that means "sell"</label>
+            <input type="text" id="map-sell-val" placeholder="sell" style="width:100%;box-sizing:border-box;"/>
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">Value that means "staking reward" <span style="color:var(--muted);font-style:italic;">(optional)</span></label>
+            <input type="text" id="map-stake-val" placeholder="staking" style="width:100%;box-sizing:border-box;"/>
+          </div>
+        </div>
+        <div style="margin-bottom:10px;">
+          <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">Skip rows where ticker equals (comma separated — e.g. EUR, USD)</label>
+          <input type="text" id="map-skip-tickers" placeholder="EUR, USD" style="width:100%;max-width:320px;box-sizing:border-box;"/>
+        </div>
+        <button class="btn-primary" onclick="runCsvParse()" style="margin-top:4px;">Parse CSV</button>
+      </div>
+
+      <!-- Step 3: Preview -->
+      <div id="csv-preview" style="display:none;">
+        <p style="font-size:11px;color:var(--muted);letter-spacing:0.06em;text-transform:uppercase;margin-bottom:10px;">Preview — holdings to import</p>
+        <div style="overflow-x:auto;">
+          <table style="width:100%;border-collapse:collapse;font-size:12px;">
+            <thead>
+              <tr style="border-bottom:1px solid var(--border);">
+                <th style="text-align:left;padding:6px 8px;color:var(--muted);font-weight:400;letter-spacing:0.06em;text-transform:uppercase;font-size:10px;">Ticker</th>
+                <th style="text-align:left;padding:6px 8px;color:var(--muted);font-weight:400;letter-spacing:0.06em;text-transform:uppercase;font-size:10px;">Type</th>
+                <th style="text-align:right;padding:6px 8px;color:var(--muted);font-weight:400;letter-spacing:0.06em;text-transform:uppercase;font-size:10px;">Net qty</th>
+                <th style="text-align:right;padding:6px 8px;color:var(--muted);font-weight:400;letter-spacing:0.06em;text-transform:uppercase;font-size:10px;">Avg buy (€)</th>
+                <th style="text-align:right;padding:6px 8px;color:var(--muted);font-weight:400;letter-spacing:0.06em;text-transform:uppercase;font-size:10px;">Buys</th>
+                <th style="text-align:right;padding:6px 8px;color:var(--muted);font-weight:400;letter-spacing:0.06em;text-transform:uppercase;font-size:10px;">Sells</th>
+                <th style="text-align:center;padding:6px 8px;color:var(--muted);font-weight:400;letter-spacing:0.06em;text-transform:uppercase;font-size:10px;">Import?</th>
+              </tr>
+            </thead>
+            <tbody id="csv-preview-body"></tbody>
+          </table>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;margin-top:16px;">
+          <button class="btn-primary" onclick="importFromCsv()" id="csv-import-btn">Import selected</button>
+          <span id="csv-import-msg" style="font-size:12px;color:var(--accent);"></span>
+        </div>
+      </div>
+    </div>
   </div>
 
   <div id="tab-charts" class="section">
@@ -1123,6 +1220,260 @@ async function loadChart() {
 load();
 initKeyPanel();
 initGithubPanel();
+
+// ── Generic CSV Importer ──────────────────────────────────────────────────────
+let _csvRows    = [];   // raw parsed rows (array of arrays)
+let _csvHeaders = [];   // column header strings
+let _csvParsed  = [];   // processed holdings ready to import
+
+// Known broker auto-detection profiles
+const BROKER_PROFILES = {
+  bitvavo: {
+    detect: h => h.some(c => c.toLowerCase().includes('quote price')),
+    ticker: h => h.findIndex(c => c.toLowerCase() === 'currency'),
+    qty:    h => h.findIndex(c => c.toLowerCase() === 'amount'),
+    price:  h => h.findIndex(c => c.toLowerCase().includes('quote price')),
+    total:  () => -1,
+    type:   h => h.findIndex(c => c.toLowerCase() === 'type'),
+    buyVal: 'buy', sellVal: 'sell', stakeVal: 'staking',
+    skipTickers: 'EUR,USD', assetType: 'crypto',
+    statusFilter: h => h.findIndex(c => c.toLowerCase() === 'status'),
+    statusOk: ['completed','distributed']
+  },
+  trading212: {
+    detect: h => h.some(c => c.toLowerCase().includes('no. of shares')),
+    ticker: h => h.findIndex(c => c.toLowerCase() === 'ticker'),
+    qty:    h => h.findIndex(c => c.toLowerCase().includes('no. of shares')),
+    price:  h => h.findIndex(c => c.toLowerCase().includes('price / share')),
+    total:  () => -1,
+    type:   h => h.findIndex(c => c.toLowerCase() === 'action'),
+    buyVal: 'market buy', sellVal: 'market sell', stakeVal: '',
+    skipTickers: '', assetType: 'stock'
+  },
+  degiro: {
+    detect: h => h.some(c => c.toLowerCase().includes('isin')),
+    ticker: h => h.findIndex(c => c.toLowerCase() === 'product'),
+    qty:    h => h.findIndex(c => c.toLowerCase() === 'quantity'),
+    price:  h => h.findIndex(c => c.toLowerCase() === 'price'),
+    total:  () => -1,
+    type:   h => -1,
+    buyVal: '', sellVal: '', stakeVal: '',
+    skipTickers: '', assetType: 'stock'
+  },
+  revolut: {
+    detect: h => h.some(c => c.toLowerCase().includes('price per share')),
+    ticker: h => h.findIndex(c => c.toLowerCase() === 'ticker'),
+    qty:    h => h.findIndex(c => c.toLowerCase() === 'quantity'),
+    price:  h => h.findIndex(c => c.toLowerCase().includes('price per share')),
+    total:  () => -1,
+    type:   h => h.findIndex(c => c.toLowerCase() === 'type'),
+    buyVal: 'buy', sellVal: 'sell', stakeVal: '',
+    skipTickers: '', assetType: 'stock'
+  }
+};
+
+function parseCsvLine(line) {
+  const result = [];
+  let current = '', inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    if (line[i] === '"') { inQuotes = !inQuotes; continue; }
+    if (line[i] === ',' && !inQuotes) { result.push(current.trim()); current = ''; continue; }
+    current += line[i];
+  }
+  result.push(current.trim());
+  return result;
+}
+
+function handleCsvUpload(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  document.getElementById('csv-filename').textContent = file.name;
+  document.getElementById('csv-mapper').style.display = 'none';
+  document.getElementById('csv-preview').style.display = 'none';
+
+  const reader = new FileReader();
+  reader.onload = e => {
+    const lines = e.target.result.trim().split('\n').filter(l => l.trim());
+    _csvHeaders = parseCsvLine(lines[0]);
+    _csvRows    = lines.slice(1).map(parseCsvLine);
+
+    // Build column dropdowns
+    const blank = '<option value="-1">— not mapped —</option>';
+    const opts  = _csvHeaders.map((h, i) => `<option value="${i}">${h}</option>`).join('');
+    ['map-ticker','map-qty','map-price','map-total','map-type'].forEach(id => {
+      document.getElementById(id).innerHTML = blank + opts;
+    });
+
+    // Auto-detect broker profile
+    const profile = Object.values(BROKER_PROFILES).find(p => p.detect(_csvHeaders));
+    if (profile) {
+      const set = (id, fn) => { const v = fn(_csvHeaders); if (v >= 0) document.getElementById(id).value = v; };
+      set('map-ticker', profile.ticker);
+      set('map-qty',    profile.qty);
+      set('map-price',  profile.price);
+      set('map-type',   profile.type);
+      document.getElementById('map-buy-val').value    = profile.buyVal   || '';
+      document.getElementById('map-sell-val').value   = profile.sellVal  || '';
+      document.getElementById('map-stake-val').value  = profile.stakeVal || '';
+      document.getElementById('map-skip-tickers').value = profile.skipTickers || '';
+      document.getElementById('map-asset-type').value = profile.assetType || 'crypto';
+      document.getElementById('csv-filename').textContent += ' (auto-detected format)';
+    }
+
+    document.getElementById('csv-mapper').style.display = 'block';
+  };
+  reader.readAsText(file);
+}
+
+function runCsvParse() {
+  const iT  = parseInt(document.getElementById('map-ticker').value);
+  const iQ  = parseInt(document.getElementById('map-qty').value);
+  const iP  = parseInt(document.getElementById('map-price').value);
+  const iTt = parseInt(document.getElementById('map-total').value);
+  const iTy = parseInt(document.getElementById('map-type').value);
+
+  if (iT < 0 || iQ < 0) { alert('Please map at least Ticker and Quantity columns.'); return; }
+
+  const buyVal   = document.getElementById('map-buy-val').value.trim().toLowerCase();
+  const sellVal  = document.getElementById('map-sell-val').value.trim().toLowerCase();
+  const stakeVal = document.getElementById('map-stake-val').value.trim().toLowerCase();
+  const skipSet  = new Set(document.getElementById('map-skip-tickers').value.split(',').map(s => s.trim().toUpperCase()).filter(Boolean));
+  const assetType = document.getElementById('map-asset-type').value;
+
+  // Find status filter for this broker
+  const profile = Object.values(BROKER_PROFILES).find(p => p.detect(_csvHeaders));
+  const iStatus = profile?.statusFilter ? profile.statusFilter(_csvHeaders) : -1;
+  const okStatuses = profile?.statusOk || [];
+
+  const coins = {};
+
+  for (const row of _csvRows) {
+    const ticker = (row[iT] || '').trim().toUpperCase().replace(/\s+/g,'');
+    if (!ticker || skipSet.has(ticker)) continue;
+
+    // Status filter
+    if (iStatus >= 0 && okStatuses.length) {
+      const status = (row[iStatus] || '').trim().toLowerCase();
+      if (!okStatuses.includes(status)) continue;
+    }
+
+    const qty    = parseFloat((row[iQ] || '').replace(',','.')) || 0;
+    const price  = iP  >= 0 ? parseFloat((row[iP]  || '').replace(',','.')) || 0 : 0;
+    const total  = iTt >= 0 ? Math.abs(parseFloat((row[iTt] || '').replace(',','.')) || 0) : 0;
+    const typeRaw = iTy >= 0 ? (row[iTy] || '').trim().toLowerCase() : '';
+
+    // Determine unit price
+    let unitPrice = price > 0 ? price : (qty !== 0 && total > 0 ? total / Math.abs(qty) : 0);
+
+    if (!coins[ticker]) coins[ticker] = { buys: [], sells: [], staking: 0 };
+
+    const absQty = Math.abs(qty);
+
+    // No type column — treat positive qty as buy, negative as sell
+    if (iTy < 0) {
+      if (qty > 0 && unitPrice > 0) coins[ticker].buys.push({ qty: absQty, price: unitPrice });
+      else if (qty < 0) coins[ticker].sells.push({ qty: absQty, price: unitPrice });
+      continue;
+    }
+
+    if (stakeVal && typeRaw.includes(stakeVal)) {
+      coins[ticker].staking += absQty;
+    } else if (buyVal && typeRaw.includes(buyVal)) {
+      if (absQty > 0) coins[ticker].buys.push({ qty: absQty, price: unitPrice });
+    } else if (sellVal && typeRaw.includes(sellVal)) {
+      coins[ticker].sells.push({ qty: absQty, price: unitPrice });
+    } else if (!buyVal && !sellVal) {
+      // No type values specified — treat as buy
+      if (qty > 0) coins[ticker].buys.push({ qty: absQty, price: unitPrice });
+    }
+  }
+
+  _csvParsed = [];
+  for (const [ticker, data] of Object.entries(coins)) {
+    const totalBought = data.buys.reduce((s, b) => s + b.qty, 0);
+    const totalSold   = data.sells.reduce((s, s2) => s + s2.qty, 0);
+    const netQty      = totalBought + data.staking - totalSold;
+    if (netQty <= 0.000001) continue;
+
+    const totalCost     = data.buys.reduce((s, b) => s + b.qty * b.price, 0);
+    const totalQtyForDca = totalBought + data.staking;
+    const avgBuy        = totalQtyForDca > 0 ? totalCost / totalQtyForDca : 0;
+    const type          = assetType === 'auto' ? 'crypto' : assetType;
+
+    _csvParsed.push({ ticker, netQty, avgBuy, buyCount: data.buys.length, sellCount: data.sells.length, stakingQty: data.staking, type });
+  }
+
+  _csvParsed.sort((a, b) => b.netQty * b.avgBuy - a.netQty * a.avgBuy);
+  renderCsvPreview(_csvParsed);
+}
+
+function renderCsvPreview(coins) {
+  const tbody = document.getElementById('csv-preview-body');
+  tbody.innerHTML = '';
+  coins.forEach((c, i) => {
+    const tr = document.createElement('tr');
+    tr.style.borderBottom = '1px solid var(--border)';
+    tr.innerHTML = `
+      <td style="padding:8px;font-weight:500;">${c.ticker}</td>
+      <td style="padding:8px;font-size:11px;color:var(--muted);">${c.type}</td>
+      <td style="padding:8px;text-align:right;font-family:var(--mono);font-size:11px;">${c.netQty.toFixed(6)}</td>
+      <td style="padding:8px;text-align:right;font-family:var(--mono);font-size:11px;">€${c.avgBuy > 0 ? c.avgBuy.toFixed(4) : '—'}</td>
+      <td style="padding:8px;text-align:right;color:var(--muted);font-size:11px;">${c.buyCount}</td>
+      <td style="padding:8px;text-align:right;color:var(--muted);font-size:11px;">${c.sellCount}</td>
+      <td style="padding:8px;text-align:center;"><input type="checkbox" class="csv-check" data-i="${i}" checked/></td>`;
+    tbody.appendChild(tr);
+  });
+  document.getElementById('csv-preview').style.display = 'block';
+}
+
+async function importFromCsv() {
+  const btn  = document.getElementById('csv-import-btn');
+  const msg  = document.getElementById('csv-import-msg');
+  const checks = document.querySelectorAll('.csv-check:checked');
+  if (!checks.length) { msg.textContent = 'Nothing selected.'; return; }
+
+  btn.disabled = true;
+  btn.textContent = 'Importing...';
+  msg.textContent = '';
+
+  let imported = 0, failed = 0;
+  for (const cb of checks) {
+    const coin = _csvParsed[parseInt(cb.dataset.i)];
+    if (!coin) continue;
+    try {
+      let cur = coin.avgBuy, priceOk = false;
+      try {
+        cur = coin.type === 'crypto' ? await fetchCryptoPrice(coin.ticker) : await fetchStockPrice(coin.ticker);
+        priceOk = true;
+      } catch(e) { /* fallback to avgBuy */ }
+
+      const existing = holdings.findIndex(h => h.ticker === coin.ticker && h.type === coin.type);
+      if (existing >= 0) {
+        const prev = holdings[existing];
+        const totalQty = prev.qty + coin.netQty;
+        const avgBuyNew = ((prev.buyEur || prev.buy || 0) * prev.qty + coin.avgBuy * coin.netQty) / totalQty;
+        holdings[existing] = { ...prev, qty: totalQty, buy: avgBuyNew, buyEur: avgBuyNew, cur: cur || prev.cur, priceOk };
+      } else {
+        holdings.push({ ticker: coin.ticker, type: coin.type, qty: coin.netQty, buy: coin.avgBuy, buyEur: coin.avgBuy, currency: 'eur', cur, priceOk });
+      }
+
+      const today = new Date().toISOString().split('T')[0];
+      transactions.push({ ticker: coin.ticker, type: coin.type, qty: coin.netQty, buyEur: coin.avgBuy, date: today });
+      imported++;
+    } catch(e) {
+      failed++;
+      console.warn('Import failed for', coin.ticker, e);
+    }
+  }
+
+  localStorage.setItem('portfolio-transactions', JSON.stringify(transactions));
+  save(); render(); syncHoldingsToFunnel();
+
+  btn.disabled = false;
+  btn.textContent = 'Import selected';
+  msg.textContent = `✓ ${imported} asset${imported !== 1 ? 's' : ''} imported${failed ? ` · ${failed} failed` : ''}.`;
+  setTimeout(() => msg.textContent = '', 4000);
+}
 </script>
 </body>
 </html>
