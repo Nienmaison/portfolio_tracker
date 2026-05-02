@@ -408,8 +408,40 @@ const CRYPTO_IDS = {
   BTC:'bitcoin',ETH:'ethereum',SOL:'solana',BNB:'binancecoin',XRP:'ripple',
   ADA:'cardano',DOGE:'dogecoin',DOT:'polkadot',MATIC:'matic-network',AVAX:'avalanche-2',
   LINK:'chainlink',UNI:'uniswap',LTC:'litecoin',ATOM:'cosmos',ALGO:'algorand',
-  NEAR:'near',FTM:'fantom',SAND:'the-sandbox',MANA:'decentraland',CRO:'crypto-com-chain'
+  NEAR:'near',FTM:'fantom',SAND:'the-sandbox',MANA:'decentraland',CRO:'crypto-com-chain',
+  SHIB:'shiba-inu',TRX:'tron',TON:'the-open-network',ARB:'arbitrum',OP:'optimism',
+  INJ:'injective-protocol',SUI:'sui',APT:'aptos',SEI:'sei-network',TIA:'celestia',
+  JUP:'jupiter-ag',WIF:'dogwifcoin',PEPE:'pepe',BONK:'bonk',PYTH:'pyth-network',
+  STRK:'starknet',IMX:'immutable-x',BLUR:'blur',ENS:'ethereum-name-service',
+  AAVE:'aave',COMP:'compound-governance-token',MKR:'maker',SNX:'synthetix-network-token',
+  CRV:'curve-dao-token',BAL:'balancer',SUSHI:'sushi',YFI:'yearn-finance',
+  FIL:'filecoin',AR:'arweave',GRT:'the-graph',LPT:'livepeer',RNDR:'render-token',
+  HBAR:'hedera-hashgraph',VET:'vechain',EGLD:'elrond-erd-2',FTT:'ftx-token',
+  ETC:'ethereum-classic',BCH:'bitcoin-cash',BSV:'bitcoin-cash-sv',ZEC:'zcash',
+  XMR:'monero',DASH:'dash',XLM:'stellar',IOTA:'iota',NEO:'neo',WAVES:'waves',
+  KAVA:'kava',ONE:'harmony',ZIL:'zilliqa',ICX:'icon',ONT:'ontology',
+  GALA:'gala',AXS:'axie-infinity',ILV:'illuvium',GODS:'gods-unchained',
+  GMT:'stepn',LOOKS:'looksrare',X2Y2:'x2y2',MAGIC:'magic',
+  ONDO:'ondo-finance',W:'wormhole',ENA:'ethena',EIGEN:'eigenlayer',
+  NOT:'notcoin',DOGS:'dogs',HMSTR:'hamster-kombat',CATI:'catizen',
+  PENGU:'pudgy-penguins',TRUMP:'maga',MELANIA:'melania-meme',
+  POL:'polygon-ecosystem-token',RENDER:'render-token',WLD:'worldcoin-wld',
+  CFG:'centrifuge',SUPER:'superfarm',ALICE:'my-neighbor-alice'
 };
+
+const _coinGeckoCache = {};
+async function resolveCoinGeckoId(ticker) {
+  const upper = ticker.toUpperCase();
+  if (CRYPTO_IDS[upper]) return CRYPTO_IDS[upper];
+  if (_coinGeckoCache[upper]) return _coinGeckoCache[upper];
+  try {
+    const r = await fetch(`https://api.coingecko.com/api/v3/search?query=${ticker}`);
+    const d = await r.json();
+    const match = d.coins?.find(c => c.symbol.toUpperCase() === upper);
+    if (match) { _coinGeckoCache[upper] = match.id; return match.id; }
+  } catch(e) {}
+  return ticker.toLowerCase();
+}
 
 let holdings = [];
 let charts = {};
@@ -447,12 +479,12 @@ async function fetchStockPrice(ticker) {
 }
 
 async function fetchCryptoPrice(ticker) {
-  const id = CRYPTO_IDS[ticker.toUpperCase()] || ticker.toLowerCase();
+  const id = await resolveCoinGeckoId(ticker);
   const r = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${id}&vs_currencies=eur`);
   const d = await r.json();
   const price = d[id]?.eur;
   if (price) return price;
-  throw new Error('Crypto not found');
+  throw new Error(`Crypto not found: ${ticker} (tried id: ${id})`);
 }
 
 async function fetchPrice(h) {
@@ -992,7 +1024,7 @@ async function loadChart() {
   try {
     let labels = [], prices = [], timestamps = [];
     if (type === 'crypto') {
-      const id = ({ BTC:'bitcoin', ETH:'ethereum', SOL:'solana', BNB:'binancecoin', XRP:'ripple', ADA:'cardano', DOGE:'dogecoin' })[ticker.toUpperCase()] || ticker.toLowerCase();
+      const id = await resolveCoinGeckoId(ticker);
       const r = await fetch(`https://api.coingecko.com/api/v3/coins/${id}/market_chart?vs_currency=eur&days=${d}`);
       const data = await r.json();
       data.prices.forEach(([ts, p]) => {
