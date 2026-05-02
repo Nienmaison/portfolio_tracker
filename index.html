@@ -178,10 +178,6 @@ select option { background: var(--bg); }
 .guest-blur td:nth-child(6) { color: transparent !important; transition: color 0.2s ease; position: relative; }
 .guest-blur td:nth-child(6)::after { content: '–'; color: var(--muted); position: absolute; left: 50%; transform: translateX(-50%); }
 .guest-blur .pl-eur { color: transparent !important; }
-/* Metrics block — hide EUR values, keep P&L % */
-.guest-blur .metric-value { color: transparent !important; position: relative; }
-.guest-blur .metric-value::after { content: '–'; color: var(--muted); position: absolute; left: 0; }
-.guest-blur .metric-sub { color: inherit !important; opacity: 1 !important; }
 #guest-btn.active { color: var(--amber) !important; border-color: var(--amber) !important; }
 .chart-range-btn {
   font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em;
@@ -217,7 +213,7 @@ select option { background: var(--bg); }
 <body>
 
 <header>
-  <div class="logo">Portfolio Dashboard</div>
+  <div class="logo">Portfolio.track</div>
   <div class="header-right">
     <button class="btn-refresh" id="guest-btn" onclick="toggleGuest()">Guest mode</button>
     <div class="status-pill">
@@ -441,27 +437,13 @@ async function fetchEurUsd() {
 // ── Price fetchers ────────────────────────────────────────────────────────────
 // FIX: Finnhub returns USD. We convert to EUR using live FX rate.
 async function fetchStockPrice(ticker) {
-  // Try Finnhub first (fast, works for US tickers)
-  try {
-    const r = await fetch(`https://finnhub.io/api/v1/quote?symbol=${ticker.toUpperCase()}&token=${FINNHUB_KEY}`);
-    const d = await r.json();
-    if (d.c && d.c > 0) return d.c * (eurUsdRate || 0.92);
-  } catch(e) {}
-  // Fallback: Yahoo Finance via corsproxy — tries European exchange suffixes for ETFs like 4COP
-  const suffixes = ['', '.DE', '.AS', '.PA', '.L'];
-  for (const suffix of suffixes) {
-    try {
-      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}${suffix}?interval=1d&range=1d`;
-      const r = await fetch('https://corsproxy.io/?' + encodeURIComponent(url));
-      const d = await r.json();
-      const meta = d?.chart?.result?.[0]?.meta;
-      if (meta?.regularMarketPrice > 0) {
-        const fxRate = meta.currency === 'USD' ? (eurUsdRate || 0.92) : 1;
-        return meta.regularMarketPrice * fxRate;
-      }
-    } catch(e) {}
+  const r = await fetch(`https://finnhub.io/api/v1/quote?symbol=${ticker.toUpperCase()}&token=${FINNHUB_KEY}`);
+  const d = await r.json();
+  if (d.c && d.c > 0) {
+    const usdPrice = d.c;
+    return usdPrice * (eurUsdRate || 0.92); // convert to EUR
   }
-  throw new Error('No price found');
+  throw new Error('No price returned');
 }
 
 async function fetchCryptoPrice(ticker) {
@@ -675,12 +657,12 @@ function renderCharts() {
   const sv = holdings.filter(h => h.type === 'stock').reduce((s, h) => s + h.qty*(h.cur||0), 0);
   const cv = holdings.filter(h => h.type === 'crypto').reduce((s, h) => s + h.qty*(h.cur||0), 0);
   const tt = sv + cv;
-  document.getElementById('legend-type').innerHTML = [['Stocks/ETFs','#1E3F6F',sv],['Crypto','#5E85B0',cv]].map(([l,c,v]) =>
+  document.getElementById('legend-type').innerHTML = [['Stocks/ETFs','#4C8BF5',sv],['Crypto','#6B7FA3',cv]].map(([l,c,v]) =>
     `<div class="legend-item"><span class="legend-dot" style="background:${c}"></span>${l} ${tt > 0 ? (v/tt*100).toFixed(1)+'%' : ''}</div>`
   ).join('');
   charts.type = new Chart(document.getElementById('chartType'), {
     type: 'doughnut',
-    data: { labels: ['Stocks/ETFs','Crypto'], datasets: [{ data: [sv,cv], backgroundColor: ['#1E3F6F','#5E85B0'], borderWidth: 0 }] },
+    data: { labels: ['Stocks/ETFs','Crypto'], datasets: [{ data: [sv,cv], backgroundColor: ['#4C8BF5','#6B7FA3'], borderWidth: 0 }] },
     options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, cutout: '65%' }
   });
 }
@@ -725,6 +707,7 @@ async function addHolding() {
     holdings.push({ ticker, type, qty, buy, buyEur, currency, cur, priceOk });
   }
   save(); render();
+  syncHoldingsToFunnel();
   ['f-ticker','f-qty','f-buy'].forEach(id => document.getElementById(id).value = '');
   setTimeout(() => msg.textContent = '', 3500);
 }
@@ -784,6 +767,7 @@ function removeTx(globalIdx) {
   transactions.splice(globalIdx, 1);
   localStorage.setItem('portfolio-transactions', JSON.stringify(transactions));
   renderTxRows(ticker);
+  syncHoldingsToFunnel();
 }
 
 function addTxRow() {
@@ -819,6 +803,7 @@ async function saveEdit() {
     holdings[editIndex].priceOk = false;
   }
   save(); render();
+  syncHoldingsToFunnel();
 }
 
 // Close modal on overlay click
@@ -886,6 +871,22 @@ async function runAI(mode) {
   } catch(e) {
     out.innerHTML = '<span style="color:var(--red);">Error reaching OpenAI. Check your API key and try again.</span>';
   }
+}
+
+// ── War Room funnel sync ──────────────────────────────────────────────────────
+function syncHoldingsToFunnel() {
+  const apiKey = localStorage.getItem('war-room-api-key');
+  if (!apiKey) return;
+  const txs = JSON.parse(localStorage.getItem('portfolio-transactions') || '[]');
+  const holdings = [...new Set(txs.map(t => t.ticker))];
+  fetch('http://178.105.43.242:5000/holdings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
+    body: JSON.stringify({ holdings: holdings, watchlist: [] })
+  })
+  .then(r => r.json())
+  .then(d => console.log('[funnel] Holdings synced:', d.holdings))
+  .catch(e => console.log('[funnel] Sync failed (server may be starting):', e.message));
 }
 
 // ── Key management ────────────────────────────────────────────────────────────
@@ -1000,23 +1001,16 @@ async function loadChart() {
         prices.push(parseFloat(p.toFixed(2)));
       });
     } else {
-      // Yahoo Finance via corsproxy — tries European exchange suffixes for ETFs like 4COP.DE
+      // Yahoo Finance via corsproxy for stock historical data (Finnhub free tier doesn't support candles)
       const rangeMap = { '1W':'5d', '1M':'1mo', '3M':'3mo', '6M':'6mo', '1Y':'1y' };
       const intervalMap = { '1W':'1h', '1M':'1d', '3M':'1d', '6M':'1wk', '1Y':'1wk' };
       const yRange = rangeMap[chartRange] || '1mo';
       const yInterval = intervalMap[chartRange] || '1d';
-      const suffixes = ['', '.DE', '.AS', '.PA', '.L'];
-      let result = null;
-      for (const suffix of suffixes) {
-        try {
-          const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}${suffix}?interval=${yInterval}&range=${yRange}`;
-          const r = await fetch('https://corsproxy.io/?' + encodeURIComponent(url));
-          const d = await r.json();
-          const res = d?.chart?.result?.[0];
-          if (res?.timestamp?.length > 0) { result = res; break; }
-        } catch(e) {}
-      }
-      if (!result) throw new Error('No chart data found');
+      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=${yInterval}&range=${yRange}`;
+      const r = await fetch('https://corsproxy.io/?' + encodeURIComponent(url));
+      const data = await r.json();
+      const result = data?.chart?.result?.[0];
+      if (!result) throw new Error('No data from Yahoo');
       const fxRate = result.meta.currency === 'USD' ? (eurUsdRate || 0.92) : 1;
       result.timestamp.forEach((ts, i) => {
         const close = result.indicators.quote[0].close[i];
