@@ -7,7 +7,7 @@
     "buyEur": 57523,
     "currency": "eur",
     "cur": 67064,
-    "priceOk": true
+    "priceOk": false
   },
   {
     "ticker": "4COP",
@@ -77,7 +77,7 @@
     "buyEur": 0.02735311048668309,
     "currency": "eur",
     "cur": 0.00613324,
-    "priceOk": true
+    "priceOk": false
   },
   {
     "ticker": "SEI",
