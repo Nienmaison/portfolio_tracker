@@ -699,6 +699,7 @@ async function load() {
     setStatus('error', 'GitHub load failed — using local data');
   }
   render();
+  applyGuestMode();
   if (holdings.length) fetchEurUsd().then(refreshAll);
   setInterval(refreshAll, 60000);
 }
@@ -966,12 +967,12 @@ function toggleGuest() {
   btn.textContent = guestMode ? 'Exit guest' : 'Guest mode';
   btn.classList.toggle('active', guestMode);
 }
-// Apply guest mode on load
-document.addEventListener('DOMContentLoaded', () => {
+function applyGuestMode() {
+  if (!guestMode) return;
   document.querySelector('main').classList.add('guest-blur');
   const btn = document.getElementById('guest-btn');
   if (btn) { btn.textContent = 'Exit guest'; btn.classList.add('active'); }
-});
+}
 
 // ── Tab switcher ──────────────────────────────────────────────────────────────
 function showTab(name) {
