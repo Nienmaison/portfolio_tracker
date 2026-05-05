@@ -97,7 +97,7 @@
     "buyEur": 0.006780430492374443,
     "currency": "eur",
     "cur": 0.00036193,
-    "priceOk": true
+    "priceOk": false
   },
   {
     "ticker": "DUSK",
@@ -137,6 +137,6 @@
     "buyEur": 0,
     "currency": "eur",
     "cur": 0.0021125,
-    "priceOk": true
+    "priceOk": false
   }
 ]
