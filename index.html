@@ -593,12 +593,13 @@ async function fetchStockPrice(ticker) {
 }
 
 async function fetchCryptoPrice(ticker) {
-  const id = await resolveCoinGeckoId(ticker);
-  const r = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${id}&vs_currencies=eur`);
-  const d = await r.json();
-  const price = d[id]?.eur;
-  if (price) return price;
-  throw new Error(`Crypto not found: ${ticker} (tried id: ${id})`);
+  // Route through our VPS proxy — CoinGecko blocks direct browser requests from github.io
+  const r = await fetch(`https://fincr.duckdns.org/crypto-prices?tickers=${ticker}`);
+  if (!r.ok) throw new Error(`Proxy error: ${r.status}`);
+  const data = await r.json();
+  const price = data[ticker.toUpperCase()];
+  if (price !== undefined) return price;
+  throw new Error(`No price returned for ${ticker}`);
 }
 
 async function fetchPrice(h) {
