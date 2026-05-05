@@ -66,8 +66,8 @@
     "buy": 1.5725046043683222,
     "buyEur": 1.5725046043683222,
     "currency": "eur",
-    "cur": 0.104199,
-    "priceOk": false
+    "cur": 0.110948,
+    "priceOk": true
   },
   {
     "ticker": "VET",
@@ -96,8 +96,8 @@
     "buy": 0.006780430492374443,
     "buyEur": 0.006780430492374443,
     "currency": "eur",
-    "cur": 0.006780430492374443,
-    "priceOk": false
+    "cur": 0.00036108,
+    "priceOk": true
   },
   {
     "ticker": "DUSK",
