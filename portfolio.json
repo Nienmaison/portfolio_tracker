@@ -7,7 +7,7 @@
     "buyEur": 57523,
     "currency": "eur",
     "cur": 69324,
-    "priceOk": true
+    "priceOk": false
   },
   {
     "ticker": "4COP",
@@ -67,7 +67,7 @@
     "buyEur": 1.5725046043683222,
     "currency": "eur",
     "cur": 0.110948,
-    "priceOk": true
+    "priceOk": false
   },
   {
     "ticker": "VET",
@@ -77,7 +77,7 @@
     "buyEur": 0.02735311048668309,
     "currency": "eur",
     "cur": 0.00622649,
-    "priceOk": true
+    "priceOk": false
   },
   {
     "ticker": "SEI",
@@ -87,7 +87,7 @@
     "buyEur": 0.46068037860509964,
     "currency": "eur",
     "cur": 0.051257,
-    "priceOk": true
+    "priceOk": false
   },
   {
     "ticker": "HOT",
@@ -97,7 +97,7 @@
     "buyEur": 0.006780430492374443,
     "currency": "eur",
     "cur": 0.00036108,
-    "priceOk": true
+    "priceOk": false
   },
   {
     "ticker": "DUSK",
@@ -117,7 +117,7 @@
     "buyEur": 0.09663770099736031,
     "currency": "eur",
     "cur": 0.01167607,
-    "priceOk": true
+    "priceOk": false
   },
   {
     "ticker": "NEAR",
@@ -127,7 +127,7 @@
     "buyEur": 1.9534647100812985,
     "currency": "eur",
     "cur": 1.093,
-    "priceOk": true
+    "priceOk": false
   },
   {
     "ticker": "NOM",
