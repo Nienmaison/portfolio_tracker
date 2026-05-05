@@ -958,7 +958,7 @@ document.getElementById('edit-modal').addEventListener('click', function(e) {
 });
 
 // ── Guest mode ────────────────────────────────────────────────────────────────
-let guestMode = false;
+let guestMode = true;
 function toggleGuest() {
   guestMode = !guestMode;
   document.querySelector('main').classList.toggle('guest-blur', guestMode);
@@ -966,6 +966,12 @@ function toggleGuest() {
   btn.textContent = guestMode ? 'Exit guest' : 'Guest mode';
   btn.classList.toggle('active', guestMode);
 }
+// Apply guest mode on load
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelector('main').classList.add('guest-blur');
+  const btn = document.getElementById('guest-btn');
+  if (btn) { btn.textContent = 'Exit guest'; btn.classList.add('active'); }
+});
 
 // ── Tab switcher ──────────────────────────────────────────────────────────────
 function showTab(name) {
