@@ -26,7 +26,7 @@
     "buy": 358.7309026710814,
     "buyEur": 358.7309026710814,
     "currency": "usd",
-    "cur": 369.4812,
+    "cur": 363.8232,
     "priceOk": true
   },
   {
@@ -36,7 +36,7 @@
     "buy": 74.77378597442852,
     "buyEur": 74.77378597442852,
     "currency": "usd",
-    "cur": 150.5672,
+    "cur": 155.8112,
     "priceOk": true
   },
   {
@@ -46,7 +46,7 @@
     "buy": 404.87,
     "buyEur": 372.48040000000003,
     "currency": "usd",
-    "cur": 380.53040000000004,
+    "cur": 377.9544,
     "priceOk": true
   },
   {
@@ -56,7 +56,7 @@
     "buy": 88.9,
     "buyEur": 81.78800000000001,
     "currency": "usd",
-    "cur": 84.61240000000001,
+    "cur": 84.4928,
     "priceOk": true
   },
   {
@@ -66,8 +66,8 @@
     "buy": 1.5725046043683222,
     "buyEur": 1.5725046043683222,
     "currency": "eur",
-    "cur": 0.110948,
-    "priceOk": false
+    "cur": 0.109049,
+    "priceOk": true
   },
   {
     "ticker": "VET",
@@ -76,8 +76,8 @@
     "buy": 0.02735311048668309,
     "buyEur": 0.02735311048668309,
     "currency": "eur",
-    "cur": 0.00622649,
-    "priceOk": false
+    "cur": 0.0062519,
+    "priceOk": true
   },
   {
     "ticker": "SEI",
@@ -86,8 +86,8 @@
     "buy": 0.46068037860509964,
     "buyEur": 0.46068037860509964,
     "currency": "eur",
-    "cur": 0.051257,
-    "priceOk": false
+    "cur": 0.05101,
+    "priceOk": true
   },
   {
     "ticker": "HOT",
@@ -116,8 +116,8 @@
     "buy": 0.09663770099736031,
     "buyEur": 0.09663770099736031,
     "currency": "eur",
-    "cur": 0.01167607,
-    "priceOk": false
+    "cur": 0.01155586,
+    "priceOk": true
   },
   {
     "ticker": "NEAR",
@@ -127,7 +127,7 @@
     "buyEur": 1.9534647100812985,
     "currency": "eur",
     "cur": 1.093,
-    "priceOk": false
+    "priceOk": true
   },
   {
     "ticker": "NOM",
