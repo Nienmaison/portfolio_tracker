@@ -735,21 +735,31 @@ function render() { renderMetrics(); renderHoldings(); renderCharts(); }
 
 function renderMetrics() {
   const fh = filteredHoldings();
-  const label = activeFilter === 'all' ? 'Total' : activeFilter === 'stock' ? 'Stocks' : 'Crypto';
-  const total = fh.reduce((s, h) => s + h.qty * (h.cur || 0), 0);
-  const cost  = fh.reduce((s, h) => s + h.qty * (h.buyEur || h.buy || 0), 0);
-  const pl    = total - cost;
-  const plPct = cost > 0 ? (pl / cost * 100) : 0;
+  const label  = activeFilter === 'all' ? 'Total' : activeFilter === 'stock' ? 'Stocks' : 'Crypto';
+  const total  = fh.reduce((s, h) => s + h.qty * (h.cur || 0), 0);
+  const cost   = fh.reduce((s, h) => s + h.qty * (h.buyEur || h.buy || 0), 0);
+  const pl     = total - cost;
+  const plPct  = cost > 0 ? (pl / cost * 100) : 0;
   const stocks = fh.filter(h => h.type === 'stock').reduce((s, h) => s + h.qty * (h.cur || 0), 0);
   const crypto = fh.filter(h => h.type === 'crypto').reduce((s, h) => s + h.qty * (h.cur || 0), 0);
+  const stocksPct = total > 0 ? (stocks / total * 100).toFixed(1) : '0.0';
+  const cryptoPct = total > 0 ? (crypto / total * 100).toFixed(1) : '0.0';
+
+  const totalVal  = guestMode ? '—' : `€${fmt(total)}`;
+  const plVal     = guestMode ? '—' : `${pl >= 0 ? '+' : ''}€${fmt(pl)}`;
+  const plSubVal  = guestMode ? '' : `<div class="metric-sub ${pl >= 0 ? 'green' : 'red'}">${pl >= 0 ? '+' : ''}${plPct.toFixed(2)}%</div>`;
+  const stocksVal = guestMode ? `${stocksPct}%` : `€${fmt(stocks)}`;
+  const cryptoVal = guestMode ? `${cryptoPct}%` : `€${fmt(crypto)}`;
+  const plClass   = guestMode ? '' : (pl >= 0 ? 'green' : 'red');
+
   document.getElementById('metrics').innerHTML = `
-    <div class="metric"><div class="metric-label">${label} value</div><div class="metric-value">€${fmt(total)}</div></div>
+    <div class="metric"><div class="metric-label">${label} value</div><div class="metric-value">${totalVal}</div></div>
     <div class="metric"><div class="metric-label">${label} P&L</div>
-      <div class="metric-value ${pl >= 0 ? 'green' : 'red'}">${pl >= 0 ? '+' : ''}€${fmt(pl)}</div>
-      <div class="metric-sub ${pl >= 0 ? 'green' : 'red'}">${pl >= 0 ? '+' : ''}${plPct.toFixed(2)}%</div>
+      <div class="metric-value ${plClass}">${plVal}</div>
+      ${plSubVal}
     </div>
-    <div class="metric"><div class="metric-label">Stocks / ETFs</div><div class="metric-value">€${fmt(stocks)}</div></div>
-    <div class="metric"><div class="metric-label">Crypto</div><div class="metric-value">€${fmt(crypto)}</div></div>
+    <div class="metric"><div class="metric-label">Stocks / ETFs</div><div class="metric-value">${stocksVal}</div></div>
+    <div class="metric"><div class="metric-label">Crypto</div><div class="metric-value">${cryptoVal}</div></div>
     <div class="metric"><div class="metric-label">Assets held</div><div class="metric-value">${holdings.length}</div></div>
   `;
 }
@@ -966,6 +976,7 @@ function toggleGuest() {
   const btn = document.getElementById('guest-btn');
   btn.textContent = guestMode ? 'Exit guest' : 'Guest mode';
   btn.classList.toggle('active', guestMode);
+  renderMetrics();
 }
 function applyGuestMode() {
   if (!guestMode) return;
