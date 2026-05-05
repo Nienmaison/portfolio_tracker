@@ -583,17 +583,22 @@ async function fetchEurUsd() {
 // ── Price fetchers ────────────────────────────────────────────────────────────
 // FIX: Finnhub returns USD. We convert to EUR using live FX rate.
 async function fetchStockPrice(ticker) {
-  const r = await fetch(`https://finnhub.io/api/v1/quote?symbol=${ticker.toUpperCase()}&token=${FINNHUB_KEY}`);
-  const d = await r.json();
-  if (d.c && d.c > 0) {
-    const usdPrice = d.c;
-    return usdPrice * (eurUsdRate || 0.92); // convert to EUR
-  }
+  // Try Finnhub first
+  try {
+    const r = await fetch(`https://finnhub.io/api/v1/quote?symbol=${ticker.toUpperCase()}&token=${FINNHUB_KEY}`);
+    const d = await r.json();
+    if (d.c && d.c > 0) return d.c * (eurUsdRate || 0.92);
+  } catch(e) {}
+  // Fallback: Yahoo Finance via proxy (handles European tickers)
+  const r2 = await fetch(`https://fincr.duckdns.org/stock-price?ticker=${ticker}`);
+  if (!r2.ok) throw new Error('No price available');
+  const d2 = await r2.json();
+  if (d2.price) return d2.price;
   throw new Error('No price returned');
 }
 
 async function fetchCryptoPrice(ticker) {
-  // Route through our VPS proxy — CoinGecko blocks direct browser requests from github.io
+  // Single-ticker call via proxy (batching happens in refreshAll)
   const r = await fetch(`https://fincr.duckdns.org/crypto-prices?tickers=${ticker}`);
   if (!r.ok) throw new Error(`Proxy error: ${r.status}`);
   const data = await r.json();
@@ -607,26 +612,49 @@ async function fetchPrice(h) {
   return fetchCryptoPrice(h.ticker);
 }
 
-// ── Status helpers ────────────────────────────────────────────────────────────
-function setStatus(state, text) {
-  document.getElementById('status-dot').className = 'dot ' + state;
-  document.getElementById('status-text').textContent = text;
-}
-
-// ── Refresh all prices ────────────────────────────────────────────────────────
+// ── Refresh all prices — batch cryptos in one request ─────────────────────────
 async function refreshAll() {
   if (!holdings.length) { setStatus('', 'No holdings'); return; }
   setStatus('loading', 'Fetching prices...');
   if (!eurUsdRate) await fetchEurUsd();
-  let ok = 0, fail = 0;
-  await Promise.all(holdings.map(async (h, i) => {
+
+  // Batch all crypto tickers into a single proxy call
+  const cryptoHoldings = holdings.map((h, i) => ({h, i})).filter(({h}) => h.type === 'crypto');
+  if (cryptoHoldings.length) {
     try {
-      holdings[i].cur = await fetchPrice(h);
-      holdings[i].priceOk = true; ok++;
+      const tickers = cryptoHoldings.map(({h}) => h.ticker).join(',');
+      const r = await fetch(`https://fincr.duckdns.org/crypto-prices?tickers=${tickers}`);
+      if (r.ok) {
+        const prices = await r.json();
+        cryptoHoldings.forEach(({h, i}) => {
+          const price = prices[h.ticker.toUpperCase()];
+          if (price !== undefined) {
+            holdings[i].cur = price;
+            holdings[i].priceOk = true;
+          } else {
+            holdings[i].priceOk = false;
+          }
+        });
+      }
     } catch(e) {
-      holdings[i].priceOk = false; fail++;
+      cryptoHoldings.forEach(({i}) => { holdings[i].priceOk = false; });
+    }
+  }
+
+  // Fetch stocks individually (Finnhub + Yahoo fallback)
+  const stockHoldings = holdings.map((h, i) => ({h, i})).filter(({h}) => h.type === 'stock');
+  await Promise.all(stockHoldings.map(async ({h, i}) => {
+    try {
+      holdings[i].cur = await fetchStockPrice(h.ticker);
+      holdings[i].priceOk = true;
+    } catch(e) {
+      holdings[i].priceOk = false;
     }
   }));
+
+  const ok   = holdings.filter(h => h.priceOk).length;
+  const fail = holdings.filter(h => h.priceOk === false).length;
+
   save(); render();
   document.getElementById('last-updated').textContent = new Date().toLocaleTimeString();
   if (fail === 0) {
