@@ -612,6 +612,12 @@ async function fetchPrice(h) {
   return fetchCryptoPrice(h.ticker);
 }
 
+// ── Status helpers ────────────────────────────────────────────────────────────
+function setStatus(state, text) {
+  document.getElementById('status-dot').className = 'dot ' + state;
+  document.getElementById('status-text').textContent = text;
+}
+
 // ── Refresh all prices — batch cryptos in one request ─────────────────────────
 async function refreshAll() {
   if (!holdings.length) { setStatus('', 'No holdings'); return; }
