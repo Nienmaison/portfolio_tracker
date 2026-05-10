@@ -128,15 +128,5 @@
     "currency": "eur",
     "cur": 1.33,
     "priceOk": true
-  },
-  {
-    "ticker": "NOM",
-    "type": "crypto",
-    "qty": 103.70540000000001,
-    "buy": 0,
-    "buyEur": 0,
-    "currency": "eur",
-    "cur": 0.00218856,
-    "priceOk": true
   }
 ]
