@@ -1077,11 +1077,22 @@ function syncHoldingsToFunnel() {
   const apiKey = localStorage.getItem('war-room-api-key');
   if (!apiKey) return;
   const txs = JSON.parse(localStorage.getItem('portfolio-transactions') || '[]');
-  const holdings = [...new Set(txs.map(t => t.ticker))];
+  const tickers = [...new Set(txs.map(t => t.ticker))];
+
+  // Build holdings_with_values from live prices if available.
+  // Sends {} if prices haven't loaded yet — backend preserves previous values in that case.
+  const total = holdings.reduce((s, h) => s + h.qty * (h.cur || 0), 0);
+  const holdingsWithValues = {};
+  if (total > 0) {
+    holdings.forEach(h => {
+      holdingsWithValues[h.ticker.toUpperCase()] = parseFloat(((h.qty * (h.cur || 0)) / total * 100).toFixed(1));
+    });
+  }
+
   fetch('https://fincr.duckdns.org/holdings', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
-    body: JSON.stringify({ holdings: holdings, watchlist: [] })
+    body: JSON.stringify({ holdings: tickers, watchlist: [], holdings_with_values: holdingsWithValues })
   })
   .then(r => r.json())
   .then(d => console.log('[funnel] Holdings synced:', d.holdings))
