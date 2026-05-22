@@ -712,7 +712,7 @@ select option { background: var(--bg); }
       <p style="color:var(--muted);font-size:13px;line-height:1.6;margin-bottom:12px;">Required for the chat agent, portfolio sync, and thesis viewer. Stored only in your browser's local storage.</p>
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
         <input type="password" id="fincr-key-input" placeholder="API key..." style="flex:1;min-width:260px;max-width:420px;" />
-        <button class="btn-primary" onclick="saveFincrKey()">Save key</button>
+        <button class="btn-primary" id="fincr-key-save">Save key</button>
         <button class="btn-ghost" onclick="clearFincrKey()" id="btn-clear-fincr" style="display:none;">Clear key</button>
       </div>
       <div id="fincr-key-status" style="font-family:var(--mono);font-size:11px;margin-top:8px;color:var(--muted);"></div>
@@ -851,51 +851,53 @@ const QUICK_PROMPTS = {
   rebalance: "I have limited monthly capital to deploy. Given my current portfolio and watchlist, where should next month's contribution go and why?"
 };
 
-// ── Wire up agent UI (runs after DOM ready) ───────────────────────────────────
-document.addEventListener('DOMContentLoaded', function () {
-  // Toggle buttons
-  document.querySelectorAll('.agent-toggle button').forEach(function(btn) {
-    btn.addEventListener('click', function() { switchView(btn.dataset.view); });
-  });
+// ── Wire up agent UI — event delegation (robust, no DOMContentLoaded race) ──
+document.body.addEventListener('click', function(e) {
+  if (e.target.closest('#fincr-key-save'))  { saveFincrKey(); return; }
+  if (e.target.closest('#btn-clear-fincr')) { clearFincrKey(); return; }
 
-  // Quick prompts
-  document.querySelectorAll('.quick-prompts button').forEach(function(btn) {
-    btn.addEventListener('click', function() {
-      const promptText = QUICK_PROMPTS[btn.dataset.prompt];
-      if (promptText) {
-        const input = document.getElementById('chat-input');
-        input.value = promptText;
-        input.focus();
-        autoGrowTextarea(input);
-      }
-    });
-  });
-
-  // Send button
-  const sendBtn = document.getElementById('chat-send');
-  if (sendBtn) {
-    sendBtn.addEventListener('click', function() {
-      const text = document.getElementById('chat-input').value.trim();
-      if (text) sendMessage(text);
-    });
+  var promptBtn = e.target.closest('.quick-prompts button[data-prompt]');
+  if (promptBtn) {
+    var promptText = QUICK_PROMPTS[promptBtn.dataset.prompt];
+    if (promptText) {
+      var input = document.getElementById('chat-input');
+      input.value = promptText;
+      input.focus();
+      autoGrowTextarea(input);
+    }
+    return;
   }
 
-  // Enter to send (shift+enter for newline)
-  const chatInput = document.getElementById('chat-input');
+  if (e.target.closest('#chat-send')) {
+    var text = document.getElementById('chat-input').value.trim();
+    if (text) sendMessage(text);
+    return;
+  }
+
+  var toggleBtn = e.target.closest('.agent-toggle button[data-view]');
+  if (toggleBtn) { switchView(toggleBtn.dataset.view); return; }
+
+  if (e.target.closest('.commit-confirm')) { commitThesis(); return; }
+  if (e.target.closest('.commit-dismiss')) { dismissCommit(); return; }
+});
+
+// Direct textarea listeners (no delegation needed — element is permanent)
+(function() {
+  var chatInput = document.getElementById('chat-input');
   if (chatInput) {
     chatInput.addEventListener('keydown', function(e) {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
-        const text = chatInput.value.trim();
+        var text = chatInput.value.trim();
         if (text) sendMessage(text);
       }
     });
     chatInput.addEventListener('input', function() { autoGrowTextarea(chatInput); });
   }
+})();
 
-  // Restore view from sessionStorage
-  switchView(currentView);
-});
+// Restore sub-view from sessionStorage
+switchView(currentView);
 
 function autoGrowTextarea(el) {
   el.style.height = 'auto';
@@ -1140,8 +1142,8 @@ function buildCommitCardEl(block) {
     (block.core_argument ? '<div class="commit-argument">&ldquo;' + escHtml(block.core_argument) + '&rdquo;</div>' : '') +
     (block.conversation_summary ? '<div class="commit-summary">Summary: ' + escHtml(block.conversation_summary) + '</div>' : '') +
     '<div class="commit-actions">' +
-      '<button class="commit-confirm" onclick="commitThesis()">Commit</button>' +
-      '<button class="commit-dismiss" onclick="dismissCommit()">Dismiss</button>' +
+      '<button class="commit-confirm">Commit</button>' +
+      '<button class="commit-dismiss">Dismiss</button>' +
     '</div>';
   return div;
 }
