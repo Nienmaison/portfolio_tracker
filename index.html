@@ -208,6 +208,227 @@ select option { background: var(--bg); }
   .form-grid { grid-template-columns: 1fr 1fr; }
   header { padding: 0 1rem; }
 }
+
+/* ── Agent tab design tokens ──────────────────────────────────────────────── */
+:root {
+  --bg-page: #080c10;
+  --bg-primary: #0d1117;
+  --bg-secondary: #161b22;
+  --border-default: #21262d;
+  --text-primary: #e6edf3;
+  --text-secondary: #8b949e;
+  --text-muted: #6e7681;
+  --text-ghost: #30363d;
+  --conviction-high: #d4ceff;
+  --conviction-medium: #a89ee0;
+  --conviction-low: #7b76a8;
+  --commit-accent: #a89ee0;
+}
+
+/* ── Agent tab layout ─────────────────────────────────────────────────────── */
+.agent-tab { display: flex; flex-direction: column; }
+
+.agent-header {
+  font-family: var(--mono); font-size: 10px; color: var(--text-muted);
+  letter-spacing: 0.06em; padding: 12px 16px;
+  border-bottom: 1px solid var(--border-default);
+}
+
+.agent-toggle {
+  display: flex; gap: 6px; padding: 10px 16px;
+  border-bottom: 1px solid var(--border-default);
+}
+.agent-toggle button {
+  font-family: var(--mono); font-size: 12px; padding: 6px 14px;
+  border-radius: 6px; border: 1px solid var(--border-default);
+  cursor: pointer; background: transparent; color: var(--text-muted);
+  position: relative; transition: all 0.15s;
+}
+.agent-toggle button.active {
+  background: var(--bg-secondary); color: var(--text-primary);
+}
+.notif-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--commit-accent);
+  position: absolute; top: 4px; right: 4px;
+}
+
+.quick-prompts {
+  display: flex; gap: 8px; padding: 10px 16px;
+  overflow-x: auto; border-bottom: 1px solid var(--border-default);
+  scrollbar-width: none;
+}
+.quick-prompts::-webkit-scrollbar { display: none; }
+@media (max-width: 480px) {
+  .quick-prompts { scroll-snap-type: x mandatory; }
+  .quick-prompts button { scroll-snap-align: start; flex-shrink: 0; }
+}
+.quick-prompts button {
+  font-family: var(--mono); font-size: 10px; padding: 4px 10px;
+  background: var(--bg-secondary); color: var(--text-secondary);
+  border: 1px solid var(--border-default); border-radius: 12px;
+  cursor: pointer; white-space: nowrap; transition: all 0.15s;
+}
+.quick-prompts button:hover { color: var(--text-primary); }
+
+.agent-view-chat { display: flex; flex-direction: column; }
+
+.chat-window {
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 16px; max-height: 60vh; overflow-y: auto;
+  min-height: 80px;
+}
+.chat-empty {
+  text-align: center; font-family: var(--mono); font-size: 12px;
+  color: var(--text-muted); font-style: italic; padding: 2rem 0;
+}
+.chat-msg-user {
+  align-self: flex-end; max-width: 80%;
+  background: var(--bg-secondary); color: var(--text-primary);
+  font-family: var(--mono); font-size: 12px; padding: 8px 12px;
+  border-radius: 6px; line-height: 1.5; word-break: break-word;
+}
+.chat-msg-agent {
+  align-self: flex-start; max-width: 90%;
+  background: var(--bg-page); color: var(--text-secondary);
+  font-family: var(--mono); font-size: 12px; padding: 8px 12px;
+  border-radius: 6px; white-space: pre-wrap; line-height: 1.5; word-break: break-word;
+}
+.typing-indicator {
+  align-self: flex-start; background: var(--bg-page);
+  padding: 8px 12px; border-radius: 6px;
+  display: flex; gap: 4px; align-items: center;
+}
+.typing-dot {
+  width: 5px; height: 5px; border-radius: 50%;
+  background: var(--text-muted); animation: typingBounce 1.2s infinite;
+}
+.typing-dot:nth-child(2) { animation-delay: 0.2s; }
+.typing-dot:nth-child(3) { animation-delay: 0.4s; }
+@keyframes typingBounce {
+  0%,60%,100% { transform: translateY(0); }
+  30%          { transform: translateY(-4px); }
+}
+
+.chat-input-row {
+  display: flex; gap: 8px; padding: 12px 16px;
+  border-top: 1px solid var(--border-default);
+  position: sticky; bottom: 0; background: var(--surface);
+}
+#chat-input {
+  flex: 1; resize: none; min-height: 36px; max-height: 96px;
+  background: var(--bg-secondary); border: 1px solid var(--border-default);
+  color: var(--text-primary); font-family: var(--mono); font-size: 12px;
+  padding: 8px 10px; border-radius: 6px; outline: none; overflow-y: auto;
+  line-height: 1.4;
+}
+#chat-input:focus { border-color: var(--commit-accent); }
+#chat-send {
+  font-family: var(--mono); font-size: 11px; padding: 8px 14px;
+  background: var(--bg-secondary); color: var(--text-primary);
+  border: 1px solid var(--border-default); border-radius: 6px;
+  cursor: pointer; white-space: nowrap; transition: all 0.15s; align-self: flex-end;
+}
+#chat-send:hover { border-color: var(--commit-accent); }
+#chat-send:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Commit card */
+.commit-card {
+  background: var(--bg-secondary); border: 1px solid var(--commit-accent);
+  padding: 10px 12px; border-radius: 6px; margin-top: 8px;
+  font-family: var(--mono);
+}
+.commit-title {
+  font-size: 10px; color: var(--text-muted); letter-spacing: 0.08em;
+  text-transform: uppercase; margin-bottom: 6px;
+}
+.commit-meta { font-size: 12px; color: var(--text-primary); margin-bottom: 4px; }
+.commit-ticker { font-weight: 500; }
+.commit-field  { color: var(--text-muted); }
+.commit-value  { color: var(--conviction-medium); }
+.commit-argument {
+  font-size: 11px; color: var(--text-secondary); margin: 6px 0; font-style: italic;
+}
+.commit-summary { font-size: 10px; color: var(--text-muted); margin-bottom: 8px; }
+.commit-actions { display: flex; gap: 8px; }
+.commit-confirm {
+  font-family: var(--mono); font-size: 11px; padding: 5px 12px;
+  background: var(--commit-accent); color: var(--bg-page);
+  border: none; border-radius: 4px; cursor: pointer; font-weight: 500;
+}
+.commit-dismiss {
+  font-family: var(--mono); font-size: 11px; padding: 5px 12px;
+  background: transparent; color: var(--text-muted);
+  border: 1px solid var(--border-default); border-radius: 4px; cursor: pointer;
+}
+
+/* Thesis view */
+.agent-view-thesis { padding: 16px; overflow-y: auto; }
+.thesis-section { margin-bottom: 20px; }
+.thesis-section-header {
+  font-family: var(--mono); font-size: 10px; color: var(--text-muted);
+  letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 10px;
+}
+.thesis-card {
+  background: var(--bg-secondary); border: 1px solid var(--border-default);
+  padding: 12px; border-radius: 6px; margin-bottom: 8px;
+}
+.thesis-card-top {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+}
+.thesis-ticker  { font-family: var(--mono); font-size: 14px; font-weight: 500; color: var(--text-primary); }
+.thesis-company { font-family: var(--mono); font-size: 12px; color: var(--text-secondary); }
+.thesis-meta    { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+.thesis-chip {
+  font-family: var(--mono); font-size: 10px; padding: 2px 6px; border-radius: 4px;
+  text-transform: uppercase; letter-spacing: 0.08em; border: 1px solid transparent;
+}
+.thesis-chip-high   { color: var(--conviction-high);   border-color: var(--conviction-high);   background: rgba(212,206,255,0.06); }
+.thesis-chip-medium { color: var(--conviction-medium); border-color: var(--conviction-medium); background: rgba(168,158,224,0.06); }
+.thesis-chip-low    { color: var(--conviction-low);    border-color: var(--conviction-low);    background: rgba(123,118,168,0.06); }
+.thesis-chip-dim    { color: var(--text-muted); border-color: var(--border-default); }
+.thesis-divider { border: none; border-top: 1px solid var(--border-default); margin: 8px 0; }
+.thesis-argument {
+  font-family: var(--mono); font-size: 12px; color: var(--text-secondary); line-height: 1.5;
+}
+.thesis-footer {
+  margin-top: 8px; font-family: var(--mono); font-size: 10px;
+  color: var(--text-ghost); line-height: 1.5;
+}
+.thesis-triggers { margin-top: 6px; padding-left: 14px; }
+.thesis-triggers li {
+  font-family: var(--mono); font-size: 10px; color: var(--text-ghost); margin-bottom: 2px;
+}
+.thesis-rules { font-family: var(--mono); margin-top: 12px; }
+.thesis-rules summary {
+  font-size: 10px; color: var(--text-muted); letter-spacing: 0.1em;
+  text-transform: uppercase; cursor: pointer; padding: 8px 0; user-select: none;
+  list-style: none; display: flex; align-items: center; gap: 6px;
+}
+.thesis-rules summary::before { content: '▶'; font-size: 8px; transition: transform 0.15s; }
+.thesis-rules[open] summary::before { content: '▼'; }
+.thesis-rules-content { padding-top: 8px; }
+.rules-card {
+  background: var(--bg-secondary); border: 1px solid var(--border-default);
+  padding: 10px 12px; border-radius: 6px; margin-bottom: 8px;
+}
+.rules-card-title {
+  font-size: 10px; color: var(--text-muted); letter-spacing: 0.08em;
+  text-transform: uppercase; margin-bottom: 6px;
+}
+.rules-entry { font-size: 11px; color: var(--text-secondary); margin-bottom: 3px; line-height: 1.4; }
+
+/* Toast */
+.agent-toast {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+  background: var(--bg-secondary); color: var(--text-primary);
+  font-family: var(--mono); font-size: 12px; padding: 8px 16px;
+  border-radius: 6px; border: 1px solid var(--border-default);
+  z-index: 1000; opacity: 0; transition: opacity 0.2s; pointer-events: none;
+  white-space: nowrap;
+}
+.agent-toast.show { opacity: 1; }
+
 </style>
 </head>
 <body>
@@ -283,7 +504,7 @@ select option { background: var(--bg); }
     <button class="tab active" onclick="showTab('holdings')">Holdings</button>
     <button class="tab" onclick="showTab('add')">Add asset</button>
     <button class="tab" onclick="showTab('charts')">Charts</button>
-    <button class="tab" onclick="showTab('ai')">AI analysis</button>
+    <button class="tab" onclick="showTab('agent')">Agent</button>
   </div>
 
   <div id="tab-holdings" class="section active">
@@ -473,7 +694,8 @@ select option { background: var(--bg); }
     </div>
   </div>
 
-  <div id="tab-ai" class="section">
+  <div id="tab-agent" class="section">
+    <!-- Settings cards -->
     <div class="ai-card" style="margin-bottom:1rem;">
       <div class="card-title">GitHub sync</div>
       <p style="color:var(--muted);font-size:13px;line-height:1.6;margin-bottom:12px;">Your portfolio data is saved to <code style="font-family:var(--mono);font-size:12px;color:var(--accent2);">portfolio.json</code> in your GitHub repo — synced across all devices.</p>
@@ -484,37 +706,503 @@ select option { background: var(--bg); }
       </div>
       <div id="github-key-status" style="font-family:var(--mono);font-size:11px;margin-top:8px;color:var(--muted);"></div>
     </div>
-    <div class="ai-card" id="key-panel">
-      <div class="card-title">OpenAI API key</div>
-      <p style="color:var(--muted);font-size:13px;line-height:1.6;margin-bottom:12px;">Stored only in your browser's local storage — never in the source code or on GitHub.</p>
+
+    <div class="ai-card" style="margin-bottom:1rem;" id="fincr-key-panel">
+      <div class="card-title">Fincr API key</div>
+      <p style="color:var(--muted);font-size:13px;line-height:1.6;margin-bottom:12px;">Required for the chat agent, portfolio sync, and thesis viewer. Stored only in your browser's local storage.</p>
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-        <input type="password" id="key-input" placeholder="sk-..." style="flex:1;min-width:260px;max-width:420px;" />
-        <button class="btn-primary" onclick="saveKey()">Save key</button>
-        <button class="btn-ghost" onclick="clearKey()" id="btn-clear-key" style="display:none;">Clear key</button>
+        <input type="password" id="fincr-key-input" placeholder="API key..." style="flex:1;min-width:260px;max-width:420px;" />
+        <button class="btn-primary" onclick="saveFincrKey()">Save key</button>
+        <button class="btn-ghost" onclick="clearFincrKey()" id="btn-clear-fincr" style="display:none;">Clear key</button>
       </div>
-      <div id="key-status" style="font-family:var(--mono);font-size:11px;margin-top:8px;color:var(--muted);"></div>
+      <div id="fincr-key-status" style="font-family:var(--mono);font-size:11px;margin-top:8px;color:var(--muted);"></div>
     </div>
 
-    <div class="ai-card" style="margin-top:1rem;">
-      <div class="card-title">Analysis</div>
-      <p style="color:var(--muted);font-size:13px;line-height:1.6;">Powered by GPT-4o. Refresh prices first for best results.</p>
-      <div class="ai-btn-row">
-        <button class="btn-primary" onclick="runAI('analysis')">Portfolio analysis</button>
-        <button class="btn-ghost" onclick="runAI('risk')">Risk assessment</button>
-        <button class="btn-ghost" onclick="runAI('rebalance')">Rebalancing ideas</button>
-      </div>
-    </div>
+    <!-- Agent UI -->
+    <div class="ai-card" style="padding:0;overflow:hidden;">
+      <div class="agent-tab">
 
-    <div class="ai-output" id="ai-output">
-      <span class="ai-idle">Set your OpenAI API key above, then select an analysis type to get AI insights on your live portfolio.</span>
+        <!-- Header bar -->
+        <div class="agent-header">
+          Agent &middot; thesis v<span id="thesis-version">—</span> &middot; updated <span id="thesis-updated">—</span>
+        </div>
+
+        <!-- Sub-view toggle -->
+        <div class="agent-toggle">
+          <button data-view="chat" id="toggle-chat" class="active">
+            Chat <span class="notif-dot" id="chat-dot" style="display:none;"></span>
+          </button>
+          <button data-view="thesis" id="toggle-thesis">Thesis</button>
+        </div>
+
+        <!-- Chat view -->
+        <div class="agent-view-chat" id="agent-view-chat">
+          <div class="quick-prompts">
+            <button data-prompt="portfolio">Portfolio analysis</button>
+            <button data-prompt="risk">Risk assessment</button>
+            <button data-prompt="rebalance">Rebalancing ideas</button>
+          </div>
+          <div class="chat-window" id="chat-window">
+            <div class="chat-empty" id="chat-empty">Ask anything about your portfolio, your thesis, or the markets.</div>
+          </div>
+          <div class="chat-input-row">
+            <textarea id="chat-input" placeholder="Message..." rows="1"></textarea>
+            <button id="chat-send">Send</button>
+          </div>
+        </div>
+
+        <!-- Thesis view -->
+        <div class="agent-view-thesis" id="agent-view-thesis" style="display:none;">
+          <div class="thesis-section">
+            <div class="thesis-section-header">HOLDINGS &middot; <span id="holdings-count">0</span></div>
+            <div id="thesis-holdings"><div style="font-family:var(--mono);font-size:11px;color:var(--text-muted);padding:8px 0;">Loading thesis…</div></div>
+          </div>
+          <div class="thesis-section">
+            <div class="thesis-section-header">WATCHLIST &middot; <span id="watchlist-count">0</span></div>
+            <div id="thesis-watchlist"></div>
+          </div>
+          <details class="thesis-rules">
+            <summary>Decision rules</summary>
+            <div class="thesis-rules-content" id="thesis-rules-content"></div>
+          </details>
+        </div>
+
+      </div>
     </div>
   </div>
 </main>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js">
+// ── localStorage migration ────────────────────────────────────────────────────
+function migrateLocalStorage() {
+  const oldKey = localStorage.getItem('war-room-api-key');
+  const newKey = localStorage.getItem('fincr-api-key');
+  if (oldKey && !newKey) {
+    localStorage.setItem('fincr-api-key', oldKey);
+    localStorage.removeItem('war-room-api-key');
+    console.log('[migration] Migrated war-room-api-key to fincr-api-key');
+  }
+  if (localStorage.getItem('openai-key')) {
+    localStorage.removeItem('openai-key');
+    console.log('[migration] Removed orphaned openai-key');
+  }
+}
+
+// ── Fincr API key management ──────────────────────────────────────────────────
+function saveFincrKey() {
+  const val = document.getElementById('fincr-key-input').value.trim();
+  if (!val) {
+    setFincrStatus('red', 'Please enter a key.');
+    return;
+  }
+  localStorage.setItem('fincr-api-key', val);
+  document.getElementById('fincr-key-input').value = '';
+  setFincrStatus('accent', 'Key saved. Agent and sync are ready.');
+  document.getElementById('btn-clear-fincr').style.display = 'inline-block';
+}
+
+function clearFincrKey() {
+  localStorage.removeItem('fincr-api-key');
+  document.getElementById('fincr-key-input').value = '';
+  setFincrStatus('muted', 'Key cleared.');
+  document.getElementById('btn-clear-fincr').style.display = 'none';
+}
+
+function initFincrKeyPanel() {
+  const key = localStorage.getItem('fincr-api-key');
+  if (key) {
+    setFincrStatus('accent', 'Key loaded from local storage.');
+    document.getElementById('btn-clear-fincr').style.display = 'inline-block';
+  }
+}
+
+function setFincrStatus(color, text) {
+  const el = document.getElementById('fincr-key-status');
+  el.style.color = `var(--${color})`;
+  el.textContent = text;
+}
+
+// ── Agent state ───────────────────────────────────────────────────────────────
+let conversation  = [];
+let pendingCommit = null;
+let currentView   = sessionStorage.getItem('agent-view') || 'chat';
+
+// ── Sub-view toggle ───────────────────────────────────────────────────────────
+function switchView(view) {
+  currentView = view;
+  sessionStorage.setItem('agent-view', view);
+  const chatEl   = document.getElementById('agent-view-chat');
+  const thesisEl = document.getElementById('agent-view-thesis');
+  if (chatEl)   chatEl.style.display   = (view === 'chat')   ? 'flex'  : 'none';
+  if (thesisEl) thesisEl.style.display = (view === 'thesis') ? 'block' : 'none';
+  document.querySelectorAll('.agent-toggle button').forEach(b => {
+    b.classList.toggle('active', b.dataset.view === view);
+  });
+  if (view === 'chat') {
+    const dot = document.getElementById('chat-dot');
+    if (dot) dot.style.display = 'none';
+  }
+}
+
+// ── Quick prompts ─────────────────────────────────────────────────────────────
+const QUICK_PROMPTS = {
+  portfolio: "Walk me through my current portfolio. Where am I strongly positioned, where am I weak, and what does it look like against my thesis?",
+  risk:      "What is the single biggest risk in my portfolio right now? Be specific and direct.",
+  rebalance: "I have limited monthly capital to deploy. Given my current portfolio and watchlist, where should next month's contribution go and why?"
+};
+
+// ── Wire up agent UI (runs after DOM ready) ───────────────────────────────────
+document.addEventListener('DOMContentLoaded', function () {
+  // Toggle buttons
+  document.querySelectorAll('.agent-toggle button').forEach(function(btn) {
+    btn.addEventListener('click', function() { switchView(btn.dataset.view); });
+  });
+
+  // Quick prompts
+  document.querySelectorAll('.quick-prompts button').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      const promptText = QUICK_PROMPTS[btn.dataset.prompt];
+      if (promptText) {
+        const input = document.getElementById('chat-input');
+        input.value = promptText;
+        input.focus();
+        autoGrowTextarea(input);
+      }
+    });
+  });
+
+  // Send button
+  const sendBtn = document.getElementById('chat-send');
+  if (sendBtn) {
+    sendBtn.addEventListener('click', function() {
+      const text = document.getElementById('chat-input').value.trim();
+      if (text) sendMessage(text);
+    });
+  }
+
+  // Enter to send (shift+enter for newline)
+  const chatInput = document.getElementById('chat-input');
+  if (chatInput) {
+    chatInput.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        const text = chatInput.value.trim();
+        if (text) sendMessage(text);
+      }
+    });
+    chatInput.addEventListener('input', function() { autoGrowTextarea(chatInput); });
+  }
+
+  // Restore view from sessionStorage
+  switchView(currentView);
+});
+
+function autoGrowTextarea(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 96) + 'px';
+}
+
+// ── Thesis loader & renderer ──────────────────────────────────────────────────
+async function loadThesis() {
+  const apiKey = localStorage.getItem('fincr-api-key');
+  if (!apiKey) return;
+  try {
+    const r = await fetch('https://fincr.duckdns.org/thesis', {
+      headers: { 'X-API-Key': apiKey }
+    });
+    if (!r.ok) { console.error('[thesis] HTTP', r.status); return; }
+    const d = await r.json();
+    if (d.status === 'ok') renderThesis(d.thesis);
+  } catch(e) {
+    console.error('[thesis] Load failed:', e);
+  }
+}
+
+function renderThesis(thesis) {
+  const v = document.getElementById('thesis-version');
+  const u = document.getElementById('thesis-updated');
+  if (v) v.textContent = thesis.meta ? thesis.meta.version    : '—';
+  if (u) u.textContent = thesis.meta ? thesis.meta.last_updated : '—';
+
+  const holdings = thesis.holdings || {};
+  const hCount = document.getElementById('holdings-count');
+  if (hCount) hCount.textContent = Object.keys(holdings).length;
+  const hEl = document.getElementById('thesis-holdings');
+  if (hEl) hEl.innerHTML = Object.entries(holdings)
+    .map(function(e) { return renderThesisCard(e[0], e[1], false); }).join('');
+
+  const watchlist = thesis.watchlist || {};
+  const wCount = document.getElementById('watchlist-count');
+  if (wCount) wCount.textContent = Object.keys(watchlist).length;
+  const wEl = document.getElementById('thesis-watchlist');
+  if (wEl) wEl.innerHTML = Object.entries(watchlist)
+    .map(function(e) { return renderThesisCard(e[0], e[1], true); }).join('');
+
+  renderDecisionRules(thesis.decision_rules || {});
+}
+
+function renderThesisCard(ticker, entry, isWatchlist) {
+  const conviction = (entry.conviction || 'low').toLowerCase();
+  const convClass  = 'thesis-chip thesis-chip-' + conviction;
+  const layer      = (entry.layer !== null && entry.layer !== undefined) ? 'L' + entry.layer : null;
+  const type       = entry.thesis_type ? entry.thesis_type.replace(/_/g, ' ') : null;
+
+  const chips = [
+    layer ? '<span class="thesis-chip thesis-chip-dim">' + escHtml(layer) + '</span>' : '',
+    type  ? '<span class="thesis-chip thesis-chip-dim">' + escHtml(type)  + '</span>' : '',
+    '<span class="' + convClass + '">' + escHtml(conviction) + '</span>'
+  ].filter(Boolean).join('');
+
+  const triggersHtml = isWatchlist && entry.entry_triggers && entry.entry_triggers.length
+    ? '<ul class="thesis-triggers">' + entry.entry_triggers.map(function(t) {
+        return '<li>' + escHtml(t) + '</li>';
+      }).join('') + '</ul>'
+    : '';
+
+  const footerParts = [];
+  if (entry.last_updated)       footerParts.push('Updated ' + escHtml(entry.last_updated));
+  if (entry.last_update_reason) footerParts.push(escHtml(entry.last_update_reason));
+
+  return '<div class="thesis-card">' +
+    '<div class="thesis-card-top">' +
+      '<span class="thesis-ticker">' + escHtml(ticker) + '</span>' +
+      '<span style="color:var(--text-ghost);font-size:12px;">&middot;</span>' +
+      '<span class="thesis-company">' + escHtml(entry.company || '') + '</span>' +
+    '</div>' +
+    '<div class="thesis-meta">' + chips + '</div>' +
+    '<hr class="thesis-divider">' +
+    '<div class="thesis-argument">' + escHtml(entry.core_argument || '') + '</div>' +
+    triggersHtml +
+    (footerParts.length ? '<div class="thesis-footer">' + footerParts.join(' &middot; ') + '</div>' : '') +
+  '</div>';
+}
+
+function renderDecisionRules(rules) {
+  const el = document.getElementById('thesis-rules-content');
+  if (!el) return;
+  if (!rules || !Object.keys(rules).length) {
+    el.innerHTML = '<div style="font-size:11px;color:var(--text-muted);">No decision rules defined.</div>';
+    return;
+  }
+  el.innerHTML = Object.entries(rules).map(function(entry) {
+    const key = entry[0], val = entry[1];
+    const title = key.replace(/_/g, ' ').replace(/\b\w/g, function(c) { return c.toUpperCase(); });
+    let rows = '';
+    if (val && typeof val === 'object' && !Array.isArray(val)) {
+      rows = Object.entries(val).map(function(kv) {
+        const label = kv[0].replace(/_/g, ' ');
+        const value = (typeof kv[1] === 'object') ? JSON.stringify(kv[1]) : String(kv[1]);
+        return '<div class="rules-entry"><span style="color:var(--text-muted)">' +
+          escHtml(label) + ':</span> ' + escHtml(value) + '</div>';
+      }).join('');
+    } else {
+      rows = '<div class="rules-entry">' + escHtml(String(val)) + '</div>';
+    }
+    return '<div class="rules-card"><div class="rules-card-title">' +
+      escHtml(title) + '</div>' + rows + '</div>';
+  }).join('');
+}
+
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+// ── Chat ──────────────────────────────────────────────────────────────────────
+async function sendMessage(text) {
+  if (!text.trim()) return;
+  const apiKey = localStorage.getItem('fincr-api-key');
+  if (!apiKey) {
+    appendAgentMessage('Error: No API key configured. Set your Fincr API key in the settings above.');
+    return;
+  }
+
+  const emptyEl = document.getElementById('chat-empty');
+  if (emptyEl) emptyEl.style.display = 'none';
+
+  conversation.push({ role: 'user', content: text });
+  appendUserMessage(text);
+
+  const input   = document.getElementById('chat-input');
+  const sendBtn = document.getElementById('chat-send');
+  if (input)   { input.value = ''; autoGrowTextarea(input); }
+  if (sendBtn) sendBtn.disabled = true;
+  showTypingIndicator();
+
+  try {
+    const r = await fetch('https://fincr.duckdns.org/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
+      body: JSON.stringify({ messages: conversation })
+    });
+    const d = await r.json();
+    hideTypingIndicator();
+
+    if (d.status === 'ok') {
+      const parsed = parseThesisUpdate(d.response);
+      conversation.push({ role: 'assistant', content: parsed.visibleText });
+      appendAgentMessage(parsed.visibleText, parsed.updateBlock);
+      if (parsed.updateBlock) {
+        pendingCommit = parsed.updateBlock;
+        if (currentView === 'thesis') {
+          const dot = document.getElementById('chat-dot');
+          if (dot) dot.style.display = 'inline-block';
+        }
+      }
+    } else {
+      appendAgentMessage('Error: ' + (d.error || 'Unknown error'));
+    }
+  } catch(e) {
+    hideTypingIndicator();
+    appendAgentMessage('Network error: ' + e.message);
+  } finally {
+    if (sendBtn) sendBtn.disabled = false;
+  }
+}
+
+function appendUserMessage(text) {
+  const win = document.getElementById('chat-window');
+  if (!win) return;
+  const div = document.createElement('div');
+  div.className = 'chat-msg-user';
+  div.textContent = text;
+  win.appendChild(div);
+  win.scrollTop = win.scrollHeight;
+}
+
+function appendAgentMessage(text, updateBlock) {
+  const win = document.getElementById('chat-window');
+  if (!win) return;
+  const div = document.createElement('div');
+  div.className = 'chat-msg-agent';
+  div.textContent = text;
+  if (updateBlock) div.appendChild(buildCommitCardEl(updateBlock));
+  win.appendChild(div);
+  win.scrollTop = win.scrollHeight;
+}
+
+function showTypingIndicator() {
+  const win = document.getElementById('chat-window');
+  if (!win) return;
+  const el = document.createElement('div');
+  el.className = 'typing-indicator';
+  el.id = 'typing-indicator';
+  el.innerHTML = '<span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span>';
+  win.appendChild(el);
+  win.scrollTop = win.scrollHeight;
+}
+
+function hideTypingIndicator() {
+  const el = document.getElementById('typing-indicator');
+  if (el) el.remove();
+}
+
+// ── THESIS_UPDATE parser ──────────────────────────────────────────────────────
+function parseThesisUpdate(text) {
+  const S = 'THESIS_UPDATE';
+  const E = 'END_THESIS_UPDATE';
+  const si = text.indexOf(S);
+  const ei = text.indexOf(E);
+
+  if (si === -1 || ei === -1 || ei < si) return { visibleText: text, updateBlock: null };
+
+  const blockText = text.substring(si + S.length, ei);
+  const block = {};
+  blockText.split('\n').map(function(l) { return l.trim(); }).filter(Boolean).forEach(function(line) {
+    const ci = line.indexOf(':');
+    if (ci === -1) return;
+    block[line.substring(0, ci).trim()] = line.substring(ci + 1).trim();
+  });
+
+  if (!block.ticker || Object.keys(block).length < 2) {
+    console.warn('[parser] Malformed THESIS_UPDATE:', blockText);
+    return { visibleText: text, updateBlock: null };
+  }
+
+  const visibleText = (text.substring(0, si) + text.substring(ei + E.length)).trim();
+  return { visibleText: visibleText, updateBlock: block };
+}
+
+// ── Commit card ───────────────────────────────────────────────────────────────
+function buildCommitCardEl(block) {
+  const div = document.createElement('div');
+  div.className = 'commit-card';
+  div.innerHTML =
+    '<div class="commit-title">Commit conviction update</div>' +
+    '<div class="commit-meta">' +
+      '<span class="commit-ticker">' + escHtml(block.ticker || '') + '</span> &middot; ' +
+      '<span class="commit-field">'  + escHtml(block.field || 'conviction') + '</span> &rarr; ' +
+      '<span class="commit-value">'  + escHtml(block.value || '') + '</span>' +
+    '</div>' +
+    (block.core_argument ? '<div class="commit-argument">&ldquo;' + escHtml(block.core_argument) + '&rdquo;</div>' : '') +
+    (block.conversation_summary ? '<div class="commit-summary">Summary: ' + escHtml(block.conversation_summary) + '</div>' : '') +
+    '<div class="commit-actions">' +
+      '<button class="commit-confirm" onclick="commitThesis()">Commit</button>' +
+      '<button class="commit-dismiss" onclick="dismissCommit()">Dismiss</button>' +
+    '</div>';
+  return div;
+}
+
+async function commitThesis() {
+  if (!pendingCommit) return;
+  const apiKey = localStorage.getItem('fincr-api-key');
+  if (!apiKey) { showToast('No API key set'); return; }
+
+  const body = {
+    ticker:               pendingCommit.ticker,
+    conviction:           pendingCommit.value,
+    core_argument:        pendingCommit.core_argument,
+    conversation_summary: pendingCommit.conversation_summary
+  };
+
+  try {
+    const r = await fetch('https://fincr.duckdns.org/thesis/update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
+      body: JSON.stringify(body)
+    });
+    const d = await r.json();
+    if (d.status === 'ok') {
+      showToast('Thesis v' + d.thesis_version + ' committed');
+      const card = document.querySelector('.commit-card');
+      if (card) card.remove();
+      pendingCommit = null;
+      loadThesis();
+    } else {
+      showToast('Commit failed: ' + (d.error || 'Unknown'));
+    }
+  } catch(e) {
+    showToast('Commit failed: ' + e.message);
+  }
+}
+
+function dismissCommit() {
+  pendingCommit = null;
+  const card = document.querySelector('.commit-card');
+  if (card) card.remove();
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+function showToast(msg) {
+  let toast = document.getElementById('agent-toast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'agent-toast';
+    toast.className = 'agent-toast';
+    document.body.appendChild(toast);
+  }
+  toast.textContent = msg;
+  toast.classList.add('show');
+  clearTimeout(toast._timer);
+  toast._timer = setTimeout(function() { toast.classList.remove('show'); }, 3000);
+}
+
+</script>
 <script>
 const FINNHUB_KEY = 'd7j746pr01qp3g1s2f0gd7j746pr01qp3g1s2f10';
-let OPENAI_KEY  = localStorage.getItem('openai-key')   || '';
 let GITHUB_TOKEN = localStorage.getItem('github-token') || '';
 let transactions = JSON.parse(localStorage.getItem('portfolio-transactions') || '[]');
 const COLORS = ['#4C8BF5','#6B7FA3','#8B9EC9','#3D6B9E','#5E7DA8','#A3B4CC','#2E5480','#7B8FA8','#4A6D99','#90A4BE'];
@@ -1022,59 +1710,19 @@ function applyGuestMode() {
 
 // ── Tab switcher ──────────────────────────────────────────────────────────────
 function showTab(name) {
-  ['holdings','add','charts','ai'].forEach((n, idx) => {
+  ['holdings','add','charts','agent'].forEach((n, idx) => {
     document.querySelectorAll('.tab')[idx].classList.toggle('active', n === name);
     document.getElementById('tab-' + n).classList.toggle('active', n === name);
   });
   if (name === 'charts') populateChartSelect();
+  if (name === 'agent')  loadThesis();
 }
 
-// ── AI analysis (OpenAI) ──────────────────────────────────────────────────────
-async function runAI(mode) {
-  const out = document.getElementById('ai-output');
-  if (!holdings.length) { out.innerHTML = '<span class="ai-idle">Add some holdings first to get AI analysis.</span>'; return; }
-  if (!OPENAI_KEY) {
-    out.innerHTML = '<span style="color:var(--amber);font-family:var(--mono);font-size:12px;">No API key set. Enter your OpenAI key above.</span>';
-    return;
-  }
-  out.innerHTML = '<span class="ai-idle">Analysing with live prices...</span>';
-  const total = holdings.reduce((s, h) => s + h.qty * (h.cur || 0), 0);
-  const summary = holdings.map(h => {
-    const buyEur = h.buyEur || h.buy || 0;
-    const val  = (h.qty * (h.cur || 0)).toFixed(2);
-    const pl   = buyEur > 0 ? (((h.cur || 0) - buyEur) / buyEur * 100).toFixed(1) : 'n/a';
-    const pct  = total > 0 ? ((h.qty * (h.cur || 0)) / total * 100).toFixed(1) : 'n/a';
-    return `${h.ticker} (${h.type}): qty ${h.qty}, buy €${buyEur.toFixed(2)}, live €${(h.cur||0).toFixed(2)}, value €${val}, P&L ${pl}%, weight ${pct}%`;
-  }).join('\n');
-  const prompts = {
-    analysis:  `You are a portfolio analyst. Portfolio:\n\n${summary}\n\nTotal: €${total.toFixed(2)}\n\nProvide concise analysis: (1) diversification quality, (2) risk profile, (3) P&L highlights, (4) 2-3 actionable suggestions. Plain text, under 260 words. End with a brief disclaimer.`,
-    risk:      `You are a risk analyst. Portfolio:\n\n${summary}\n\nTotal: €${total.toFixed(2)}\n\nAssess: (1) concentration risk, (2) volatility profile given stocks/crypto mix, (3) correlation risks, (4) downside scenarios. Plain text, under 260 words. End with a brief disclaimer.`,
-    rebalance: `You are a portfolio strategist. Portfolio:\n\n${summary}\n\nTotal: €${total.toFixed(2)}\n\nSuggest: (1) current allocation assessment, (2) 2-3 specific rebalancing moves with rationale, (3) target allocation range. Plain text, under 260 words. End with a brief disclaimer.`
-  };
-  try {
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${OPENAI_KEY}`
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o',
-        max_tokens: 1000,
-        messages: [{ role: 'user', content: prompts[mode] }]
-      })
-    });
-    const data = await res.json();
-    const text = data.choices?.[0]?.message?.content || 'No response received.';
-    out.innerHTML = text.replace(/\n/g, '<br>');
-  } catch(e) {
-    out.innerHTML = '<span style="color:var(--red);">Error reaching OpenAI. Check your API key and try again.</span>';
-  }
-}
+// ── AI analysis removed — replaced by /chat agent ─────────────────────────────
 
 // ── War Room funnel sync ──────────────────────────────────────────────────────
 function syncHoldingsToFunnel() {
-  const apiKey = localStorage.getItem('war-room-api-key');
+  const apiKey = localStorage.getItem('fincr-api-key');
   if (!apiKey) return;
   const txs = JSON.parse(localStorage.getItem('portfolio-transactions') || '[]');
   const tickers = [...new Set(txs.map(t => t.ticker))];
@@ -1133,38 +1781,7 @@ function initGithubPanel() {
   }
 }
 
-function saveKey() {
-  const val = document.getElementById('key-input').value.trim();
-  if (!val.startsWith('sk-')) {
-    document.getElementById('key-status').style.color = 'var(--red)';
-    document.getElementById('key-status').textContent = 'Invalid key — OpenAI keys start with sk-';
-    return;
-  }
-  OPENAI_KEY = val;
-  localStorage.setItem('openai-key', val);
-  document.getElementById('key-input').value = '';
-  document.getElementById('key-status').style.color = 'var(--accent)';
-  document.getElementById('key-status').textContent = 'Key saved to local storage. Never stored in source code.';
-  document.getElementById('btn-clear-key').style.display = 'inline-block';
-}
-
-function clearKey() {
-  OPENAI_KEY = '';
-  localStorage.removeItem('openai-key');
-  document.getElementById('key-input').value = '';
-  document.getElementById('key-status').style.color = 'var(--muted)';
-  document.getElementById('key-status').textContent = 'Key cleared.';
-  document.getElementById('btn-clear-key').style.display = 'none';
-}
-
-function initKeyPanel() {
-  if (OPENAI_KEY) {
-    document.getElementById('key-status').style.color = 'var(--accent)';
-    document.getElementById('key-status').textContent = 'Key loaded from local storage.';
-    document.getElementById('btn-clear-key').style.display = 'inline-block';
-    document.getElementById('ai-output').innerHTML = '<span class="ai-idle">Select an analysis type above to get AI insights on your live portfolio.</span>';
-  }
-}
+// OpenAI key functions removed — API key now server-side only
 
 // ── Charts ────────────────────────────────────────────────────────────────────
 let chartRange = '1M';
@@ -1298,9 +1915,10 @@ async function loadChart() {
   }
 }
 
+migrateLocalStorage();
 load();
-initKeyPanel();
 initGithubPanel();
+initFincrKeyPanel();
 
 // ── Generic CSV Importer — Option B (multi-file pool) ─────────────────────────
 // Architecture: each uploaded CSV adds raw transactions to _stagingPool.
