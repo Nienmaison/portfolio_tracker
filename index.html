@@ -961,624 +961,6 @@ select option { background: var(--bg); }
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script>
-// ── localStorage migration ────────────────────────────────────────────────────
-function migrateLocalStorage() {
-  const oldKey = localStorage.getItem('war-room-api-key');
-  const newKey = localStorage.getItem('fincr-api-key');
-  if (oldKey && !newKey) {
-    localStorage.setItem('fincr-api-key', oldKey);
-    localStorage.removeItem('war-room-api-key');
-    console.log('[migration] Migrated war-room-api-key to fincr-api-key');
-  }
-  if (localStorage.getItem('openai-key')) {
-    localStorage.removeItem('openai-key');
-    console.log('[migration] Removed orphaned openai-key');
-  }
-}
-
-// ── Fincr API key management ──────────────────────────────────────────────────
-function saveFincrKey() {
-  const val = document.getElementById('fincr-key-input').value.trim();
-  if (!val) {
-    setFincrStatus('red', 'Please enter a key.');
-    return;
-  }
-  localStorage.setItem('fincr-api-key', val);
-  document.getElementById('fincr-key-input').value = '';
-  setFincrStatus('accent', 'Key saved. Agent and sync are ready.');
-  document.getElementById('btn-clear-fincr').style.display = 'inline-block';
-}
-
-function clearFincrKey() {
-  localStorage.removeItem('fincr-api-key');
-  document.getElementById('fincr-key-input').value = '';
-  setFincrStatus('muted', 'Key cleared.');
-  document.getElementById('btn-clear-fincr').style.display = 'none';
-}
-
-function initFincrKeyPanel() {
-  const key = localStorage.getItem('fincr-api-key');
-  if (key) {
-    setFincrStatus('accent', 'Key loaded from local storage.');
-    document.getElementById('btn-clear-fincr').style.display = 'inline-block';
-  }
-}
-
-function setFincrStatus(color, text) {
-  const el = document.getElementById('fincr-key-status');
-  el.style.color = `var(--${color})`;
-  el.textContent = text;
-}
-
-// ── Agent state ───────────────────────────────────────────────────────────────
-let conversation         = [];
-let pendingCommit        = null;
-let currentView          = sessionStorage.getItem('agent-view') || 'chat';
-let currentConversationId = null;  // UUID of active conversation, null if none started
-
-// ── Sub-view toggle ───────────────────────────────────────────────────────────
-function switchView(view) {
-  currentView = view;
-  sessionStorage.setItem('agent-view', view);
-  const chatEl   = document.getElementById('agent-view-chat');
-  const thesisEl = document.getElementById('agent-view-thesis');
-  if (chatEl)   chatEl.style.display   = (view === 'chat')   ? 'flex'  : 'none';
-  if (thesisEl) thesisEl.style.display = (view === 'thesis') ? 'block' : 'none';
-  document.querySelectorAll('.agent-toggle button').forEach(b => {
-    b.classList.toggle('active', b.dataset.view === view);
-  });
-  if (view === 'chat') {
-    const dot = document.getElementById('chat-dot');
-    if (dot) dot.style.display = 'none';
-  }
-}
-
-// ── Quick prompts ─────────────────────────────────────────────────────────────
-const QUICK_PROMPTS = {
-  portfolio: "Walk me through my current portfolio. Where am I strongly positioned, where am I weak, and what does it look like against my thesis?",
-  risk:      "What is the single biggest risk in my portfolio right now? Be specific and direct.",
-  rebalance: "I have limited monthly capital to deploy. Given my current portfolio and watchlist, where should next month's contribution go and why?"
-};
-
-// ── Wire up agent UI — event delegation (robust, no DOMContentLoaded race) ──
-document.body.addEventListener('click', function(e) {
-  if (e.target.closest('#fincr-key-save'))  { saveFincrKey(); return; }
-  if (e.target.closest('#btn-clear-fincr')) { clearFincrKey(); return; }
-
-  var promptBtn = e.target.closest('.quick-prompts button[data-prompt]');
-  if (promptBtn) {
-    var promptText = QUICK_PROMPTS[promptBtn.dataset.prompt];
-    if (promptText) {
-      var input = document.getElementById('chat-input');
-      input.value = promptText;
-      input.focus();
-      autoGrowTextarea(input);
-    }
-    return;
-  }
-
-  if (e.target.closest('#chat-send')) {
-    var text = document.getElementById('chat-input').value.trim();
-    if (text) sendMessage(text);
-    return;
-  }
-
-  var toggleBtn = e.target.closest('.agent-toggle button[data-view]');
-  if (toggleBtn) { switchView(toggleBtn.dataset.view); return; }
-
-  if (e.target.closest('.commit-confirm')) { commitThesis(); return; }
-  if (e.target.closest('.commit-dismiss')) { dismissCommit(); return; }
-
-  if (e.target.closest('#btn-new-conversation')) { startNewConversation(); return; }
-  if (e.target.closest('#btn-history-toggle')) {
-    document.getElementById('agent-sidebar').classList.toggle('open');
-    return;
-  }
-});
-
-// Direct textarea listeners (no delegation needed — element is permanent)
-(function() {
-  var chatInput = document.getElementById('chat-input');
-  if (chatInput) {
-    chatInput.addEventListener('keydown', function(e) {
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        var text = chatInput.value.trim();
-        if (text) sendMessage(text);
-      }
-    });
-    chatInput.addEventListener('input', function() { autoGrowTextarea(chatInput); });
-  }
-})();
-
-// Restore sub-view from sessionStorage
-switchView(currentView);
-
-function autoGrowTextarea(el) {
-  el.style.height = 'auto';
-  el.style.height = Math.min(el.scrollHeight, 96) + 'px';
-}
-
-// ── Thesis loader & renderer ──────────────────────────────────────────────────
-async function loadThesis() {
-  const apiKey = localStorage.getItem('fincr-api-key');
-  if (!apiKey) return;
-  try {
-    const r = await fetch('https://fincr.duckdns.org/thesis', {
-      headers: { 'X-API-Key': apiKey }
-    });
-    if (!r.ok) { console.error('[thesis] HTTP', r.status); return; }
-    const d = await r.json();
-    if (d.status === 'ok') renderThesis(d.thesis);
-  } catch(e) {
-    console.error('[thesis] Load failed:', e);
-  }
-}
-
-function renderThesis(thesis) {
-  const v = document.getElementById('thesis-version');
-  const u = document.getElementById('thesis-updated');
-  if (v) v.textContent = thesis.meta ? thesis.meta.version    : '—';
-  if (u) u.textContent = thesis.meta ? thesis.meta.last_updated : '—';
-
-  const holdings = thesis.holdings || {};
-  const hCount = document.getElementById('holdings-count');
-  if (hCount) hCount.textContent = Object.keys(holdings).length;
-  const hEl = document.getElementById('thesis-holdings');
-  if (hEl) hEl.innerHTML = Object.entries(holdings)
-    .map(function(e) { return renderThesisCard(e[0], e[1], false); }).join('');
-
-  const watchlist = thesis.watchlist || {};
-  const wCount = document.getElementById('watchlist-count');
-  if (wCount) wCount.textContent = Object.keys(watchlist).length;
-  const wEl = document.getElementById('thesis-watchlist');
-  if (wEl) wEl.innerHTML = Object.entries(watchlist)
-    .map(function(e) { return renderThesisCard(e[0], e[1], true); }).join('');
-
-  renderDecisionRules(thesis.decision_rules || {});
-}
-
-function renderThesisCard(ticker, entry, isWatchlist) {
-  const conviction = (entry.conviction || 'low').toLowerCase();
-  const convClass  = 'thesis-chip thesis-chip-' + conviction;
-  const layer      = (entry.layer !== null && entry.layer !== undefined) ? 'L' + entry.layer : null;
-  const type       = entry.thesis_type ? entry.thesis_type.replace(/_/g, ' ') : null;
-
-  const chips = [
-    layer ? '<span class="thesis-chip thesis-chip-dim">' + escHtml(layer) + '</span>' : '',
-    type  ? '<span class="thesis-chip thesis-chip-dim">' + escHtml(type)  + '</span>' : '',
-    '<span class="' + convClass + '">' + escHtml(conviction) + '</span>'
-  ].filter(Boolean).join('');
-
-  const triggersHtml = isWatchlist && entry.entry_triggers && entry.entry_triggers.length
-    ? '<ul class="thesis-triggers">' + entry.entry_triggers.map(function(t) {
-        return '<li>' + escHtml(t) + '</li>';
-      }).join('') + '</ul>'
-    : '';
-
-  const footerParts = [];
-  if (entry.last_updated)       footerParts.push('Updated ' + escHtml(entry.last_updated));
-  if (entry.last_update_reason) footerParts.push(escHtml(entry.last_update_reason));
-
-  return '<div class="thesis-card">' +
-    '<div class="thesis-card-top">' +
-      '<span class="thesis-ticker">' + escHtml(ticker) + '</span>' +
-      '<span style="color:var(--text-ghost);font-size:12px;">&middot;</span>' +
-      '<span class="thesis-company">' + escHtml(entry.company || '') + '</span>' +
-    '</div>' +
-    '<div class="thesis-meta">' + chips + '</div>' +
-    '<hr class="thesis-divider">' +
-    '<div class="thesis-argument">' + escHtml(entry.core_argument || '') + '</div>' +
-    triggersHtml +
-    (footerParts.length ? '<div class="thesis-footer">' + footerParts.join(' &middot; ') + '</div>' : '') +
-  '</div>';
-}
-
-function renderDecisionRules(rules) {
-  const el = document.getElementById('thesis-rules-content');
-  if (!el) return;
-  if (!rules || !Object.keys(rules).length) {
-    el.innerHTML = '<div style="font-size:11px;color:var(--text-muted);">No decision rules defined.</div>';
-    return;
-  }
-  el.innerHTML = Object.entries(rules).map(function(entry) {
-    const key = entry[0], val = entry[1];
-    const title = key.replace(/_/g, ' ').replace(/\b\w/g, function(c) { return c.toUpperCase(); });
-    let rows = '';
-    if (val && typeof val === 'object' && !Array.isArray(val)) {
-      rows = Object.entries(val).map(function(kv) {
-        const label = kv[0].replace(/_/g, ' ');
-        const value = (typeof kv[1] === 'object') ? JSON.stringify(kv[1]) : String(kv[1]);
-        return '<div class="rules-entry"><span style="color:var(--text-muted)">' +
-          escHtml(label) + ':</span> ' + escHtml(value) + '</div>';
-      }).join('');
-    } else {
-      rows = '<div class="rules-entry">' + escHtml(String(val)) + '</div>';
-    }
-    return '<div class="rules-card"><div class="rules-card-title">' +
-      escHtml(title) + '</div>' + rows + '</div>';
-  }).join('');
-}
-
-function escHtml(str) {
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
-// ── Chat ──────────────────────────────────────────────────────────────────────
-async function sendMessage(text) {
-  if (!text.trim()) return;
-  const apiKey = localStorage.getItem('fincr-api-key');
-  if (!apiKey) {
-    appendAgentMessage('Error: No API key configured. Set your Fincr API key in the settings above.');
-    return;
-  }
-
-  const emptyEl = document.getElementById('chat-empty');
-  if (emptyEl) emptyEl.style.display = 'none';
-
-  conversation.push({ role: 'user', content: text });
-  appendUserMessage(text);
-
-  const input   = document.getElementById('chat-input');
-  const sendBtn = document.getElementById('chat-send');
-  if (input)   { input.value = ''; autoGrowTextarea(input); }
-  if (sendBtn) sendBtn.disabled = true;
-  showTypingIndicator();
-
-  try {
-    const r = await fetch('https://fincr.duckdns.org/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
-      body: JSON.stringify({ messages: conversation, conversation_id: currentConversationId })
-    });
-    const d = await r.json();
-    hideTypingIndicator();
-
-    if (d.status === 'ok') {
-      const parsed = parseThesisUpdate(d.response);
-      conversation.push({ role: 'assistant', content: parsed.visibleText });
-      appendAgentMessage(parsed.visibleText, parsed.updateBlock);
-      if (parsed.updateBlock) {
-        pendingCommit = parsed.updateBlock;
-        if (currentView === 'thesis') {
-          const dot = document.getElementById('chat-dot');
-          if (dot) dot.style.display = 'inline-block';
-        }
-      }
-    } else {
-      appendAgentMessage('Error: ' + (d.error || 'Unknown error'));
-    }
-  } catch(e) {
-    hideTypingIndicator();
-    appendAgentMessage('Network error: ' + e.message);
-  } finally {
-    if (sendBtn) sendBtn.disabled = false;
-  }
-}
-
-function appendUserMessage(text) {
-  const win = document.getElementById('chat-window');
-  if (!win) return;
-  const div = document.createElement('div');
-  div.className = 'chat-msg-user';
-  div.textContent = text;
-  win.appendChild(div);
-  win.scrollTop = win.scrollHeight;
-}
-
-function appendAgentMessage(text, updateBlock) {
-  const win = document.getElementById('chat-window');
-  if (!win) return;
-  const div = document.createElement('div');
-  div.className = 'chat-msg-agent';
-  div.textContent = text;
-  if (updateBlock) div.appendChild(buildCommitCardEl(updateBlock));
-  win.appendChild(div);
-  win.scrollTop = win.scrollHeight;
-}
-
-function showTypingIndicator() {
-  const win = document.getElementById('chat-window');
-  if (!win) return;
-  const el = document.createElement('div');
-  el.className = 'typing-indicator';
-  el.id = 'typing-indicator';
-  el.innerHTML = '<span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span>';
-  win.appendChild(el);
-  win.scrollTop = win.scrollHeight;
-}
-
-function hideTypingIndicator() {
-  const el = document.getElementById('typing-indicator');
-  if (el) el.remove();
-}
-
-// ── THESIS_UPDATE parser ──────────────────────────────────────────────────────
-function parseThesisUpdate(text) {
-  const S = 'THESIS_UPDATE';
-  const E = 'END_THESIS_UPDATE';
-  const si = text.indexOf(S);
-  const ei = text.indexOf(E);
-
-  if (si === -1 || ei === -1 || ei < si) return { visibleText: text, updateBlock: null };
-
-  const blockText = text.substring(si + S.length, ei);
-  const block = {};
-  blockText.split('\n').map(function(l) { return l.trim(); }).filter(Boolean).forEach(function(line) {
-    const ci = line.indexOf(':');
-    if (ci === -1) return;
-    block[line.substring(0, ci).trim()] = line.substring(ci + 1).trim();
-  });
-
-  if (!block.ticker || Object.keys(block).length < 2) {
-    console.warn('[parser] Malformed THESIS_UPDATE:', blockText);
-    return { visibleText: text, updateBlock: null };
-  }
-
-  const visibleText = (text.substring(0, si) + text.substring(ei + E.length)).trim();
-  return { visibleText: visibleText, updateBlock: block };
-}
-
-// ── Commit card ───────────────────────────────────────────────────────────────
-function buildCommitCardEl(block) {
-  const div = document.createElement('div');
-  div.className = 'commit-card';
-  div.innerHTML =
-    '<div class="commit-title">Commit conviction update</div>' +
-    '<div class="commit-meta">' +
-      '<span class="commit-ticker">' + escHtml(block.ticker || '') + '</span> &middot; ' +
-      '<span class="commit-field">'  + escHtml(block.field || 'conviction') + '</span> &rarr; ' +
-      '<span class="commit-value">'  + escHtml(block.value || '') + '</span>' +
-    '</div>' +
-    (block.core_argument ? '<div class="commit-argument">&ldquo;' + escHtml(block.core_argument) + '&rdquo;</div>' : '') +
-    (block.conversation_summary ? '<div class="commit-summary">Summary: ' + escHtml(block.conversation_summary) + '</div>' : '') +
-    '<div class="commit-actions">' +
-      '<button class="commit-confirm">Commit</button>' +
-      '<button class="commit-dismiss">Dismiss</button>' +
-    '</div>';
-  return div;
-}
-
-async function commitThesis() {
-  if (!pendingCommit) return;
-  const apiKey = localStorage.getItem('fincr-api-key');
-  if (!apiKey) { showToast('No API key set'); return; }
-
-  const body = {
-    ticker:               pendingCommit.ticker,
-    conviction:           pendingCommit.value,
-    core_argument:        pendingCommit.core_argument,
-    conversation_summary: pendingCommit.conversation_summary
-  };
-
-  try {
-    const r = await fetch('https://fincr.duckdns.org/thesis/update', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
-      body: JSON.stringify({ ...body, conversation_id: currentConversationId })
-    });
-    const d = await r.json();
-    if (d.status === 'ok') {
-      showToast('Thesis v' + d.thesis_version + ' committed');
-      const card = document.querySelector('.commit-card');
-      if (card) card.remove();
-      pendingCommit = null;
-      loadThesis();
-    } else {
-      showToast('Commit failed: ' + (d.error || 'Unknown'));
-    }
-  } catch(e) {
-    showToast('Commit failed: ' + e.message);
-  }
-}
-
-function dismissCommit() {
-  pendingCommit = null;
-  const card = document.querySelector('.commit-card');
-  if (card) card.remove();
-}
-
-// ── Toast ─────────────────────────────────────────────────────────────────────
-function showToast(msg) {
-  let toast = document.getElementById('agent-toast');
-  if (!toast) {
-    toast = document.createElement('div');
-    toast.id = 'agent-toast';
-    toast.className = 'agent-toast';
-    document.body.appendChild(toast);
-  }
-  toast.textContent = msg;
-  toast.classList.add('show');
-  clearTimeout(toast._timer);
-  toast._timer = setTimeout(function() { toast.classList.remove('show'); }, 3000);
-}
-
-
-// ── escapeHtml alias ──────────────────────────────────────────────────────────
-function escapeHtml(text) { return escHtml(text); }
-
-// ── Conversation history functions ────────────────────────────────────────────
-async function loadConversations() {
-  const apiKey = localStorage.getItem('fincr-api-key');
-  if (!apiKey) return;
-  try {
-    const r = await fetch('https://fincr.duckdns.org/conversations', {
-      headers: { 'X-API-Key': apiKey }
-    });
-    const d = await r.json();
-    if (d.status === 'ok') renderConversationList(d.conversations);
-  } catch(e) { console.error('[history] Failed to load conversations:', e); }
-}
-
-function renderConversationList(conversations) {
-  const container = document.getElementById('conversation-list');
-  if (!container) return;
-  if (!conversations.length) {
-    container.innerHTML = '<div style="padding:12px;font-size:11px;color:#6e7681;font-family:var(--mono);">No conversations yet.</div>';
-    return;
-  }
-  const groups = {};
-  const now = new Date();
-  conversations.forEach(function(conv) {
-    const date = new Date(conv.started_at);
-    const diffDays = Math.floor((now - date) / 86400000);
-    const label = diffDays === 0 ? 'Today'
-                : diffDays === 1 ? 'Yesterday'
-                : date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-    if (!groups[label]) groups[label] = [];
-    groups[label].push(conv);
-  });
-  container.innerHTML = Object.entries(groups).map(function(entry) {
-    var label = entry[0], convs = entry[1];
-    return '<div class="conversation-group-label">' + label + '</div>' +
-      convs.map(renderConversationCard).join('');
-  }).join('');
-}
-
-function renderConversationCard(conv) {
-  var title = conv.title || 'New conversation';
-  var tickers = (conv.tickers_mentioned || []).slice(0, 3)
-    .map(function(t) { return '<span class="conversation-ticker-chip">' + escapeHtml(t) + '</span>'; }).join('');
-  var hasUpdate = conv.thesis_updates && conv.thesis_updates.length > 0;
-  var updateDot = hasUpdate ? '<span class="thesis-update-indicator"></span>' : '';
-  var isActive = conv.id === currentConversationId ? ' active' : '';
-  var msgCount = conv.message_count ? (conv.message_count / 2) + ' msgs' : '';
-  return '<div class="conversation-card' + isActive + '" data-id="' + conv.id + '" onclick="openConversation('' + conv.id + '')">' +
-    '<div class="conversation-card-title" id="title-' + conv.id + '">' + escapeHtml(title) + updateDot + '</div>' +
-    '<div class="conversation-card-meta">' + tickers + (msgCount ? '<span>' + msgCount + '</span>' : '') + '</div>' +
-    '<button class="conversation-edit-btn" onclick="startEditTitle(event,'' + conv.id + '')" title="Rename">&#9998;</button>' +
-    '</div>';
-}
-
-async function openConversation(conversationId) {
-  const apiKey = localStorage.getItem('fincr-api-key');
-  if (!apiKey) return;
-  try {
-    const r = await fetch('https://fincr.duckdns.org/conversations/' + conversationId, {
-      headers: { 'X-API-Key': apiKey }
-    });
-    const d = await r.json();
-    if (d.status !== 'ok') return;
-    currentConversationId = conversationId;
-    const chatWindow = document.getElementById('chat-window');
-    chatWindow.innerHTML = '';
-    d.messages.forEach(function(msg) {
-      if (msg.role === 'user') appendUserMessage(msg.content);
-      else appendAgentMessage(msg.content, null);
-    });
-    if (d.ended_at) {
-      var note = document.createElement('div');
-      note.style.cssText = 'text-align:center;font-size:10px;color:#6e7681;padding:8px;font-family:var(--mono);';
-      note.textContent = 'Resumed — ' + new Date(d.ended_at).toLocaleDateString();
-      chatWindow.appendChild(note);
-    }
-    document.querySelectorAll('.conversation-card').forEach(function(el) {
-      el.classList.toggle('active', el.dataset.id === conversationId);
-    });
-    switchView('chat');
-    var sidebar = document.getElementById('agent-sidebar');
-    if (sidebar) sidebar.classList.remove('open');
-  } catch(e) { console.error('[history] Failed to open conversation:', e); }
-}
-
-async function startNewConversation() {
-  const apiKey = localStorage.getItem('fincr-api-key');
-  if (!apiKey) { showToast('Set your Fincr API key first'); return; }
-  if (currentConversationId) endConversation(currentConversationId);
-  try {
-    const r = await fetch('https://fincr.duckdns.org/conversations/new', {
-      method: 'POST',
-      headers: { 'X-API-Key': apiKey }
-    });
-    const d = await r.json();
-    if (d.status === 'ok') {
-      currentConversationId = d.conversation_id;
-      const chatWindow = document.getElementById('chat-window');
-      if (chatWindow) {
-        chatWindow.innerHTML = '<div class="chat-empty" id="chat-empty">Ask anything about your portfolio, your thesis, or the markets.</div>';
-      }
-      conversation = [];
-      await loadConversations();
-      console.log('[history] New conversation:', currentConversationId);
-    }
-  } catch(e) { console.error('[history] Failed to start conversation:', e); }
-}
-
-function endConversation(conversationId) {
-  const apiKey = localStorage.getItem('fincr-api-key');
-  if (!apiKey || !conversationId) return;
-  navigator.sendBeacon(
-    'https://fincr.duckdns.org/conversations/' + conversationId + '/end',
-    new Blob(['{}'], { type: 'application/json' })
-  );
-}
-
-function startEditTitle(event, conversationId) {
-  event.stopPropagation();
-  var titleEl = document.getElementById('title-' + conversationId);
-  if (!titleEl) return;
-  var currentTitle = titleEl.textContent.trim();
-  titleEl.innerHTML = '<input type="text" value="' + escapeHtml(currentTitle) + '" maxlength="100" />';
-  var input = titleEl.querySelector('input');
-  input.focus(); input.select();
-  async function saveTitle() {
-    var newTitle = input.value.trim();
-    if (!newTitle || newTitle === currentTitle) { titleEl.textContent = currentTitle; return; }
-    var apiKey = localStorage.getItem('fincr-api-key');
-    try {
-      var r = await fetch('https://fincr.duckdns.org/conversations/' + conversationId + '/title', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
-        body: JSON.stringify({ title: newTitle })
-      });
-      var d = await r.json();
-      titleEl.textContent = d.status === 'ok' ? newTitle : currentTitle;
-    } catch(err) { titleEl.textContent = currentTitle; }
-  }
-  input.addEventListener('blur', saveTitle);
-  input.addEventListener('keydown', function(e) {
-    if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
-    if (e.key === 'Escape') { titleEl.textContent = currentTitle; }
-  });
-}
-
-function initSidebarToggle() {
-  const sidebar = document.getElementById('agent-sidebar');
-  const toggleBtn = document.getElementById('sidebar-toggle');
-  if (!sidebar || !toggleBtn) return;
-  const isCollapsed = sessionStorage.getItem('sidebar-collapsed') === 'true';
-  if (isCollapsed) {
-    sidebar.classList.add('collapsed');
-    toggleBtn.textContent = '\u25b6';
-  } else {
-    toggleBtn.textContent = '\u25c4';
-  }
-  toggleBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    const collapsed = sidebar.classList.toggle('collapsed');
-    toggleBtn.textContent = collapsed ? '\u25b6' : '\u25c4';
-    sessionStorage.setItem('sidebar-collapsed', collapsed);
-  });
-}
-
-async function onAgentTabOpen() {
-  await loadThesis();
-  await loadConversations();
-  if (!currentConversationId) await startNewConversation();
-  initSidebarToggle();
-}
-
-// End current conversation on page unload
-window.addEventListener('beforeunload', function() {
-  if (currentConversationId) endConversation(currentConversationId);
-});
-
-</script>
-<script>
 const FINNHUB_KEY = 'd7j746pr01qp3g1s2f0gd7j746pr01qp3g1s2f10';
 let GITHUB_TOKEN = localStorage.getItem('github-token') || '';
 let transactions = JSON.parse(localStorage.getItem('portfolio-transactions') || '[]');
@@ -2644,6 +2026,620 @@ async function importFromCsv() {
   msg.textContent = `✓ ${imported} asset${imported !== 1 ? 's' : ''} imported${failed ? ` · ${failed} failed` : ''}.`;
   setTimeout(() => msg.textContent = '', 5000);
 }
+
+// ── localStorage migration ────────────────────────────────────────────────────
+function migrateLocalStorage() {
+  const oldKey = localStorage.getItem('war-room-api-key');
+  const newKey = localStorage.getItem('fincr-api-key');
+  if (oldKey && !newKey) {
+    localStorage.setItem('fincr-api-key', oldKey);
+    localStorage.removeItem('war-room-api-key');
+    console.log('[migration] Migrated war-room-api-key to fincr-api-key');
+  }
+  if (localStorage.getItem('openai-key')) {
+    localStorage.removeItem('openai-key');
+    console.log('[migration] Removed orphaned openai-key');
+  }
+}
+
+// ── Fincr API key management ──────────────────────────────────────────────────
+function saveFincrKey() {
+  const val = document.getElementById('fincr-key-input').value.trim();
+  if (!val) {
+    setFincrStatus('red', 'Please enter a key.');
+    return;
+  }
+  localStorage.setItem('fincr-api-key', val);
+  document.getElementById('fincr-key-input').value = '';
+  setFincrStatus('accent', 'Key saved. Agent and sync are ready.');
+  document.getElementById('btn-clear-fincr').style.display = 'inline-block';
+}
+
+function clearFincrKey() {
+  localStorage.removeItem('fincr-api-key');
+  document.getElementById('fincr-key-input').value = '';
+  setFincrStatus('muted', 'Key cleared.');
+  document.getElementById('btn-clear-fincr').style.display = 'none';
+}
+
+function initFincrKeyPanel() {
+  const key = localStorage.getItem('fincr-api-key');
+  if (key) {
+    setFincrStatus('accent', 'Key loaded from local storage.');
+    document.getElementById('btn-clear-fincr').style.display = 'inline-block';
+  }
+}
+
+function setFincrStatus(color, text) {
+  const el = document.getElementById('fincr-key-status');
+  el.style.color = `var(--${color})`;
+  el.textContent = text;
+}
+
+// ── Agent state ───────────────────────────────────────────────────────────────
+let conversation         = [];
+let pendingCommit        = null;
+let currentView          = sessionStorage.getItem('agent-view') || 'chat';
+let currentConversationId = null;  // UUID of active conversation, null if none started
+
+// ── Sub-view toggle ───────────────────────────────────────────────────────────
+function switchView(view) {
+  currentView = view;
+  sessionStorage.setItem('agent-view', view);
+  const chatEl   = document.getElementById('agent-view-chat');
+  const thesisEl = document.getElementById('agent-view-thesis');
+  if (chatEl)   chatEl.style.display   = (view === 'chat')   ? 'flex'  : 'none';
+  if (thesisEl) thesisEl.style.display = (view === 'thesis') ? 'block' : 'none';
+  document.querySelectorAll('.agent-toggle button').forEach(b => {
+    b.classList.toggle('active', b.dataset.view === view);
+  });
+  if (view === 'chat') {
+    const dot = document.getElementById('chat-dot');
+    if (dot) dot.style.display = 'none';
+  }
+}
+
+// ── Quick prompts ─────────────────────────────────────────────────────────────
+const QUICK_PROMPTS = {
+  portfolio: "Walk me through my current portfolio. Where am I strongly positioned, where am I weak, and what does it look like against my thesis?",
+  risk:      "What is the single biggest risk in my portfolio right now? Be specific and direct.",
+  rebalance: "I have limited monthly capital to deploy. Given my current portfolio and watchlist, where should next month's contribution go and why?"
+};
+
+// ── Wire up agent UI — event delegation (robust, no DOMContentLoaded race) ──
+document.body.addEventListener('click', function(e) {
+  if (e.target.closest('#fincr-key-save'))  { saveFincrKey(); return; }
+  if (e.target.closest('#btn-clear-fincr')) { clearFincrKey(); return; }
+
+  var promptBtn = e.target.closest('.quick-prompts button[data-prompt]');
+  if (promptBtn) {
+    var promptText = QUICK_PROMPTS[promptBtn.dataset.prompt];
+    if (promptText) {
+      var input = document.getElementById('chat-input');
+      input.value = promptText;
+      input.focus();
+      autoGrowTextarea(input);
+    }
+    return;
+  }
+
+  if (e.target.closest('#chat-send')) {
+    var text = document.getElementById('chat-input').value.trim();
+    if (text) sendMessage(text);
+    return;
+  }
+
+  var toggleBtn = e.target.closest('.agent-toggle button[data-view]');
+  if (toggleBtn) { switchView(toggleBtn.dataset.view); return; }
+
+  if (e.target.closest('.commit-confirm')) { commitThesis(); return; }
+  if (e.target.closest('.commit-dismiss')) { dismissCommit(); return; }
+
+  if (e.target.closest('#btn-new-conversation')) { startNewConversation(); return; }
+  if (e.target.closest('#btn-history-toggle')) {
+    document.getElementById('agent-sidebar').classList.toggle('open');
+    return;
+  }
+});
+
+// Direct textarea listeners (no delegation needed — element is permanent)
+var chatInput = document.getElementById('chat-input');
+if (chatInput) {
+  chatInput.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      var text = chatInput.value.trim();
+      if (text) sendMessage(text);
+    }
+  });
+  chatInput.addEventListener('input', function() { autoGrowTextarea(chatInput); });
+}
+
+// Restore sub-view from sessionStorage
+switchView(currentView);
+
+function autoGrowTextarea(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 96) + 'px';
+}
+
+// ── Thesis loader & renderer ──────────────────────────────────────────────────
+async function loadThesis() {
+  const apiKey = localStorage.getItem('fincr-api-key');
+  if (!apiKey) return;
+  try {
+    const r = await fetch('https://fincr.duckdns.org/thesis', {
+      headers: { 'X-API-Key': apiKey }
+    });
+    if (!r.ok) { console.error('[thesis] HTTP', r.status); return; }
+    const d = await r.json();
+    if (d.status === 'ok') renderThesis(d.thesis);
+  } catch(e) {
+    console.error('[thesis] Load failed:', e);
+  }
+}
+
+function renderThesis(thesis) {
+  const v = document.getElementById('thesis-version');
+  const u = document.getElementById('thesis-updated');
+  if (v) v.textContent = thesis.meta ? thesis.meta.version    : '—';
+  if (u) u.textContent = thesis.meta ? thesis.meta.last_updated : '—';
+
+  const holdings = thesis.holdings || {};
+  const hCount = document.getElementById('holdings-count');
+  if (hCount) hCount.textContent = Object.keys(holdings).length;
+  const hEl = document.getElementById('thesis-holdings');
+  if (hEl) hEl.innerHTML = Object.entries(holdings)
+    .map(function(e) { return renderThesisCard(e[0], e[1], false); }).join('');
+
+  const watchlist = thesis.watchlist || {};
+  const wCount = document.getElementById('watchlist-count');
+  if (wCount) wCount.textContent = Object.keys(watchlist).length;
+  const wEl = document.getElementById('thesis-watchlist');
+  if (wEl) wEl.innerHTML = Object.entries(watchlist)
+    .map(function(e) { return renderThesisCard(e[0], e[1], true); }).join('');
+
+  renderDecisionRules(thesis.decision_rules || {});
+}
+
+function renderThesisCard(ticker, entry, isWatchlist) {
+  const conviction = (entry.conviction || 'low').toLowerCase();
+  const convClass  = 'thesis-chip thesis-chip-' + conviction;
+  const layer      = (entry.layer !== null && entry.layer !== undefined) ? 'L' + entry.layer : null;
+  const type       = entry.thesis_type ? entry.thesis_type.replace(/_/g, ' ') : null;
+
+  const chips = [
+    layer ? '<span class="thesis-chip thesis-chip-dim">' + escHtml(layer) + '</span>' : '',
+    type  ? '<span class="thesis-chip thesis-chip-dim">' + escHtml(type)  + '</span>' : '',
+    '<span class="' + convClass + '">' + escHtml(conviction) + '</span>'
+  ].filter(Boolean).join('');
+
+  const triggersHtml = isWatchlist && entry.entry_triggers && entry.entry_triggers.length
+    ? '<ul class="thesis-triggers">' + entry.entry_triggers.map(function(t) {
+        return '<li>' + escHtml(t) + '</li>';
+      }).join('') + '</ul>'
+    : '';
+
+  const footerParts = [];
+  if (entry.last_updated)       footerParts.push('Updated ' + escHtml(entry.last_updated));
+  if (entry.last_update_reason) footerParts.push(escHtml(entry.last_update_reason));
+
+  return '<div class="thesis-card">' +
+    '<div class="thesis-card-top">' +
+      '<span class="thesis-ticker">' + escHtml(ticker) + '</span>' +
+      '<span style="color:var(--text-ghost);font-size:12px;">&middot;</span>' +
+      '<span class="thesis-company">' + escHtml(entry.company || '') + '</span>' +
+    '</div>' +
+    '<div class="thesis-meta">' + chips + '</div>' +
+    '<hr class="thesis-divider">' +
+    '<div class="thesis-argument">' + escHtml(entry.core_argument || '') + '</div>' +
+    triggersHtml +
+    (footerParts.length ? '<div class="thesis-footer">' + footerParts.join(' &middot; ') + '</div>' : '') +
+  '</div>';
+}
+
+function renderDecisionRules(rules) {
+  const el = document.getElementById('thesis-rules-content');
+  if (!el) return;
+  if (!rules || !Object.keys(rules).length) {
+    el.innerHTML = '<div style="font-size:11px;color:var(--text-muted);">No decision rules defined.</div>';
+    return;
+  }
+  el.innerHTML = Object.entries(rules).map(function(entry) {
+    const key = entry[0], val = entry[1];
+    const title = key.replace(/_/g, ' ').replace(/\b\w/g, function(c) { return c.toUpperCase(); });
+    let rows = '';
+    if (val && typeof val === 'object' && !Array.isArray(val)) {
+      rows = Object.entries(val).map(function(kv) {
+        const label = kv[0].replace(/_/g, ' ');
+        const value = (typeof kv[1] === 'object') ? JSON.stringify(kv[1]) : String(kv[1]);
+        return '<div class="rules-entry"><span style="color:var(--text-muted)">' +
+          escHtml(label) + ':</span> ' + escHtml(value) + '</div>';
+      }).join('');
+    } else {
+      rows = '<div class="rules-entry">' + escHtml(String(val)) + '</div>';
+    }
+    return '<div class="rules-card"><div class="rules-card-title">' +
+      escHtml(title) + '</div>' + rows + '</div>';
+  }).join('');
+}
+
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+// ── Chat ──────────────────────────────────────────────────────────────────────
+async function sendMessage(text) {
+  if (!text.trim()) return;
+  const apiKey = localStorage.getItem('fincr-api-key');
+  if (!apiKey) {
+    appendAgentMessage('Error: No API key configured. Set your Fincr API key in the settings above.');
+    return;
+  }
+
+  const emptyEl = document.getElementById('chat-empty');
+  if (emptyEl) emptyEl.style.display = 'none';
+
+  conversation.push({ role: 'user', content: text });
+  appendUserMessage(text);
+
+  const input   = document.getElementById('chat-input');
+  const sendBtn = document.getElementById('chat-send');
+  if (input)   { input.value = ''; autoGrowTextarea(input); }
+  if (sendBtn) sendBtn.disabled = true;
+  showTypingIndicator();
+
+  try {
+    const r = await fetch('https://fincr.duckdns.org/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
+      body: JSON.stringify({ messages: conversation, conversation_id: currentConversationId })
+    });
+    const d = await r.json();
+    hideTypingIndicator();
+
+    if (d.status === 'ok') {
+      const parsed = parseThesisUpdate(d.response);
+      conversation.push({ role: 'assistant', content: parsed.visibleText });
+      appendAgentMessage(parsed.visibleText, parsed.updateBlock);
+      if (parsed.updateBlock) {
+        pendingCommit = parsed.updateBlock;
+        if (currentView === 'thesis') {
+          const dot = document.getElementById('chat-dot');
+          if (dot) dot.style.display = 'inline-block';
+        }
+      }
+    } else {
+      appendAgentMessage('Error: ' + (d.error || 'Unknown error'));
+    }
+  } catch(e) {
+    hideTypingIndicator();
+    appendAgentMessage('Network error: ' + e.message);
+  } finally {
+    if (sendBtn) sendBtn.disabled = false;
+  }
+}
+
+function appendUserMessage(text) {
+  const win = document.getElementById('chat-window');
+  if (!win) return;
+  const div = document.createElement('div');
+  div.className = 'chat-msg-user';
+  div.textContent = text;
+  win.appendChild(div);
+  win.scrollTop = win.scrollHeight;
+}
+
+function appendAgentMessage(text, updateBlock) {
+  const win = document.getElementById('chat-window');
+  if (!win) return;
+  const div = document.createElement('div');
+  div.className = 'chat-msg-agent';
+  div.textContent = text;
+  if (updateBlock) div.appendChild(buildCommitCardEl(updateBlock));
+  win.appendChild(div);
+  win.scrollTop = win.scrollHeight;
+}
+
+function showTypingIndicator() {
+  const win = document.getElementById('chat-window');
+  if (!win) return;
+  const el = document.createElement('div');
+  el.className = 'typing-indicator';
+  el.id = 'typing-indicator';
+  el.innerHTML = '<span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span>';
+  win.appendChild(el);
+  win.scrollTop = win.scrollHeight;
+}
+
+function hideTypingIndicator() {
+  const el = document.getElementById('typing-indicator');
+  if (el) el.remove();
+}
+
+// ── THESIS_UPDATE parser ──────────────────────────────────────────────────────
+function parseThesisUpdate(text) {
+  const S = 'THESIS_UPDATE';
+  const E = 'END_THESIS_UPDATE';
+  const si = text.indexOf(S);
+  const ei = text.indexOf(E);
+
+  if (si === -1 || ei === -1 || ei < si) return { visibleText: text, updateBlock: null };
+
+  const blockText = text.substring(si + S.length, ei);
+  const block = {};
+  blockText.split('\n').map(function(l) { return l.trim(); }).filter(Boolean).forEach(function(line) {
+    const ci = line.indexOf(':');
+    if (ci === -1) return;
+    block[line.substring(0, ci).trim()] = line.substring(ci + 1).trim();
+  });
+
+  if (!block.ticker || Object.keys(block).length < 2) {
+    console.warn('[parser] Malformed THESIS_UPDATE:', blockText);
+    return { visibleText: text, updateBlock: null };
+  }
+
+  const visibleText = (text.substring(0, si) + text.substring(ei + E.length)).trim();
+  return { visibleText: visibleText, updateBlock: block };
+}
+
+// ── Commit card ───────────────────────────────────────────────────────────────
+function buildCommitCardEl(block) {
+  const div = document.createElement('div');
+  div.className = 'commit-card';
+  div.innerHTML =
+    '<div class="commit-title">Commit conviction update</div>' +
+    '<div class="commit-meta">' +
+      '<span class="commit-ticker">' + escHtml(block.ticker || '') + '</span> &middot; ' +
+      '<span class="commit-field">'  + escHtml(block.field || 'conviction') + '</span> &rarr; ' +
+      '<span class="commit-value">'  + escHtml(block.value || '') + '</span>' +
+    '</div>' +
+    (block.core_argument ? '<div class="commit-argument">&ldquo;' + escHtml(block.core_argument) + '&rdquo;</div>' : '') +
+    (block.conversation_summary ? '<div class="commit-summary">Summary: ' + escHtml(block.conversation_summary) + '</div>' : '') +
+    '<div class="commit-actions">' +
+      '<button class="commit-confirm">Commit</button>' +
+      '<button class="commit-dismiss">Dismiss</button>' +
+    '</div>';
+  return div;
+}
+
+async function commitThesis() {
+  if (!pendingCommit) return;
+  const apiKey = localStorage.getItem('fincr-api-key');
+  if (!apiKey) { showToast('No API key set'); return; }
+
+  const body = {
+    ticker:               pendingCommit.ticker,
+    conviction:           pendingCommit.value,
+    core_argument:        pendingCommit.core_argument,
+    conversation_summary: pendingCommit.conversation_summary
+  };
+
+  try {
+    const r = await fetch('https://fincr.duckdns.org/thesis/update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
+      body: JSON.stringify({ ...body, conversation_id: currentConversationId })
+    });
+    const d = await r.json();
+    if (d.status === 'ok') {
+      showToast('Thesis v' + d.thesis_version + ' committed');
+      const card = document.querySelector('.commit-card');
+      if (card) card.remove();
+      pendingCommit = null;
+      loadThesis();
+    } else {
+      showToast('Commit failed: ' + (d.error || 'Unknown'));
+    }
+  } catch(e) {
+    showToast('Commit failed: ' + e.message);
+  }
+}
+
+function dismissCommit() {
+  pendingCommit = null;
+  const card = document.querySelector('.commit-card');
+  if (card) card.remove();
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+function showToast(msg) {
+  let toast = document.getElementById('agent-toast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'agent-toast';
+    toast.className = 'agent-toast';
+    document.body.appendChild(toast);
+  }
+  toast.textContent = msg;
+  toast.classList.add('show');
+  clearTimeout(toast._timer);
+  toast._timer = setTimeout(function() { toast.classList.remove('show'); }, 3000);
+}
+
+
+// ── escapeHtml alias ──────────────────────────────────────────────────────────
+function escapeHtml(text) { return escHtml(text); }
+
+// ── Conversation history functions ────────────────────────────────────────────
+async function loadConversations() {
+  const apiKey = localStorage.getItem('fincr-api-key');
+  if (!apiKey) return;
+  try {
+    const r = await fetch('https://fincr.duckdns.org/conversations', {
+      headers: { 'X-API-Key': apiKey }
+    });
+    const d = await r.json();
+    if (d.status === 'ok') renderConversationList(d.conversations);
+  } catch(e) { console.error('[history] Failed to load conversations:', e); }
+}
+
+function renderConversationList(conversations) {
+  const container = document.getElementById('conversation-list');
+  if (!container) return;
+  if (!conversations.length) {
+    container.innerHTML = '<div style="padding:12px;font-size:11px;color:#6e7681;font-family:var(--mono);">No conversations yet.</div>';
+    return;
+  }
+  const groups = {};
+  const now = new Date();
+  conversations.forEach(function(conv) {
+    const date = new Date(conv.started_at);
+    const diffDays = Math.floor((now - date) / 86400000);
+    const label = diffDays === 0 ? 'Today'
+                : diffDays === 1 ? 'Yesterday'
+                : date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+    if (!groups[label]) groups[label] = [];
+    groups[label].push(conv);
+  });
+  container.innerHTML = Object.entries(groups).map(function(entry) {
+    var label = entry[0], convs = entry[1];
+    return '<div class="conversation-group-label">' + label + '</div>' +
+      convs.map(renderConversationCard).join('');
+  }).join('');
+}
+
+function renderConversationCard(conv) {
+  var title = conv.title || 'New conversation';
+  var tickers = (conv.tickers_mentioned || []).slice(0, 3)
+    .map(function(t) { return '<span class="conversation-ticker-chip">' + escapeHtml(t) + '</span>'; }).join('');
+  var hasUpdate = conv.thesis_updates && conv.thesis_updates.length > 0;
+  var updateDot = hasUpdate ? '<span class="thesis-update-indicator"></span>' : '';
+  var isActive = conv.id === currentConversationId ? ' active' : '';
+  var msgCount = conv.message_count ? (conv.message_count / 2) + ' msgs' : '';
+  return '<div class="conversation-card' + isActive + '" data-id="' + conv.id + '" onclick="openConversation('' + conv.id + '')">' +
+    '<div class="conversation-card-title" id="title-' + conv.id + '">' + escapeHtml(title) + updateDot + '</div>' +
+    '<div class="conversation-card-meta">' + tickers + (msgCount ? '<span>' + msgCount + '</span>' : '') + '</div>' +
+    '<button class="conversation-edit-btn" onclick="startEditTitle(event,'' + conv.id + '')" title="Rename">&#9998;</button>' +
+    '</div>';
+}
+
+async function openConversation(conversationId) {
+  const apiKey = localStorage.getItem('fincr-api-key');
+  if (!apiKey) return;
+  try {
+    const r = await fetch('https://fincr.duckdns.org/conversations/' + conversationId, {
+      headers: { 'X-API-Key': apiKey }
+    });
+    const d = await r.json();
+    if (d.status !== 'ok') return;
+    currentConversationId = conversationId;
+    const chatWindow = document.getElementById('chat-window');
+    chatWindow.innerHTML = '';
+    d.messages.forEach(function(msg) {
+      if (msg.role === 'user') appendUserMessage(msg.content);
+      else appendAgentMessage(msg.content, null);
+    });
+    if (d.ended_at) {
+      var note = document.createElement('div');
+      note.style.cssText = 'text-align:center;font-size:10px;color:#6e7681;padding:8px;font-family:var(--mono);';
+      note.textContent = 'Resumed — ' + new Date(d.ended_at).toLocaleDateString();
+      chatWindow.appendChild(note);
+    }
+    document.querySelectorAll('.conversation-card').forEach(function(el) {
+      el.classList.toggle('active', el.dataset.id === conversationId);
+    });
+    switchView('chat');
+    var sidebar = document.getElementById('agent-sidebar');
+    if (sidebar) sidebar.classList.remove('open');
+  } catch(e) { console.error('[history] Failed to open conversation:', e); }
+}
+
+async function startNewConversation() {
+  const apiKey = localStorage.getItem('fincr-api-key');
+  if (!apiKey) { showToast('Set your Fincr API key first'); return; }
+  if (currentConversationId) endConversation(currentConversationId);
+  try {
+    const r = await fetch('https://fincr.duckdns.org/conversations/new', {
+      method: 'POST',
+      headers: { 'X-API-Key': apiKey }
+    });
+    const d = await r.json();
+    if (d.status === 'ok') {
+      currentConversationId = d.conversation_id;
+      const chatWindow = document.getElementById('chat-window');
+      if (chatWindow) {
+        chatWindow.innerHTML = '<div class="chat-empty" id="chat-empty">Ask anything about your portfolio, your thesis, or the markets.</div>';
+      }
+      conversation = [];
+      await loadConversations();
+      console.log('[history] New conversation:', currentConversationId);
+    }
+  } catch(e) { console.error('[history] Failed to start conversation:', e); }
+}
+
+function endConversation(conversationId) {
+  const apiKey = localStorage.getItem('fincr-api-key');
+  if (!apiKey || !conversationId) return;
+  navigator.sendBeacon(
+    'https://fincr.duckdns.org/conversations/' + conversationId + '/end',
+    new Blob(['{}'], { type: 'application/json' })
+  );
+}
+
+function startEditTitle(event, conversationId) {
+  event.stopPropagation();
+  var titleEl = document.getElementById('title-' + conversationId);
+  if (!titleEl) return;
+  var currentTitle = titleEl.textContent.trim();
+  titleEl.innerHTML = '<input type="text" value="' + escapeHtml(currentTitle) + '" maxlength="100" />';
+  var input = titleEl.querySelector('input');
+  input.focus(); input.select();
+  async function saveTitle() {
+    var newTitle = input.value.trim();
+    if (!newTitle || newTitle === currentTitle) { titleEl.textContent = currentTitle; return; }
+    var apiKey = localStorage.getItem('fincr-api-key');
+    try {
+      var r = await fetch('https://fincr.duckdns.org/conversations/' + conversationId + '/title', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
+        body: JSON.stringify({ title: newTitle })
+      });
+      var d = await r.json();
+      titleEl.textContent = d.status === 'ok' ? newTitle : currentTitle;
+    } catch(err) { titleEl.textContent = currentTitle; }
+  }
+  input.addEventListener('blur', saveTitle);
+  input.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+    if (e.key === 'Escape') { titleEl.textContent = currentTitle; }
+  });
+}
+
+function initSidebarToggle() {
+  const sidebar = document.getElementById('agent-sidebar');
+  const toggleBtn = document.getElementById('sidebar-toggle');
+  if (!sidebar || !toggleBtn) return;
+  const isCollapsed = sessionStorage.getItem('sidebar-collapsed') === 'true';
+  if (isCollapsed) {
+    sidebar.classList.add('collapsed');
+    toggleBtn.textContent = '\u25b6';
+  } else {
+    toggleBtn.textContent = '\u25c4';
+  }
+  toggleBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const collapsed = sidebar.classList.toggle('collapsed');
+    toggleBtn.textContent = collapsed ? '\u25b6' : '\u25c4';
+    sessionStorage.setItem('sidebar-collapsed', collapsed);
+  });
+}
+
+async function onAgentTabOpen() {
+  await loadThesis();
+  await loadConversations();
+  if (!currentConversationId) await startNewConversation();
+  initSidebarToggle();
+}
+
+// End current conversation on page unload
+window.addEventListener('beforeunload', function() {
+  if (currentConversationId) endConversation(currentConversationId);
+});
 
 </script>
 </body>
