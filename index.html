@@ -2511,10 +2511,10 @@ function renderConversationCard(conv) {
   var updateDot = hasUpdate ? '<span class="thesis-update-indicator"></span>' : '';
   var isActive = conv.id === currentConversationId ? ' active' : '';
   var msgCount = conv.message_count ? (conv.message_count / 2) + ' msgs' : '';
-  return '<div class="conversation-card' + isActive + '" data-id="' + conv.id + '" onclick="openConversation('' + conv.id + '')">' +
+  return '<div class="conversation-card' + isActive + '" data-id="' + conv.id + '" onclick="openConversation(\'' + conv.id + '\')">' +
     '<div class="conversation-card-title" id="title-' + conv.id + '">' + escapeHtml(title) + updateDot + '</div>' +
     '<div class="conversation-card-meta">' + tickers + (msgCount ? '<span>' + msgCount + '</span>' : '') + '</div>' +
-    '<button class="conversation-edit-btn" onclick="startEditTitle(event,'' + conv.id + '')" title="Rename">&#9998;</button>' +
+    '<button class="conversation-edit-btn" onclick="startEditTitle(event,\'' + conv.id + '\')" title="Rename">&#9998;</button>' +
     '</div>';
 }
 
