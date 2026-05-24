@@ -429,6 +429,147 @@ select option { background: var(--bg); }
 }
 .agent-toast.show { opacity: 1; }
 
+/* ── Conversation history sidebar ──────────────────────────────────────────── */
+.agent-layout {
+  display: flex;
+  gap: 0;
+  height: 100%;
+}
+.agent-sidebar {
+  width: 220px;
+  min-width: 220px;
+  border-right: 1px solid #21262d;
+  display: flex;
+  flex-direction: column;
+  background: #080c10;
+  overflow-y: auto;
+}
+.agent-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.btn-new-conversation {
+  margin: 12px;
+  padding: 8px 12px;
+  background: #161b22;
+  border: 1px solid #21262d;
+  color: #e6edf3;
+  font-size: 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--mono);
+}
+.btn-new-conversation:hover { background: #21262d; }
+.btn-history-toggle {
+  background: none;
+  border: 1px solid #21262d;
+  color: #8b949e;
+  font-size: 13px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-right: 8px;
+  display: none;
+}
+.conversation-group-label {
+  font-size: 10px;
+  color: #6e7681;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 8px 12px 4px;
+  font-family: var(--mono);
+}
+.conversation-card {
+  margin: 2px 8px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  position: relative;
+  border: 1px solid transparent;
+}
+.conversation-card:hover { background: #161b22; }
+.conversation-card.active {
+  background: #161b22;
+  border-color: #21262d;
+}
+.conversation-card-title {
+  font-size: 12px;
+  color: #e6edf3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 160px;
+  font-family: var(--mono);
+}
+.conversation-card-title input {
+  background: #0d1117;
+  border: 1px solid #a89ee0;
+  color: #e6edf3;
+  font-size: 12px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  width: 100%;
+  outline: none;
+  font-family: var(--mono);
+}
+.conversation-card-meta {
+  font-size: 10px;
+  color: #6e7681;
+  margin-top: 3px;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-family: var(--mono);
+}
+.conversation-ticker-chip {
+  background: #162040;
+  color: #4C8BF5;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 9px;
+}
+.conversation-edit-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: none;
+  border: none;
+  color: #6e7681;
+  font-size: 11px;
+  cursor: pointer;
+  display: none;
+  padding: 0;
+}
+.conversation-card:hover .conversation-edit-btn { display: block; }
+.thesis-update-indicator {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  background: #a89ee0;
+  border-radius: 50%;
+  margin-left: 4px;
+  vertical-align: middle;
+}
+@media (max-width: 640px) {
+  .agent-sidebar {
+    position: fixed;
+    left: -240px;
+    top: 0;
+    height: 100%;
+    width: 220px;
+    z-index: 100;
+    transition: left 0.2s ease;
+    border-right: 1px solid #21262d;
+  }
+  .agent-sidebar.open { left: 0; }
+  .agent-main { width: 100%; }
+  .btn-history-toggle { display: inline-block !important; }
+}
+
+
 </style>
 </head>
 <body>
@@ -720,10 +861,23 @@ select option { background: var(--bg); }
 
     <!-- Agent UI -->
     <div class="ai-card" style="padding:0;overflow:hidden;">
-      <div class="agent-tab">
+      <div class="agent-layout">
+
+        <!-- Left: conversation sidebar -->
+        <div class="agent-sidebar" id="agent-sidebar">
+          <button class="btn-new-conversation" id="btn-new-conversation">+ New conversation</button>
+          <div class="conversation-list" id="conversation-list">
+            <!-- Populated by loadConversations() -->
+          </div>
+        </div>
+
+        <!-- Right: existing agent content -->
+        <div class="agent-main">
+        <div class="agent-tab">
 
         <!-- Header bar -->
         <div class="agent-header">
+          <button id="btn-history-toggle" class="btn-history-toggle">&#9776;</button>
           Agent &middot; thesis v<span id="thesis-version">—</span> &middot; updated <span id="thesis-updated">—</span>
         </div>
 
@@ -767,7 +921,9 @@ select option { background: var(--bg); }
           </details>
         </div>
 
-      </div>
+      </div><!-- end agent-tab -->
+        </div><!-- end agent-main -->
+      </div><!-- end agent-layout -->
     </div>
   </div>
 </main>
@@ -824,9 +980,10 @@ function setFincrStatus(color, text) {
 }
 
 // ── Agent state ───────────────────────────────────────────────────────────────
-let conversation  = [];
-let pendingCommit = null;
-let currentView   = sessionStorage.getItem('agent-view') || 'chat';
+let conversation         = [];
+let pendingCommit        = null;
+let currentView          = sessionStorage.getItem('agent-view') || 'chat';
+let currentConversationId = null;  // UUID of active conversation, null if none started
 
 // ── Sub-view toggle ───────────────────────────────────────────────────────────
 function switchView(view) {
@@ -880,6 +1037,12 @@ document.body.addEventListener('click', function(e) {
 
   if (e.target.closest('.commit-confirm')) { commitThesis(); return; }
   if (e.target.closest('.commit-dismiss')) { dismissCommit(); return; }
+
+  if (e.target.closest('#btn-new-conversation')) { startNewConversation(); return; }
+  if (e.target.closest('#btn-history-toggle')) {
+    document.getElementById('agent-sidebar').classList.toggle('open');
+    return;
+  }
 });
 
 // Direct textarea listeners (no delegation needed — element is permanent)
@@ -1039,7 +1202,7 @@ async function sendMessage(text) {
     const r = await fetch('https://fincr.duckdns.org/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
-      body: JSON.stringify({ messages: conversation })
+      body: JSON.stringify({ messages: conversation, conversation_id: currentConversationId })
     });
     const d = await r.json();
     hideTypingIndicator();
@@ -1165,7 +1328,7 @@ async function commitThesis() {
     const r = await fetch('https://fincr.duckdns.org/thesis/update', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
-      body: JSON.stringify(body)
+      body: JSON.stringify({ ...body, conversation_id: currentConversationId })
     });
     const d = await r.json();
     if (d.status === 'ok') {
@@ -1202,6 +1365,166 @@ function showToast(msg) {
   clearTimeout(toast._timer);
   toast._timer = setTimeout(function() { toast.classList.remove('show'); }, 3000);
 }
+
+
+// ── escapeHtml alias ──────────────────────────────────────────────────────────
+function escapeHtml(text) { return escHtml(text); }
+
+// ── Conversation history functions ────────────────────────────────────────────
+async function loadConversations() {
+  const apiKey = localStorage.getItem('fincr-api-key');
+  if (!apiKey) return;
+  try {
+    const r = await fetch('https://fincr.duckdns.org/conversations', {
+      headers: { 'X-API-Key': apiKey }
+    });
+    const d = await r.json();
+    if (d.status === 'ok') renderConversationList(d.conversations);
+  } catch(e) { console.error('[history] Failed to load conversations:', e); }
+}
+
+function renderConversationList(conversations) {
+  const container = document.getElementById('conversation-list');
+  if (!container) return;
+  if (!conversations.length) {
+    container.innerHTML = '<div style="padding:12px;font-size:11px;color:#6e7681;font-family:var(--mono);">No conversations yet.</div>';
+    return;
+  }
+  const groups = {};
+  const now = new Date();
+  conversations.forEach(function(conv) {
+    const date = new Date(conv.started_at);
+    const diffDays = Math.floor((now - date) / 86400000);
+    const label = diffDays === 0 ? 'Today'
+                : diffDays === 1 ? 'Yesterday'
+                : date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+    if (!groups[label]) groups[label] = [];
+    groups[label].push(conv);
+  });
+  container.innerHTML = Object.entries(groups).map(function(entry) {
+    var label = entry[0], convs = entry[1];
+    return '<div class="conversation-group-label">' + label + '</div>' +
+      convs.map(renderConversationCard).join('');
+  }).join('');
+}
+
+function renderConversationCard(conv) {
+  var title = conv.title || 'New conversation';
+  var tickers = (conv.tickers_mentioned || []).slice(0, 3)
+    .map(function(t) { return '<span class="conversation-ticker-chip">' + escapeHtml(t) + '</span>'; }).join('');
+  var hasUpdate = conv.thesis_updates && conv.thesis_updates.length > 0;
+  var updateDot = hasUpdate ? '<span class="thesis-update-indicator"></span>' : '';
+  var isActive = conv.id === currentConversationId ? ' active' : '';
+  var msgCount = conv.message_count ? (conv.message_count / 2) + ' msgs' : '';
+  return '<div class="conversation-card' + isActive + '" data-id="' + conv.id + '" onclick="openConversation('' + conv.id + '')">' +
+    '<div class="conversation-card-title" id="title-' + conv.id + '">' + escapeHtml(title) + updateDot + '</div>' +
+    '<div class="conversation-card-meta">' + tickers + (msgCount ? '<span>' + msgCount + '</span>' : '') + '</div>' +
+    '<button class="conversation-edit-btn" onclick="startEditTitle(event,'' + conv.id + '')" title="Rename">&#9998;</button>' +
+    '</div>';
+}
+
+async function openConversation(conversationId) {
+  const apiKey = localStorage.getItem('fincr-api-key');
+  if (!apiKey) return;
+  try {
+    const r = await fetch('https://fincr.duckdns.org/conversations/' + conversationId, {
+      headers: { 'X-API-Key': apiKey }
+    });
+    const d = await r.json();
+    if (d.status !== 'ok') return;
+    currentConversationId = conversationId;
+    const chatWindow = document.getElementById('chat-window');
+    chatWindow.innerHTML = '';
+    d.messages.forEach(function(msg) {
+      if (msg.role === 'user') appendUserMessage(msg.content);
+      else appendAgentMessage(msg.content, null);
+    });
+    if (d.ended_at) {
+      var note = document.createElement('div');
+      note.style.cssText = 'text-align:center;font-size:10px;color:#6e7681;padding:8px;font-family:var(--mono);';
+      note.textContent = 'Resumed — ' + new Date(d.ended_at).toLocaleDateString();
+      chatWindow.appendChild(note);
+    }
+    document.querySelectorAll('.conversation-card').forEach(function(el) {
+      el.classList.toggle('active', el.dataset.id === conversationId);
+    });
+    switchView('chat');
+    var sidebar = document.getElementById('agent-sidebar');
+    if (sidebar) sidebar.classList.remove('open');
+  } catch(e) { console.error('[history] Failed to open conversation:', e); }
+}
+
+async function startNewConversation() {
+  const apiKey = localStorage.getItem('fincr-api-key');
+  if (!apiKey) { showToast('Set your Fincr API key first'); return; }
+  if (currentConversationId) endConversation(currentConversationId);
+  try {
+    const r = await fetch('https://fincr.duckdns.org/conversations/new', {
+      method: 'POST',
+      headers: { 'X-API-Key': apiKey }
+    });
+    const d = await r.json();
+    if (d.status === 'ok') {
+      currentConversationId = d.conversation_id;
+      const chatWindow = document.getElementById('chat-window');
+      if (chatWindow) {
+        chatWindow.innerHTML = '<div class="chat-empty" id="chat-empty">Ask anything about your portfolio, your thesis, or the markets.</div>';
+      }
+      conversation = [];
+      await loadConversations();
+      console.log('[history] New conversation:', currentConversationId);
+    }
+  } catch(e) { console.error('[history] Failed to start conversation:', e); }
+}
+
+function endConversation(conversationId) {
+  const apiKey = localStorage.getItem('fincr-api-key');
+  if (!apiKey || !conversationId) return;
+  navigator.sendBeacon(
+    'https://fincr.duckdns.org/conversations/' + conversationId + '/end',
+    new Blob(['{}'], { type: 'application/json' })
+  );
+}
+
+function startEditTitle(event, conversationId) {
+  event.stopPropagation();
+  var titleEl = document.getElementById('title-' + conversationId);
+  if (!titleEl) return;
+  var currentTitle = titleEl.textContent.trim();
+  titleEl.innerHTML = '<input type="text" value="' + escapeHtml(currentTitle) + '" maxlength="100" />';
+  var input = titleEl.querySelector('input');
+  input.focus(); input.select();
+  async function saveTitle() {
+    var newTitle = input.value.trim();
+    if (!newTitle || newTitle === currentTitle) { titleEl.textContent = currentTitle; return; }
+    var apiKey = localStorage.getItem('fincr-api-key');
+    try {
+      var r = await fetch('https://fincr.duckdns.org/conversations/' + conversationId + '/title', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
+        body: JSON.stringify({ title: newTitle })
+      });
+      var d = await r.json();
+      titleEl.textContent = d.status === 'ok' ? newTitle : currentTitle;
+    } catch(err) { titleEl.textContent = currentTitle; }
+  }
+  input.addEventListener('blur', saveTitle);
+  input.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+    if (e.key === 'Escape') { titleEl.textContent = currentTitle; }
+  });
+}
+
+async function onAgentTabOpen() {
+  await loadThesis();
+  await loadConversations();
+  if (!currentConversationId) await startNewConversation();
+}
+
+// End current conversation on page unload
+window.addEventListener('beforeunload', function() {
+  if (currentConversationId) endConversation(currentConversationId);
+});
 
 </script>
 <script>
@@ -1718,7 +2041,7 @@ function showTab(name) {
     document.getElementById('tab-' + n).classList.toggle('active', n === name);
   });
   if (name === 'charts') populateChartSelect();
-  if (name === 'agent')  loadThesis();
+  if (name === 'agent')  onAgentTabOpen();
 }
 
 // ── AI analysis removed — replaced by /chat agent ─────────────────────────────
