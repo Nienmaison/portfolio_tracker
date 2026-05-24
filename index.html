@@ -553,6 +553,36 @@ select option { background: var(--bg); }
   margin-left: 4px;
   vertical-align: middle;
 }
+.sidebar-toggle {
+  background: none;
+  border: none;
+  color: #6e7681;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 10px 12px;
+  text-align: right;
+  width: 100%;
+  display: block;
+}
+.sidebar-toggle:hover {
+  color: #e6edf3;
+}
+.agent-sidebar.collapsed {
+  width: 36px;
+  min-width: 36px;
+}
+.agent-sidebar.collapsed .btn-new-conversation,
+.agent-sidebar.collapsed .conversation-list,
+.agent-sidebar.collapsed .conversation-group-label {
+  display: none;
+}
+.agent-sidebar.collapsed .sidebar-toggle {
+  text-align: center;
+  padding: 10px 0;
+}
+@media (max-width: 640px) {
+  .sidebar-toggle { display: none; }
+}
 @media (max-width: 640px) {
   .agent-sidebar {
     position: fixed;
@@ -865,6 +895,7 @@ select option { background: var(--bg); }
 
         <!-- Left: conversation sidebar -->
         <div class="agent-sidebar" id="agent-sidebar">
+          <button class="sidebar-toggle" id="sidebar-toggle" title="Toggle sidebar">&#9664;</button>
           <button class="btn-new-conversation" id="btn-new-conversation">+ New conversation</button>
           <div class="conversation-list" id="conversation-list">
             <!-- Populated by loadConversations() -->
@@ -1515,10 +1546,30 @@ function startEditTitle(event, conversationId) {
   });
 }
 
+function initSidebarToggle() {
+  const sidebar = document.getElementById('agent-sidebar');
+  const toggleBtn = document.getElementById('sidebar-toggle');
+  if (!sidebar || !toggleBtn) return;
+  const isCollapsed = sessionStorage.getItem('sidebar-collapsed') === 'true';
+  if (isCollapsed) {
+    sidebar.classList.add('collapsed');
+    toggleBtn.textContent = '\u25b6';
+  } else {
+    toggleBtn.textContent = '\u25c4';
+  }
+  toggleBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const collapsed = sidebar.classList.toggle('collapsed');
+    toggleBtn.textContent = collapsed ? '\u25b6' : '\u25c4';
+    sessionStorage.setItem('sidebar-collapsed', collapsed);
+  });
+}
+
 async function onAgentTabOpen() {
   await loadThesis();
   await loadConversations();
   if (!currentConversationId) await startNewConversation();
+  initSidebarToggle();
 }
 
 // End current conversation on page unload
