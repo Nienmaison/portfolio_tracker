@@ -3,12 +3,16 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Portfolio Tracker</title>
-<meta name="apple-mobile-web-app-capable" content="yes" />
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-<meta name="apple-mobile-web-app-title" content="Portfolio" />
+<title>Financial Control Room</title>
 <meta name="mobile-web-app-capable" content="yes" />
-<meta name="theme-color" content="#0d0f12" />
+<meta name="theme-color" content="#0d1117" />
+  <!-- PWA manifest — declares this app as installable -->
+  <link rel="manifest" href="manifest.json">
+  <!-- iOS Safari PWA support — Android uses the manifest; iOS needs these -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Fincr">
+  <link rel="apple-touch-icon" href="icon-192.png">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet" />
 <style>
 :root {
@@ -603,6 +607,16 @@ select option { background: var(--bg); }
 </style>
 </head>
 <body>
+  <!-- PWA install banner — hidden by default, shown via beforeinstallprompt -->
+  <div id="pwa-install-banner" style="display:none;position:fixed;bottom:20px;left:50%;transform:translateX(-50%);width:calc(100% - 40px);max-width:480px;background:#161b22;border:1px solid #21262d;border-radius:8px;padding:14px 16px;z-index:9999;box-shadow:0 4px 24px rgba(0,0,0,0.6);align-items:center;gap:12px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+    <img src="icon-192.png" alt="Fincr" style="width:36px;height:36px;border-radius:8px;flex-shrink:0;">
+    <div style="flex:1;min-width:0;">
+      <div style="font-size:13px;font-weight:500;color:#e6edf3;line-height:1.3;">Add to Home Screen</div>
+      <div style="font-size:11px;color:#8b949e;margin-top:2px;">Install Financial Control Room for quick access</div>
+    </div>
+    <button id="pwa-install-btn" style="background:none;border:1px solid #21262d;border-radius:6px;color:#e6edf3;font-size:12px;padding:6px 12px;cursor:pointer;font-family:inherit;white-space:nowrap;flex-shrink:0;">Install</button>
+    <button id="pwa-dismiss-btn" style="background:none;border:none;color:#6e7681;font-size:18px;cursor:pointer;padding:0 2px;line-height:1;flex-shrink:0;">×</button>
+  </div>
 
 <header>
   <div class="logo">Portfolio.track</div>
@@ -2642,5 +2656,46 @@ window.addEventListener('beforeunload', function() {
 });
 
 </script>
+  <script>
+    // Register service worker — requires HTTPS, which GitHub Pages provides
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js', { scope: './' })
+          .then(reg => console.log('[PWA] SW registered:', reg.scope))
+          .catch(err => console.warn('[PWA] SW registration failed:', err));
+      });
+    }
+
+    // Intercept browser install prompt and show our own banner instead
+    let _installPromptEvent = null;
+    const _banner = document.getElementById('pwa-install-banner');
+    const PWA_DISMISSED_KEY = 'pwa-install-dismissed';
+
+    window.addEventListener('beforeinstallprompt', e => {
+      e.preventDefault();
+      if (localStorage.getItem(PWA_DISMISSED_KEY)) return;  // user already dismissed
+      _installPromptEvent = e;
+      _banner.style.display = 'flex';
+    });
+
+    document.getElementById('pwa-install-btn').addEventListener('click', async () => {
+      if (!_installPromptEvent) return;
+      _banner.style.display = 'none';
+      _installPromptEvent.prompt();
+      const { outcome } = await _installPromptEvent.userChoice;
+      console.log('[PWA] Install outcome:', outcome);
+      _installPromptEvent = null;
+    });
+
+    document.getElementById('pwa-dismiss-btn').addEventListener('click', () => {
+      _banner.style.display = 'none';
+      localStorage.setItem(PWA_DISMISSED_KEY, '1');  // suppress on future visits
+    });
+
+    window.addEventListener('appinstalled', () => {
+      _banner.style.display = 'none';
+      _installPromptEvent = null;
+    });
+  </script>
 </body>
 </html>
