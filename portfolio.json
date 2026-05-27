@@ -50,26 +50,6 @@
     "priceOk": true
   },
   {
-    "ticker": "W",
-    "type": "crypto",
-    "qty": 0.09604200000012497,
-    "buy": 0.0966245316530026,
-    "buyEur": 0.0966245316530026,
-    "currency": "eur",
-    "cur": 0.01046287,
-    "priceOk": true
-  },
-  {
-    "ticker": "HIFI",
-    "type": "crypto",
-    "qty": 0.01124813000001268,
-    "buy": 0.7645374925912616,
-    "buyEur": 0.7645374925912616,
-    "currency": "eur",
-    "cur": 0.7645374925912616,
-    "priceOk": false
-  },
-  {
     "ticker": "OM",
     "type": "crypto",
     "qty": 0.00901486999998724,
