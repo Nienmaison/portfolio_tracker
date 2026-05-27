@@ -50,36 +50,6 @@
     "priceOk": true
   },
   {
-    "ticker": "OCEAN",
-    "type": "crypto",
-    "qty": 501.07056858,
-    "buy": 0.7963,
-    "buyEur": 0.7963,
-    "currency": "eur",
-    "cur": 0.7963,
-    "priceOk": false
-  },
-  {
-    "ticker": "DUSK",
-    "type": "crypto",
-    "qty": 542.2157870299999,
-    "buy": 0.47084872946075806,
-    "buyEur": 0.47084872946075806,
-    "currency": "eur",
-    "cur": 0.112164,
-    "priceOk": true
-  },
-  {
-    "ticker": "TAO",
-    "type": "crypto",
-    "qty": 0.90130672,
-    "buy": 239.19492564351458,
-    "buyEur": 239.19492564351458,
-    "currency": "eur",
-    "cur": 238.09,
-    "priceOk": true
-  },
-  {
     "ticker": "ADA",
     "type": "crypto",
     "qty": 100.29999999999984,
