@@ -50,16 +50,6 @@
     "priceOk": true
   },
   {
-    "ticker": "ADA",
-    "type": "crypto",
-    "qty": 100.29999999999984,
-    "buy": 0.564445434605333,
-    "buyEur": 0.564445434605333,
-    "currency": "eur",
-    "cur": 0.205656,
-    "priceOk": true
-  },
-  {
     "ticker": "NPXS",
     "type": "crypto",
     "qty": 17660.2703574,
