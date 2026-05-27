@@ -50,16 +50,6 @@
     "priceOk": true
   },
   {
-    "ticker": "LINK",
-    "type": "crypto",
-    "qty": 150.70604721000004,
-    "buy": 13.188467656408633,
-    "buyEur": 13.188467656408633,
-    "currency": "eur",
-    "cur": 8.04,
-    "priceOk": true
-  },
-  {
     "ticker": "OP",
     "type": "crypto",
     "qty": 894.3204969100001,
