@@ -2047,7 +2047,13 @@ function confirmMapping() {
   if (iT < 0 || iQ < 0) { alert('Please map at least Ticker and Quantity columns.'); return; }
 
   const txs = extractTransactions(_pendingFile.headers, _pendingFile.rows, cfg);
-  addToPool(txs, _pendingFile.name, cfg.assetType);
+  // Pass headers, rows, and the user-confirmed config as meta so _loadedFiles
+  // stores them correctly - enables Edit columns to work on re-mapped files
+  addToPool(txs, _pendingFile.name, cfg.assetType, {
+    headers: _pendingFile.headers,
+    rows:    _pendingFile.rows,
+    detectedProfile: null  // user manually confirmed - no auto-detected profile
+  });
   _pendingFile = null;
   document.getElementById('csv-mapper').style.display = 'none';
 }
