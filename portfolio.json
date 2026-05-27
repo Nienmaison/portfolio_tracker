@@ -48,25 +48,5 @@
     "currency": "usd",
     "cur": 91.9264,
     "priceOk": true
-  },
-  {
-    "ticker": "OM",
-    "type": "crypto",
-    "qty": 0.00901486999998724,
-    "buy": 0.7640623234020267,
-    "buyEur": 0.7640623234020267,
-    "currency": "eur",
-    "cur": 0.7640623234020267,
-    "priceOk": false
-  },
-  {
-    "ticker": "DOGE",
-    "type": "crypto",
-    "qty": 0.027631530001599458,
-    "buy": 0.19680051004315344,
-    "buyEur": 0.19680051004315344,
-    "currency": "eur",
-    "cur": 0.19680051004315344,
-    "priceOk": false
   }
 ]
