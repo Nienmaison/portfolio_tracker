@@ -1,15 +1,5 @@
 [
   {
-    "ticker": "BTC",
-    "type": "crypto",
-    "qty": 0.00173409,
-    "buy": 57523,
-    "buyEur": 57523,
-    "currency": "eur",
-    "cur": 65064,
-    "priceOk": true
-  },
-  {
     "ticker": "4COP",
     "type": "stock",
     "qty": 10.57511784,
@@ -57,96 +47,6 @@
     "buyEur": 81.78800000000001,
     "currency": "usd",
     "cur": 91.9264,
-    "priceOk": true
-  },
-  {
-    "ticker": "OP",
-    "type": "crypto",
-    "qty": 894.49193143,
-    "buy": 1.5721519785535334,
-    "buyEur": 1.5721519785535334,
-    "currency": "eur",
-    "cur": 0.109112,
-    "priceOk": true
-  },
-  {
-    "ticker": "VET",
-    "type": "crypto",
-    "qty": 48092.234207040005,
-    "buy": 0.027312426187207917,
-    "buyEur": 0.027312426187207917,
-    "currency": "eur",
-    "cur": 0.0053337,
-    "priceOk": true
-  },
-  {
-    "ticker": "SEI",
-    "type": "crypto",
-    "qty": 2425.88965963,
-    "buy": 0.4594494072108824,
-    "buyEur": 0.4594494072108824,
-    "currency": "eur",
-    "cur": 0.062193,
-    "priceOk": true
-  },
-  {
-    "ticker": "HOT",
-    "type": "crypto",
-    "qty": 81574.28247268002,
-    "buy": 0.006779800444992176,
-    "buyEur": 0.006779800444992176,
-    "currency": "eur",
-    "cur": 0.00032399,
-    "priceOk": true
-  },
-  {
-    "ticker": "DUSK",
-    "type": "crypto",
-    "qty": 1069.11859661,
-    "buy": 0.4708658823388327,
-    "buyEur": 0.4708658823388327,
-    "currency": "eur",
-    "cur": 0.112878,
-    "priceOk": true
-  },
-  {
-    "ticker": "W",
-    "type": "crypto",
-    "qty": 2924.4499880000003,
-    "buy": 0.09663770099736031,
-    "buyEur": 0.09663770099736031,
-    "currency": "eur",
-    "cur": 0.0105008,
-    "priceOk": true
-  },
-  {
-    "ticker": "NEAR",
-    "type": "crypto",
-    "qty": 327.37858667,
-    "buy": 1.5873874083327808,
-    "buyEur": 1.5873874083327808,
-    "currency": "eur",
-    "cur": 2.17,
-    "priceOk": true
-  },
-  {
-    "ticker": "LINK",
-    "type": "crypto",
-    "qty": 40.84003129,
-    "buy": 11.976238868685009,
-    "buyEur": 11.976238868685009,
-    "currency": "eur",
-    "cur": 8.04,
-    "priceOk": true
-  },
-  {
-    "ticker": "TAO",
-    "type": "crypto",
-    "qty": 0.87591293,
-    "buy": 239.148522902499,
-    "buyEur": 239.148522902499,
-    "currency": "eur",
-    "cur": 237.8,
     "priceOk": true
   }
 ]
