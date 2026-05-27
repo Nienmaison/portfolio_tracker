@@ -770,6 +770,8 @@ select option { background: var(--bg); }
       </div>
 
       <!-- Staging area: loaded files -->
+      <div id="csv-success-msg" style="display:none;padding:16px 0;"></div>
+      <div id="csv-import-log-ui" style="display:none;margin-top:16px;"></div>
       <div id="csv-staging" style="display:none;margin-bottom:20px;">
         <p style="font-size:11px;color:var(--muted);letter-spacing:0.06em;text-transform:uppercase;margin-bottom:10px;">Loaded files</p>
         <div id="csv-file-list" style="margin-bottom:14px;"></div>
@@ -1757,6 +1759,7 @@ migrateLocalStorage();
 load();
 initGithubPanel();
 initFincrKeyPanel();
+renderImportLog();
 
 // ── Generic CSV Importer — Option B (multi-file pool) ─────────────────────────
 // Architecture: each uploaded CSV adds raw transactions to _stagingPool.
@@ -2066,6 +2069,8 @@ async function importFromCsv() {
   msg.textContent = '';
 
   let imported = 0, failed = 0;
+  const importBatchId   = Date.now().toString();
+  const importedTickers = [];
   for (const cb of checks) {
     const coin = _csvParsed[parseInt(cb.dataset.i)];
     if (!coin) continue;
@@ -2089,7 +2094,8 @@ async function importFromCsv() {
       }
 
       const today = new Date().toISOString().split('T')[0];
-      transactions.push({ ticker: coin.ticker, type: coin.type, qty: coin.netQty, buyEur: coin.avgBuy, date: today });
+      transactions.push({ ticker: coin.ticker, type: coin.type, qty: coin.netQty, buyEur: coin.avgBuy, date: today, importBatchId });
+      importedTickers.push(coin.ticker);
       imported++;
     } catch(e) {
       failed++;
@@ -2100,10 +2106,32 @@ async function importFromCsv() {
   localStorage.setItem('portfolio-transactions', JSON.stringify(transactions));
   save(); render(); syncHoldingsToFunnel();
 
+  // Write import log entry
+  const logEntry = {
+    id:    importBatchId,
+    date:  new Date().toISOString().split('T')[0],
+    tickers: importedTickers,
+    count: imported
+  };
+  const log = JSON.parse(localStorage.getItem('csv-import-log') || '[]');
+  log.push(logEntry);
+  localStorage.setItem('csv-import-log', JSON.stringify(log));
+
+  // Show success state — hide preview and staging, show confirmation
+  document.getElementById('csv-preview').style.display = 'none';
+  document.getElementById('csv-staging').style.display = 'none';
+
+  const successEl = document.getElementById('csv-success-msg');
+  successEl.style.display = '';
+  successEl.innerHTML = `
+    <div style="color:var(--accent);font-size:14px;font-weight:500;margin-bottom:6px;">✓ Import complete</div>
+    <div style="color:var(--muted);font-size:12px;margin-bottom:14px;">${imported} position${imported !== 1 ? 's' : ''} added${failed ? ' · ' + failed + ' failed' : ''}.</div>
+    <button class="btn-secondary" onclick="resetCsvImporter()">Import another file</button>
+  `;
+  renderImportLog();
+
   btn.disabled = false;
   btn.textContent = 'Import selected';
-  msg.textContent = `✓ ${imported} asset${imported !== 1 ? 's' : ''} imported${failed ? ` · ${failed} failed` : ''}.`;
-  setTimeout(() => msg.textContent = '', 5000);
 }
 
 // ── localStorage migration ────────────────────────────────────────────────────
@@ -2719,6 +2747,70 @@ async function onAgentTabOpen() {
 window.addEventListener('beforeunload', function() {
   if (currentConversationId) endConversation(currentConversationId);
 });
+
+function resetCsvImporter() {
+  document.getElementById('csv-success-msg').style.display = 'none';
+  document.getElementById('csv-staging').style.display     = 'none';
+  document.getElementById('csv-preview').style.display     = 'none';
+  document.getElementById('csv-upload').value              = '';
+  if (typeof _csvPool   !== 'undefined') _csvPool   = [];
+  if (typeof _csvParsed !== 'undefined') _csvParsed = [];
+  renderImportLog();
+}
+
+function renderImportLog() {
+  const el = document.getElementById('csv-import-log-ui');
+  if (!el) return;
+  const log = JSON.parse(localStorage.getItem('csv-import-log') || '[]');
+  if (!log.length) { el.style.display = 'none'; return; }
+  el.style.display = '';
+  el.innerHTML = `
+    <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px;">Import history</div>
+    ${log.slice().reverse().map(entry => `
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);">
+        <div>
+          <div style="font-size:12px;color:var(--text);">${entry.tickers.join(', ')}</div>
+          <div style="font-size:10px;color:var(--muted);margin-top:2px;">${entry.date} · ${entry.count} position${entry.count !== 1 ? 's' : ''}</div>
+        </div>
+        <button onclick="removeImport('${entry.id}')"
+          style="font-size:11px;color:var(--red);background:none;border:1px solid var(--red);border-radius:4px;padding:3px 10px;cursor:pointer;">
+          Remove
+        </button>
+      </div>
+    `).join('')}
+  `;
+}
+
+function removeImport(batchId) {
+  if (!confirm('Remove this import? All positions from this batch will be deleted and holdings recalculated.')) return;
+  transactions = transactions.filter(t => t.importBatchId !== batchId);
+  localStorage.setItem('portfolio-transactions', JSON.stringify(transactions));
+  const log = JSON.parse(localStorage.getItem('csv-import-log') || '[]').filter(e => e.id !== batchId);
+  localStorage.setItem('csv-import-log', JSON.stringify(log));
+  recalcHoldingsFromTransactions();
+  save(); render(); syncHoldingsToFunnel();
+  renderImportLog();
+}
+
+function recalcHoldingsFromTransactions() {
+  const map = {};
+  for (const t of transactions) {
+    if (t.closed) continue;
+    const key = t.ticker + '__' + t.type;
+    if (!map[key]) map[key] = { ticker: t.ticker, type: t.type, qty: 0, totalCost: 0 };
+    map[key].qty       += t.qty;
+    map[key].totalCost += (t.buyEur || 0) * t.qty;
+  }
+  holdings = Object.values(map)
+    .filter(h => h.qty > 0.000001)
+    .map(h => ({
+      ticker: h.ticker, type: h.type,
+      qty:    h.qty,
+      buyEur: h.qty > 0 ? h.totalCost / h.qty : 0,
+      buy:    h.qty > 0 ? h.totalCost / h.qty : 0,
+      currency: 'eur', cur: 0, priceOk: false
+    }));
+}
 
 </script>
   <script>
