@@ -762,7 +762,7 @@ select option { background: var(--bg); }
 
       <!-- Step 1: Upload files -->
       <div style="margin-bottom:16px;">
-        <label class="btn-primary" style="cursor:pointer;margin:0 10px 0 0;">
+        <label id="csv-add-btn" class="btn-primary" style="cursor:pointer;margin:0 10px 0 0;">
           Add CSV file
           <input type="file" id="csv-upload" accept=".csv" style="display:none;" onchange="handleCsvUpload(event)"/>
         </label>
@@ -2120,6 +2120,7 @@ async function importFromCsv() {
   // Show success state — hide preview and staging, show confirmation
   document.getElementById('csv-preview').style.display = 'none';
   document.getElementById('csv-staging').style.display = 'none';
+  document.getElementById('csv-add-btn').style.display = 'none';
 
   const successEl = document.getElementById('csv-success-msg');
   successEl.style.display = '';
@@ -2753,6 +2754,7 @@ function resetCsvImporter() {
   document.getElementById('csv-staging').style.display     = 'none';
   document.getElementById('csv-preview').style.display     = 'none';
   document.getElementById('csv-upload').value              = '';
+  document.getElementById('csv-add-btn').style.display = '';
   if (typeof _csvPool   !== 'undefined') _csvPool   = [];
   if (typeof _csvParsed !== 'undefined') _csvParsed = [];
   renderImportLog();
