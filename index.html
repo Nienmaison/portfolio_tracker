@@ -723,6 +723,16 @@ select option { background: var(--bg); }
             <option value="usd">USD ($)</option>
           </select>
         </div>
+        <div class="form-group" style="grid-column:1/-1;">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+            <input type="checkbox" id="f-closed" onchange="toggleClosedFields()" />
+            <span>This is a closed/sold position (realised P&L only)</span>
+          </label>
+        </div>
+        <div class="form-group" id="f-sell-group" style="display:none;">
+          <label>Sell price (EUR)</label>
+          <input type="number" id="f-sell" placeholder="0.00" min="0" step="any" />
+        </div>
       </div>
       <p style="font-family:var(--mono);font-size:11px;color:var(--muted);margin-bottom:12px;letter-spacing:0.03em;">
         Live prices: Finnhub (stocks, USD→EUR converted) · CoinGecko (crypto, EUR direct).
@@ -1236,17 +1246,23 @@ function renderMetrics() {
   const cost   = fh.reduce((s, h) => s + h.qty * (h.buyEur || h.buy || 0), 0);
   const pl     = total - cost;
   const plPct  = cost > 0 ? (pl / cost * 100) : 0;
+  // Sum realised P&L from all closed positions
+  const realisedPL = transactions
+    .filter(t => t.closed)
+    .reduce((s, t) => s + (t.realisedPL || 0), 0);
+  const totalPL    = pl + realisedPL;
+  const totalPLPct = cost > 0 ? (totalPL / cost * 100) : 0;
   const stocks = fh.filter(h => h.type === 'stock').reduce((s, h) => s + h.qty * (h.cur || 0), 0);
   const crypto = fh.filter(h => h.type === 'crypto').reduce((s, h) => s + h.qty * (h.cur || 0), 0);
   const stocksPct = total > 0 ? (stocks / total * 100).toFixed(1) : '0.0';
   const cryptoPct = total > 0 ? (crypto / total * 100).toFixed(1) : '0.0';
 
   const totalVal  = guestMode ? '—' : `€${fmt(total)}`;
-  const plVal     = guestMode ? '—' : `${pl >= 0 ? '+' : ''}€${fmt(pl)}`;
-  const plSubVal  = guestMode ? '' : `<div class="metric-sub ${pl >= 0 ? 'green' : 'red'}">${pl >= 0 ? '+' : ''}${plPct.toFixed(2)}%</div>`;
+  const plVal     = guestMode ? '—' : `${totalPL >= 0 ? '+' : ''}€${fmt(totalPL)}`;
+  const plSubVal  = guestMode ? '' : `<div class="metric-sub ${totalPL >= 0 ? 'green' : 'red'}">${totalPL >= 0 ? '+' : ''}${totalPLPct.toFixed(2)}%</div>`;
   const stocksVal = guestMode ? `${stocksPct}%` : `€${fmt(stocks)}`;
   const cryptoVal = guestMode ? `${cryptoPct}%` : `€${fmt(crypto)}`;
-  const plClass   = guestMode ? '' : (pl >= 0 ? 'green' : 'red');
+  const plClass   = guestMode ? '' : (totalPL >= 0 ? 'green' : 'red');
 
   document.getElementById('metrics').innerHTML = `
     <div class="metric"><div class="metric-label">${label} value</div><div class="metric-value">${totalVal}</div></div>
@@ -1258,6 +1274,16 @@ function renderMetrics() {
     <div class="metric"><div class="metric-label">Crypto</div><div class="metric-value">${cryptoVal}</div></div>
     <div class="metric"><div class="metric-label">Assets held</div><div class="metric-value">${holdings.length}</div></div>
   `;
+  // Append realised P&L sub-line if any closed positions exist
+  if (realisedPL !== 0) {
+    const plMetric = document.querySelector('#metrics .metric:nth-child(2)');
+    if (plMetric) {
+      const sub = document.createElement('div');
+      sub.style.cssText = 'font-size:10px;color:var(--muted);margin-top:3px;font-family:var(--mono);';
+      sub.textContent = `Realised: €${realisedPL.toLocaleString('nl-NL', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+      plMetric.appendChild(sub);
+    }
+  }
 }
 
 function renderHoldings() {
@@ -1321,6 +1347,11 @@ function renderCharts() {
 }
 
 // ── Add holding ───────────────────────────────────────────────────────────────
+function toggleClosedFields() {
+  const closed = document.getElementById('f-closed').checked;
+  document.getElementById('f-sell-group').style.display = closed ? '' : 'none';
+}
+
 async function addHolding() {
   const ticker   = document.getElementById('f-ticker').value.trim().toUpperCase();
   const type     = document.getElementById('f-type').value;
@@ -1333,6 +1364,39 @@ async function addHolding() {
   }
   // FIX: convert buy price to EUR if entered in USD
   const buyEur = currency === 'usd' ? buy * (eurUsdRate || 0.92) : buy;
+
+  const isClosed = document.getElementById('f-closed').checked;
+  const sellRaw  = parseFloat(document.getElementById('f-sell')?.value || '0');
+  const sellEur  = currency === 'usd' ? sellRaw * (eurUsdRate || 0.92) : sellRaw;
+
+  if (isClosed) {
+    if (isNaN(sellEur) || sellEur <= 0) {
+      msg.style.color = 'var(--red)';
+      msg.textContent = 'Please enter a sell price for closed position.';
+      return;
+    }
+    // Record realised P&L in transactions — does NOT add to holdings
+    const today = new Date().toISOString().split('T')[0];
+    const realisedPL = (sellEur - buyEur) * qty;
+    transactions.push({
+      ticker, type, qty, buyEur, sellEur,
+      realisedPL, closed: true, date: today
+    });
+    localStorage.setItem('portfolio-transactions', JSON.stringify(transactions));
+    save();
+    msg.style.color = 'var(--accent)';
+    msg.textContent = `${ticker} closed — realised P&L: €${realisedPL.toFixed(2)}`;
+    ['f-ticker','f-qty','f-buy','f-sell'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.value = '';
+    });
+    document.getElementById('f-closed').checked = false;
+    toggleClosedFields();
+    renderMetrics();
+    setTimeout(() => msg.textContent = '', 4000);
+    return;
+  }
+
   msg.style.color = 'var(--muted)'; msg.textContent = 'Fetching live price...';
   let cur = buyEur, priceOk = false;
   try {
