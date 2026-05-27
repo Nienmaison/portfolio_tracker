@@ -48,5 +48,175 @@
     "currency": "usd",
     "cur": 91.9264,
     "priceOk": true
+  },
+  {
+    "ticker": "LINK",
+    "type": "crypto",
+    "qty": 150.63127039000003,
+    "buy": 13.192336214868337,
+    "buyEur": 13.192336214868337,
+    "currency": "eur",
+    "cur": 8.06,
+    "priceOk": true
+  },
+  {
+    "ticker": "OP",
+    "type": "crypto",
+    "qty": 893.4700274,
+    "buy": 1.5738805342030704,
+    "buyEur": 1.5738805342030704,
+    "currency": "eur",
+    "cur": 0.10884,
+    "priceOk": true
+  },
+  {
+    "ticker": "VET",
+    "type": "crypto",
+    "qty": 47876.07656817,
+    "buy": 0.02741229789520239,
+    "buyEur": 0.02741229789520239,
+    "currency": "eur",
+    "cur": 0.00531286,
+    "priceOk": true
+  },
+  {
+    "ticker": "SEI",
+    "type": "crypto",
+    "qty": 2402.3206300700003,
+    "buy": 0.46395703892512286,
+    "buyEur": 0.46395703892512286,
+    "currency": "eur",
+    "cur": 0.060925,
+    "priceOk": true
+  },
+  {
+    "ticker": "XLM",
+    "type": "crypto",
+    "qty": 8200.1049817,
+    "buy": 0.11726213218588738,
+    "buyEur": 0.11726213218588738,
+    "currency": "eur",
+    "cur": 0.126268,
+    "priceOk": true
+  },
+  {
+    "ticker": "ETH",
+    "type": "crypto",
+    "qty": 0.3902772200000002,
+    "buy": 2281.6082640501572,
+    "buyEur": 2281.6082640501572,
+    "currency": "eur",
+    "cur": 1784.84,
+    "priceOk": true
+  },
+  {
+    "ticker": "BTC",
+    "type": "crypto",
+    "qty": 0.020093230000000004,
+    "buy": 44114.33568218139,
+    "buyEur": 44114.33568218139,
+    "currency": "eur",
+    "cur": 64987,
+    "priceOk": true
+  },
+  {
+    "ticker": "OMNI",
+    "type": "crypto",
+    "qty": 125.35449314000002,
+    "buy": 5.498838404114436,
+    "buyEur": 5.498838404114436,
+    "currency": "eur",
+    "cur": 5.498838404114436,
+    "priceOk": false
+  },
+  {
+    "ticker": "HOT",
+    "type": "crypto",
+    "qty": 81543.62247268001,
+    "buy": 0.006782349616531779,
+    "buyEur": 0.006782349616531779,
+    "currency": "eur",
+    "cur": 0.00032267,
+    "priceOk": true
+  },
+  {
+    "ticker": "ATOM",
+    "type": "crypto",
+    "qty": 45.573201,
+    "buy": 10.944,
+    "buyEur": 10.944,
+    "currency": "eur",
+    "cur": 1.91,
+    "priceOk": true
+  },
+  {
+    "ticker": "NEAR",
+    "type": "crypto",
+    "qty": 239.64216933,
+    "buy": 1.7241016849367043,
+    "buyEur": 1.7241016849367043,
+    "currency": "eur",
+    "cur": 2.16,
+    "priceOk": true
+  },
+  {
+    "ticker": "OCEAN",
+    "type": "crypto",
+    "qty": 501.07056858,
+    "buy": 0.7963,
+    "buyEur": 0.7963,
+    "currency": "eur",
+    "cur": 0.7963,
+    "priceOk": false
+  },
+  {
+    "ticker": "DUSK",
+    "type": "crypto",
+    "qty": 540.2365105799998,
+    "buy": 0.4717220041795444,
+    "buyEur": 0.4717220041795444,
+    "currency": "eur",
+    "cur": 0.112164,
+    "priceOk": true
+  },
+  {
+    "ticker": "TAO",
+    "type": "crypto",
+    "qty": 0.8874859,
+    "buy": 242.91990878097332,
+    "buyEur": 242.91990878097332,
+    "currency": "eur",
+    "cur": 238.09,
+    "priceOk": true
+  },
+  {
+    "ticker": "ADA",
+    "type": "crypto",
+    "qty": 91.8142059999999,
+    "buy": 0.5710527796315414,
+    "buyEur": 0.5710527796315414,
+    "currency": "eur",
+    "cur": 0.205656,
+    "priceOk": true
+  },
+  {
+    "ticker": "NPXS",
+    "type": "crypto",
+    "qty": 17660.2703574,
+    "buy": 0.0019769073461461404,
+    "buyEur": 0.0019769073461461404,
+    "currency": "eur",
+    "cur": 0.0019769073461461404,
+    "priceOk": false
+  },
+  {
+    "ticker": "TRX",
+    "type": "crypto",
+    "qty": 9.817553999999973,
+    "buy": 0.2610421933729983,
+    "buyEur": 0.2610421933729983,
+    "currency": "eur",
+    "cur": 0.320327,
+    "priceOk": true
   }
 ]
