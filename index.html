@@ -1848,7 +1848,7 @@ function handleCsvUpload(event) {
     if (profile) {
       // Auto-detected — parse and add to pool immediately
       const txs = extractTransactions(headers, rows, profile);
-      addToPool(txs, file.name, profile.assetType);
+      addToPool(txs, file.name, profile.assetType, { headers, rows, detectedProfile: profile });
     } else {
       // Unknown broker — show mapper
       _pendingFile = { name: file.name, headers, rows };
@@ -1919,10 +1919,13 @@ function extractTransactions(headers, rows, cfg) {
 }
 
 // ── Add a batch of transactions to the pool ───────────────────────────────────
-function addToPool(txs, filename, assetType) {
+function addToPool(txs, filename, assetType, meta = {}) {
   // Tag each tx with its asset type (can be overridden per tx from profile)
-  for (const tx of txs) _stagingPool.push(tx);
-  _loadedFiles.push({ name: filename, count: txs.length });
+  for (const tx of txs) {
+    tx._filename = filename; // tag for per-file removal
+    _stagingPool.push(tx);
+  }
+  _loadedFiles.push({ name: filename, count: txs.length, headers: meta.headers || [], rows: meta.rows || [], detectedProfile: meta.detectedProfile || null });
   renderStagingArea();
   document.getElementById('csv-preview').style.display = 'none';
 }
@@ -1933,7 +1936,11 @@ function renderStagingArea() {
   el.innerHTML = _loadedFiles.map((f, i) => `
     <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--surface);border-radius:4px;margin-bottom:6px;font-size:12px;">
       <span style="color:var(--text);">✓ ${f.name}</span>
-      <span style="color:var(--muted);">${f.count} transactions</span>
+      <div style="display:flex;align-items:center;gap:12px;">
+        <span style="color:var(--muted);">${f.count} transactions</span>
+        <span onclick="editFileMapping(${i})" style="color:var(--accent);cursor:pointer;text-decoration:underline;">Edit columns</span>
+        <span onclick="removeFromPool(${i})" style="color:var(--red);cursor:pointer;text-decoration:underline;">Remove</span>
+      </div>
     </div>`).join('');
   const totalTxs = _stagingPool.length;
   document.getElementById('csv-staging').style.display = _loadedFiles.length ? 'block' : 'none';
@@ -1965,6 +1972,54 @@ function showMapper(filename, headers) {
   document.getElementById('map-asset-type').value = 'crypto';
   document.getElementById('csv-mapper').style.display = 'block';
   document.getElementById('csv-mapper').scrollIntoView({ behavior: 'smooth' });
+}
+
+function editFileMapping(fileIndex) {
+  // Re-open the column mapper pre-filled with the auto-detected profile
+  // so the user can verify or override any mapping before calculating
+  const f = _loadedFiles[fileIndex];
+  if (!f || !f.headers.length) return;
+
+  // Remove this file's transactions from the staging pool
+  // They will be re-added when the user confirms the new mapping
+  const filename = f.name;
+  _stagingPool = _stagingPool.filter(tx => tx._filename !== filename);
+  _pendingFile = { name: filename, headers: f.headers, rows: f.rows, replaceIndex: fileIndex };
+
+  // Pre-fill mapper with detected profile values if available
+  const profile = f.detectedProfile;
+  if (profile && f.headers.length) {
+    const h = f.headers;
+    const setVal = (id, val) => { const el = document.getElementById(id); if (el && val !== undefined) el.value = val; };
+    setVal('map-ticker',    profile.ticker ? profile.ticker(h) : -1);
+    setVal('map-qty',       profile.qty    ? profile.qty(h)    : -1);
+    setVal('map-price',     profile.price  ? profile.price(h)  : -1);
+    setVal('map-total',     -1);
+    setVal('map-type',      profile.type   ? profile.type(h)   : -1);
+    document.getElementById('map-buy-val').value      = profile.buyVal      || '';
+    document.getElementById('map-sell-val').value     = profile.sellVal     || '';
+    document.getElementById('map-stake-val').value    = profile.stakeVal    || '';
+    document.getElementById('map-skip-types').value   = (profile.skipTypes  || []).join(', ');
+    document.getElementById('map-skip-tickers').value = profile.skipTickers || '';
+    const assetEl = document.getElementById('map-asset-type');
+    if (assetEl) assetEl.value = profile.assetType || 'crypto';
+  }
+
+  showMapper(filename, f.headers);
+}
+
+function removeFromPool(fileIndex) {
+  // Remove a file from the pool entirely — transactions and file record
+  const filename = _loadedFiles[fileIndex]?.name;
+  if (!filename) return;
+  _stagingPool  = _stagingPool.filter(tx => tx._filename !== filename);
+  _loadedFiles.splice(fileIndex, 1);
+  if (_loadedFiles.length === 0) {
+    document.getElementById('csv-staging').style.display = 'none';
+  } else {
+    renderStagingArea();
+    updateCalculateButton();
+  }
 }
 
 function confirmMapping() {
