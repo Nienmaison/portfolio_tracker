@@ -178,5 +178,25 @@
     "currency": "eur",
     "cur": 17.185,
     "priceOk": false
+  },
+  {
+    "ticker": "T1ENERGYINC",
+    "type": "stock",
+    "qty": 16,
+    "buy": 10.67,
+    "buyEur": 10.67,
+    "currency": "eur",
+    "cur": 10.67,
+    "priceOk": false
+  },
+  {
+    "ticker": "NOKIAOYJ",
+    "type": "stock",
+    "qty": 10,
+    "buy": 13.325,
+    "buyEur": 13.325,
+    "currency": "eur",
+    "cur": 13.325,
+    "priceOk": false
   }
 ]
