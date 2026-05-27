@@ -50,56 +50,6 @@
     "priceOk": true
   },
   {
-    "ticker": "OP",
-    "type": "crypto",
-    "qty": 894.3204969100001,
-    "buy": 1.5724558135750883,
-    "buyEur": 1.5724558135750883,
-    "currency": "eur",
-    "cur": 0.10884,
-    "priceOk": true
-  },
-  {
-    "ticker": "VET",
-    "type": "crypto",
-    "qty": 48043.65746464,
-    "buy": 0.02734374005557041,
-    "buyEur": 0.02734374005557041,
-    "currency": "eur",
-    "cur": 0.00531286,
-    "priceOk": true
-  },
-  {
-    "ticker": "SEI",
-    "type": "crypto",
-    "qty": 2420.93287502,
-    "buy": 0.46039011555279286,
-    "buyEur": 0.46039011555279286,
-    "currency": "eur",
-    "cur": 0.060925,
-    "priceOk": true
-  },
-  {
-    "ticker": "XLM",
-    "type": "crypto",
-    "qty": 8200.1049817,
-    "buy": 0.11726213218588738,
-    "buyEur": 0.11726213218588738,
-    "currency": "eur",
-    "cur": 0.126268,
-    "priceOk": true
-  },
-  {
-    "ticker": "ETH",
-    "type": "crypto",
-    "qty": 0.39170442000000016,
-    "buy": 2278.729446013031,
-    "buyEur": 2278.729446013031,
-    "currency": "eur",
-    "cur": 1784.84,
-    "priceOk": true
-  },
-  {
     "ticker": "BTC",
     "type": "crypto",
     "qty": 0.02019055,
