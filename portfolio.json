@@ -50,26 +50,6 @@
     "priceOk": true
   },
   {
-    "ticker": "TRX",
-    "type": "crypto",
-    "qty": 17.772734000000128,
-    "buy": 0.2593008383243343,
-    "buyEur": 0.2593008383243343,
-    "currency": "eur",
-    "cur": 0.2593008383243343,
-    "priceOk": false
-  },
-  {
-    "ticker": "DOT",
-    "type": "crypto",
-    "qty": 0.0042805599999837796,
-    "buy": 5.410707337904761,
-    "buyEur": 5.410707337904761,
-    "currency": "eur",
-    "cur": 1.08,
-    "priceOk": true
-  },
-  {
     "ticker": "W",
     "type": "crypto",
     "qty": 0.09604200000012497,
