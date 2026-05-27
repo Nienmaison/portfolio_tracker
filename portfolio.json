@@ -148,15 +148,5 @@
     "currency": "eur",
     "cur": 237.7,
     "priceOk": true
-  },
-  {
-    "ticker": "OM",
-    "type": "crypto",
-    "qty": 0.0000037399999999999998,
-    "buy": 0,
-    "buyEur": 0,
-    "currency": "eur",
-    "cur": 0,
-    "priceOk": false
   }
 ]
