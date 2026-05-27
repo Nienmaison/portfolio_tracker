@@ -50,16 +50,6 @@
     "priceOk": true
   },
   {
-    "ticker": "NPXS",
-    "type": "crypto",
-    "qty": 17660.2703574,
-    "buy": 0.0019769073461461404,
-    "buyEur": 0.0019769073461461404,
-    "currency": "eur",
-    "cur": 0.0019769073461461404,
-    "priceOk": false
-  },
-  {
     "ticker": "TRX",
     "type": "crypto",
     "qty": 17.772734000000128,
