@@ -1921,11 +1921,12 @@ function extractTransactions(headers, rows, cfg) {
 // ── Add a batch of transactions to the pool ───────────────────────────────────
 function addToPool(txs, filename, assetType, meta = {}) {
   // Tag each tx with its asset type (can be overridden per tx from profile)
+  const fileTag = filename + '_' + Date.now();
   for (const tx of txs) {
-    tx._filename = filename; // tag for per-file removal
+    tx._filename = fileTag; // unique tag — prevents collision if same file loaded twice
     _stagingPool.push(tx);
   }
-  _loadedFiles.push({ name: filename, count: txs.length, headers: meta.headers || [], rows: meta.rows || [], detectedProfile: meta.detectedProfile || null });
+  _loadedFiles.push({ name: filename, count: txs.length, headers: meta.headers || [], rows: meta.rows || [], detectedProfile: meta.detectedProfile || null, tag: fileTag });
   renderStagingArea();
   document.getElementById('csv-preview').style.display = 'none';
 }
@@ -1983,8 +1984,11 @@ function editFileMapping(fileIndex) {
   // Remove this file's transactions from the staging pool
   // They will be re-added when the user confirms the new mapping
   const filename = f.name;
-  _stagingPool = _stagingPool.filter(tx => tx._filename !== filename);
-  _pendingFile = { name: filename, headers: f.headers, rows: f.rows, replaceIndex: fileIndex };
+  // Strip old transactions using the unique tag — not filename
+  _stagingPool = _stagingPool.filter(tx => tx._filename !== f.tag);
+  // Remove old file record — addToPool will create a fresh one with new mapping
+  _loadedFiles.splice(fileIndex, 1);
+  _pendingFile = { name: filename, headers: f.headers, rows: f.rows };
 
   // Pre-fill mapper with detected profile values if available
   const profile = f.detectedProfile;
@@ -2010,9 +2014,9 @@ function editFileMapping(fileIndex) {
 
 function removeFromPool(fileIndex) {
   // Remove a file from the pool entirely — transactions and file record
-  const filename = _loadedFiles[fileIndex]?.name;
-  if (!filename) return;
-  _stagingPool  = _stagingPool.filter(tx => tx._filename !== filename);
+  const f = _loadedFiles[fileIndex];
+  if (!f) return;
+  _stagingPool  = _stagingPool.filter(tx => tx._filename !== f.tag);
   _loadedFiles.splice(fileIndex, 1);
   if (_loadedFiles.length === 0) {
     document.getElementById('csv-staging').style.display = 'none';
