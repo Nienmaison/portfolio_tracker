@@ -16,7 +16,7 @@
     "buy": 358.7309026710814,
     "buyEur": 358.7309026710814,
     "currency": "usd",
-    "cur": 390.3652,
+    "cur": 388.67240000000004,
     "priceOk": true
   },
   {
@@ -26,7 +26,7 @@
     "buy": 74.77378597442852,
     "buyEur": 74.77378597442852,
     "currency": "usd",
-    "cur": 189.9156,
+    "cur": 188.9772,
     "priceOk": true
   },
   {
@@ -36,7 +36,7 @@
     "buy": 404.87,
     "buyEur": 372.48040000000003,
     "currency": "usd",
-    "cur": 378.2488,
+    "cur": 379.9048,
     "priceOk": true
   },
   {
@@ -46,7 +46,7 @@
     "buy": 88.9,
     "buyEur": 81.78800000000001,
     "currency": "usd",
-    "cur": 92.8096,
+    "cur": 93.6284,
     "priceOk": true
   },
   {
@@ -138,5 +138,45 @@
     "currency": "eur",
     "cur": 0.00032364,
     "priceOk": true
+  },
+  {
+    "ticker": "VISTRACORP",
+    "type": "stock",
+    "qty": 4,
+    "buy": 165,
+    "buyEur": 165,
+    "currency": "eur",
+    "cur": 165,
+    "priceOk": false
+  },
+  {
+    "ticker": "CONSTELLATIONENERGYCORP",
+    "type": "stock",
+    "qty": 2,
+    "buy": 300.62,
+    "buyEur": 300.62,
+    "currency": "eur",
+    "cur": 300.62,
+    "priceOk": false
+  },
+  {
+    "ticker": "SERVICENOWINC",
+    "type": "stock",
+    "qty": 4,
+    "buy": 99,
+    "buyEur": 99,
+    "currency": "eur",
+    "cur": 99,
+    "priceOk": false
+  },
+  {
+    "ticker": "CLEANSPARKINC",
+    "type": "stock",
+    "qty": 12,
+    "buy": 17.185,
+    "buyEur": 17.185,
+    "currency": "eur",
+    "cur": 17.185,
+    "priceOk": false
   }
 ]
