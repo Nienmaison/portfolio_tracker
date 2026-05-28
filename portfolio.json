@@ -2,12 +2,12 @@
   {
     "ticker": "LINK",
     "type": "crypto",
-    "qty": 191.47130168,
-    "buyEur": 12.932896765517313,
-    "buy": 12.932896765517313,
+    "qty": 340.74627153,
+    "buyEur": 13.073799922105525,
+    "buy": 13.073799922105525,
     "currency": "eur",
-    "cur": 0,
-    "priceOk": false
+    "cur": 7.6,
+    "priceOk": true
   },
   {
     "ticker": "OP",
@@ -16,8 +16,8 @@
     "buyEur": 1.5605839447909537,
     "buy": 1.5605839447909537,
     "currency": "eur",
-    "cur": 0,
-    "priceOk": false
+    "cur": 0.097945,
+    "priceOk": true
   },
   {
     "ticker": "VET",
@@ -26,8 +26,8 @@
     "buyEur": 0.026874711370859186,
     "buy": 0.026874711370859186,
     "currency": "eur",
-    "cur": 0,
-    "priceOk": false
+    "cur": 0.00503244,
+    "priceOk": true
   },
   {
     "ticker": "SEI",
@@ -36,18 +36,18 @@
     "buyEur": 0.4617650935734708,
     "buy": 0.4617650935734708,
     "currency": "eur",
-    "cur": 0,
-    "priceOk": false
+    "cur": 0.057963,
+    "priceOk": true
   },
   {
     "ticker": "ETH",
     "type": "crypto",
-    "qty": 0.3902772200000002,
-    "buyEur": 2281.6082640501572,
-    "buy": 2281.6082640501572,
+    "qty": 1.0951917700000002,
+    "buyEur": 2178.394502017232,
+    "buy": 2178.394502017232,
     "currency": "eur",
-    "cur": 0,
-    "priceOk": false
+    "cur": 1706.42,
+    "priceOk": true
   },
   {
     "ticker": "HOT",
@@ -56,18 +56,18 @@
     "buyEur": 0.00678137466580458,
     "buy": 0.00678137466580458,
     "currency": "eur",
-    "cur": 0,
-    "priceOk": false
+    "cur": 0.00030852,
+    "priceOk": true
   },
   {
     "ticker": "ATOM",
     "type": "crypto",
-    "qty": 45.573201,
-    "buyEur": 10.944,
-    "buy": 10.944,
+    "qty": 91.136402,
+    "buyEur": 9.356449157867786,
+    "buy": 9.356449157867786,
     "currency": "eur",
-    "cur": 0,
-    "priceOk": false
+    "cur": 1.73,
+    "priceOk": true
   },
   {
     "ticker": "NEAR",
@@ -76,8 +76,8 @@
     "buyEur": 1.7222488321827851,
     "buy": 1.7222488321827851,
     "currency": "eur",
-    "cur": 0,
-    "priceOk": false
+    "cur": 1.98,
+    "priceOk": true
   },
   {
     "ticker": "TAO",
@@ -86,8 +86,8 @@
     "buyEur": 291.4722761203668,
     "buy": 291.4722761203668,
     "currency": "eur",
-    "cur": 0,
-    "priceOk": false
+    "cur": 218.78,
+    "priceOk": true
   },
   {
     "ticker": "TRX",
@@ -96,8 +96,8 @@
     "buyEur": 0.30812145417397824,
     "buy": 0.30812145417397824,
     "currency": "eur",
-    "cur": 0,
-    "priceOk": false
+    "cur": 0.300247,
+    "priceOk": true
   },
   {
     "ticker": "DUSK",
@@ -106,8 +106,8 @@
     "buyEur": 0.47085,
     "buy": 0.47085,
     "currency": "eur",
-    "cur": 0,
-    "priceOk": false
+    "cur": 0.104072,
+    "priceOk": true
   },
   {
     "ticker": "VST",
@@ -116,8 +116,8 @@
     "buyEur": 165,
     "buy": 165,
     "currency": "eur",
-    "cur": 0,
-    "priceOk": false
+    "cur": 149.5644,
+    "priceOk": true
   },
   {
     "ticker": "CEG",
@@ -126,8 +126,8 @@
     "buyEur": 300.62,
     "buy": 300.62,
     "currency": "eur",
-    "cur": 0,
-    "priceOk": false
+    "cur": 264.132,
+    "priceOk": true
   },
   {
     "ticker": "NOW",
@@ -136,8 +136,8 @@
     "buyEur": 96.35314611676093,
     "buy": 96.35314611676093,
     "currency": "eur",
-    "cur": 0,
-    "priceOk": false
+    "cur": 98.5136,
+    "priceOk": true
   },
   {
     "ticker": "CLSK",
@@ -146,8 +146,8 @@
     "buyEur": 17.185,
     "buy": 17.185,
     "currency": "eur",
-    "cur": 0,
-    "priceOk": false
+    "cur": 16.4772,
+    "priceOk": true
   },
   {
     "ticker": "TE",
@@ -156,8 +156,8 @@
     "buyEur": 10.67,
     "buy": 10.67,
     "currency": "eur",
-    "cur": 0,
-    "priceOk": false
+    "cur": 10.1292,
+    "priceOk": true
   },
   {
     "ticker": "NOK",
@@ -166,8 +166,8 @@
     "buyEur": 13.035100060781582,
     "buy": 13.035100060781582,
     "currency": "eur",
-    "cur": 0,
-    "priceOk": false
+    "cur": 14.3244,
+    "priceOk": true
   },
   {
     "ticker": "4COP",
@@ -176,8 +176,8 @@
     "buyEur": 57.15302058478855,
     "buy": 57.15302058478855,
     "currency": "eur",
-    "cur": 0,
-    "priceOk": false
+    "cur": 57.92,
+    "priceOk": true
   },
   {
     "ticker": "TSM",
@@ -186,8 +186,8 @@
     "buyEur": 389.92494079932226,
     "buy": 389.92494079932226,
     "currency": "eur",
-    "cur": 0,
-    "priceOk": false
+    "cur": 390.5492,
+    "priceOk": true
   },
   {
     "ticker": "MSFT",
@@ -196,8 +196,8 @@
     "buyEur": 410.522501218338,
     "buy": 410.522501218338,
     "currency": "eur",
-    "cur": 0,
-    "priceOk": false
+    "cur": 391.2392,
+    "priceOk": true
   },
   {
     "ticker": "MRVL",
@@ -206,8 +206,8 @@
     "buyEur": 81.27599937694049,
     "buy": 81.27599937694049,
     "currency": "eur",
-    "cur": 0,
-    "priceOk": false
+    "cur": 180.2096,
+    "priceOk": true
   },
   {
     "ticker": "DUOL",
@@ -216,8 +216,8 @@
     "buyEur": 98.5964,
     "buy": 98.5964,
     "currency": "eur",
-    "cur": 0,
-    "priceOk": false
+    "cur": 101.5036,
+    "priceOk": true
   },
   {
     "ticker": "NBIS",
@@ -226,7 +226,47 @@
     "buyEur": 202.952,
     "buy": 202.952,
     "currency": "eur",
-    "cur": 0,
+    "cur": 211.8024,
+    "priceOk": true
+  },
+  {
+    "ticker": "ARB",
+    "type": "crypto",
+    "qty": 1387.2396251595264,
+    "buy": 1.0387534884856617,
+    "buyEur": 1.0387534884856617,
+    "currency": "eur",
+    "cur": 1.0387534884856617,
+    "priceOk": false
+  },
+  {
+    "ticker": "DOT",
+    "type": "crypto",
+    "qty": 164.62732684,
+    "buy": 7.4711168771839365,
+    "buyEur": 7.4711168771839365,
+    "currency": "eur",
+    "cur": 1.021,
+    "priceOk": true
+  },
+  {
+    "ticker": "ADA",
+    "type": "crypto",
+    "qty": 393.31601,
+    "buy": 1.2317825537294562,
+    "buyEur": 1.2317825537294562,
+    "currency": "eur",
+    "cur": 0.198753,
+    "priceOk": true
+  },
+  {
+    "ticker": "UBT",
+    "type": "crypto",
+    "qty": 1517.80430638,
+    "buy": 0.13718501069259037,
+    "buyEur": 0.13718501069259037,
+    "currency": "eur",
+    "cur": 0.13718501069259037,
     "priceOk": false
   }
 ]
