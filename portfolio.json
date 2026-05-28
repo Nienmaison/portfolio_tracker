@@ -22,9 +22,9 @@
   {
     "ticker": "LINK",
     "type": "crypto",
-    "qty": 40.84003129,
-    "buyEur": 11.976,
-    "buy": 11.976,
+    "qty": 190.11500114,
+    "buyEur": 12.979881650222103,
+    "buy": 12.979881650222103,
     "currency": "eur",
     "cur": 7.62,
     "priceOk": true
@@ -96,7 +96,7 @@
     "buyEur": 165,
     "buy": 165,
     "currency": "eur",
-    "cur": 150.1072,
+    "cur": 150.0428,
     "priceOk": true
   },
   {
@@ -106,7 +106,7 @@
     "buyEur": 300.62,
     "buy": 300.62,
     "currency": "eur",
-    "cur": 265.7696,
+    "cur": 265.5856,
     "priceOk": true
   },
   {
@@ -116,7 +116,7 @@
     "buyEur": 96.35314611676093,
     "buy": 96.35314611676093,
     "currency": "eur",
-    "cur": 99.06560000000002,
+    "cur": 99.2312,
     "priceOk": true
   },
   {
@@ -126,7 +126,7 @@
     "buyEur": 17.185,
     "buy": 17.185,
     "currency": "eur",
-    "cur": 16.7716,
+    "cur": 16.7624,
     "priceOk": true
   },
   {
@@ -136,7 +136,7 @@
     "buyEur": 10.67,
     "buy": 10.67,
     "currency": "eur",
-    "cur": 9.982,
+    "cur": 10.0556,
     "priceOk": true
   },
   {
@@ -146,7 +146,7 @@
     "buyEur": 13.035100060781582,
     "buy": 13.035100060781582,
     "currency": "eur",
-    "cur": 14.3704,
+    "cur": 14.352,
     "priceOk": true
   },
   {
@@ -166,7 +166,7 @@
     "buyEur": 389.92494079932226,
     "buy": 389.92494079932226,
     "currency": "eur",
-    "cur": 392.2144,
+    "cur": 391.966,
     "priceOk": true
   },
   {
@@ -176,7 +176,7 @@
     "buyEur": 410.522501218338,
     "buy": 410.522501218338,
     "currency": "eur",
-    "cur": 390.54,
+    "cur": 390.8252,
     "priceOk": true
   },
   {
@@ -186,7 +186,7 @@
     "buyEur": 81.27599937694049,
     "buy": 81.27599937694049,
     "currency": "eur",
-    "cur": 184.66240000000002,
+    "cur": 184.45080000000002,
     "priceOk": true
   },
   {
@@ -196,7 +196,7 @@
     "buyEur": 98.5964,
     "buy": 98.5964,
     "currency": "eur",
-    "cur": 100.4548,
+    "cur": 100.4272,
     "priceOk": true
   },
   {
@@ -206,17 +206,67 @@
     "buyEur": 202.952,
     "buy": 202.952,
     "currency": "eur",
-    "cur": 208.518,
+    "cur": 208.3984,
     "priceOk": true
   },
   {
     "ticker": "UBT",
     "type": "crypto",
-    "qty": 1517.80430638,
+    "qty": 3035.60861276,
     "buyEur": 0.13718501069259037,
     "buy": 0.13718501069259037,
     "currency": "eur",
     "cur": 0.03031014,
+    "priceOk": true
+  },
+  {
+    "ticker": "ETH",
+    "type": "crypto",
+    "qty": 0.70491455,
+    "buy": 2121.250015338738,
+    "buyEur": 2121.250015338738,
+    "currency": "eur",
+    "cur": 1705.51,
+    "priceOk": true
+  },
+  {
+    "ticker": "ARB",
+    "type": "crypto",
+    "qty": 1387.2396251595264,
+    "buy": 1.0387534884856617,
+    "buyEur": 1.0387534884856617,
+    "currency": "eur",
+    "cur": 0.087422,
+    "priceOk": true
+  },
+  {
+    "ticker": "DOT",
+    "type": "crypto",
+    "qty": 164.62732684,
+    "buy": 7.4711168771839365,
+    "buyEur": 7.4711168771839365,
+    "currency": "eur",
+    "cur": 1.024,
+    "priceOk": true
+  },
+  {
+    "ticker": "ADA",
+    "type": "crypto",
+    "qty": 393.31601,
+    "buy": 1.2317825537294562,
+    "buyEur": 1.2317825537294562,
+    "currency": "eur",
+    "cur": 0.199535,
+    "priceOk": true
+  },
+  {
+    "ticker": "ATOM",
+    "type": "crypto",
+    "qty": 45.563201,
+    "buy": 7.7685498874409635,
+    "buyEur": 7.7685498874409635,
+    "currency": "eur",
+    "cur": 1.73,
     "priceOk": true
   }
 ]
