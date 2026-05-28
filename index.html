@@ -996,11 +996,18 @@ let GITHUB_TOKEN = localStorage.getItem('github-token') || '';
   const saved = localStorage.getItem('github-sync-status');
   if (!saved) return;
   try {
-    const {state, time} = JSON.parse(saved);
+    const {state, ts} = JSON.parse(saved);
     const el = document.getElementById('sync-status');
     if (!el) return;
-    el.textContent = state === 'ok' ? `Saved ${time}` : `Failed ${time}`;
-    el.style.color = state === 'ok' ? 'var(--accent, #58a6ff)' : 'var(--red, #f85149)';
+    const age = ts ? Math.round((Date.now() - ts) / 60000) : null;
+    const label = !age || age < 1 ? 'just now' : age === 1 ? '1 min ago' : `${age} min ago`;
+    if (state === 'ok') {
+      el.textContent = `Synced ${label}`;
+      el.style.color = '#8b949e';
+    } else {
+      el.textContent = 'Sync failed — saved locally only';
+      el.style.color = '#d29922';
+    }
   } catch(e) {}
 })();
 let transactions = JSON.parse(localStorage.getItem('portfolio-transactions') || '[]');
@@ -1219,15 +1226,14 @@ async function saveToGitHub(data) {
 function setSyncStatus(state) {
   const el = document.getElementById('sync-status');
   if (!el) return;
-  const now = new Date().toLocaleTimeString('en-GB', {hour:'2-digit', minute:'2-digit'});
   if (state === 'ok') {
-    el.textContent = `Saved ${now}`;
-    el.style.color = 'var(--accent, #58a6ff)';
+    el.textContent = 'Synced just now';
+    el.style.color = '#8b949e';
   } else {
-    el.textContent = `Failed ${now}`;
-    el.style.color = 'var(--red, #f85149)';
+    el.textContent = 'Sync failed — saved locally only';
+    el.style.color = '#d29922';
   }
-  localStorage.setItem('github-sync-status', JSON.stringify({state, time: now}));
+  localStorage.setItem('github-sync-status', JSON.stringify({state, ts: Date.now()}));
 }
 
 function mergeHoldings(arr) {
