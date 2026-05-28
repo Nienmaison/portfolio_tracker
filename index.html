@@ -1197,6 +1197,20 @@ async function saveToGitHub(data) {
   portfolioFileSha = result.content.sha; // keep cache in sync for reference
 }
 
+function setSyncStatus(state) {
+  const el = document.getElementById('sync-status');
+  if (!el) return;
+  const now = new Date().toLocaleTimeString('en-GB', {hour:'2-digit', minute:'2-digit'});
+  if (state === 'ok') {
+    el.textContent = `Saved ${now}`;
+    el.style.color = 'var(--accent, #58a6ff)';
+  } else {
+    el.textContent = `Failed ${now}`;
+    el.style.color = 'var(--red, #f85149)';
+  }
+  localStorage.setItem('github-sync-status', JSON.stringify({state, time: now}));
+}
+
 function mergeHoldings(arr) {
   // Merge duplicate ticker+type entries into single weighted average positions.
   // Called after every load, import, and manual add to keep holdings clean.
