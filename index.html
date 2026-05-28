@@ -1180,14 +1180,21 @@ async function loadFromGitHub() {
 }
 
 async function saveToGitHub(data) {
+  // Always fetch the current SHA immediately before writing.
+  // Using a cached SHA causes 409 Conflict if anything changed GitHub's
+  // version since page load (manual push, localStorage clear, rapid saves).
+  const current = await githubRequest('GET', null);
+  const freshSha = current?.sha;
+
   const body = {
     message: `Portfolio update ${new Date().toISOString()}`,
-    content: btoa(JSON.stringify(data, null, 2)),
-    branch: 'main'
+    content: btoa(unescape(encodeURIComponent(JSON.stringify(data, null, 2)))),
+    branch:  'main',
+    sha:     freshSha
   };
-  if (portfolioFileSha) body.sha = portfolioFileSha;
+
   const result = await githubRequest('PUT', body);
-  portfolioFileSha = result.content.sha;
+  portfolioFileSha = result.content.sha; // keep cache in sync for reference
 }
 
 function mergeHoldings(arr) {
