@@ -16,7 +16,7 @@
     "buy": 374.3279370306752,
     "buyEur": 374.3279370306752,
     "currency": "usd",
-    "cur": 388.3136,
+    "cur": 388.3964,
     "priceOk": true
   },
   {
@@ -26,7 +26,7 @@
     "buy": 76.94128786517555,
     "buyEur": 76.94128786517555,
     "currency": "usd",
-    "cur": 180.83520000000001,
+    "cur": 181.24,
     "priceOk": true
   },
   {
@@ -36,7 +36,7 @@
     "buy": 405.70819632487184,
     "buyEur": 405.70819632487184,
     "currency": "usd",
-    "cur": 390.2548,
+    "cur": 390.6228,
     "priceOk": true
   },
   {
@@ -46,7 +46,7 @@
     "buy": 91.41747658167056,
     "buyEur": 91.41747658167056,
     "currency": "usd",
-    "cur": 98.8172,
+    "cur": 98.9184,
     "priceOk": true
   },
   {
@@ -146,7 +146,7 @@
     "buy": 165,
     "buyEur": 165,
     "currency": "eur",
-    "cur": 148.43280000000001,
+    "cur": 148.258,
     "priceOk": true
   },
   {
@@ -156,7 +156,7 @@
     "buy": 300.62,
     "buyEur": 300.62,
     "currency": "eur",
-    "cur": 262.9636,
+    "cur": 262.9084,
     "priceOk": true
   },
   {
@@ -166,7 +166,7 @@
     "buy": 17.185,
     "buyEur": 17.185,
     "currency": "eur",
-    "cur": 16.4036,
+    "cur": 16.422,
     "priceOk": true
   },
   {
@@ -176,7 +176,7 @@
     "buy": 10.67,
     "buyEur": 10.67,
     "currency": "eur",
-    "cur": 10.313200000000002,
+    "cur": 10.2764,
     "priceOk": true
   },
   {
@@ -186,7 +186,17 @@
     "buy": 12.875004706787825,
     "buyEur": 12.875004706787825,
     "currency": "eur",
-    "cur": 14.1404,
+    "cur": 14.122,
+    "priceOk": true
+  },
+  {
+    "ticker": "DUOL",
+    "type": "stock",
+    "qty": 2,
+    "buy": 107.17,
+    "buyEur": 98.5964,
+    "currency": "usd",
+    "cur": 101.4024,
     "priceOk": true
   }
 ]
