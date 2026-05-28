@@ -236,8 +236,8 @@
     "buy": 1.0387534884856617,
     "buyEur": 1.0387534884856617,
     "currency": "eur",
-    "cur": 1.0387534884856617,
-    "priceOk": false
+    "cur": 0.08713,
+    "priceOk": true
   },
   {
     "ticker": "DOT",
@@ -266,7 +266,7 @@
     "buy": 0.13718501069259037,
     "buyEur": 0.13718501069259037,
     "currency": "eur",
-    "cur": 0.13718501069259037,
-    "priceOk": false
+    "cur": 0.03032462,
+    "priceOk": true
   }
 ]
