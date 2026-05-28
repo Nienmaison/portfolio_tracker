@@ -1444,7 +1444,7 @@ async function addHolding() {
       msg.textContent = 'Please enter a sell price for closed position.';
       return;
     }
-    // Record realised P&L in transactions — does NOT add to holdings
+    // Record realised P&L in transactions
     const today = new Date().toISOString().split('T')[0];
     const realisedPL = (sellEur - buyEur) * qty;
     transactions.push({
@@ -1452,7 +1452,17 @@ async function addHolding() {
       realisedPL, closed: true, date: today
     });
     localStorage.setItem('portfolio-transactions', JSON.stringify(transactions));
-    save();
+    // Net sell qty from holding — display and sync reflect what is actually held
+    const hIdx = holdings.findIndex(h => h.ticker === ticker && h.type === type);
+    if (hIdx >= 0) {
+      const newQty = Math.max((holdings[hIdx].qty || 0) - qty, 0);
+      if (newQty <= 0.000001) {
+        holdings.splice(hIdx, 1);  // fully sold — remove holding
+      } else {
+        holdings[hIdx] = { ...holdings[hIdx], qty: newQty };  // partial sell
+      }
+    }
+    save(); render(); syncHoldingsToFunnel();
     msg.style.color = 'var(--accent)';
     msg.textContent = `${ticker} closed — realised P&L: €${realisedPL.toFixed(2)}`;
     ['f-ticker','f-qty','f-buy','f-sell'].forEach(id => {
@@ -1588,10 +1598,15 @@ async function saveEdit() {
     localStorage.setItem('portfolio-transactions', JSON.stringify(transactions));
   }
   if (!txs.length) return;
-  const totalQty = txs.reduce((s, t) => s + (t.qty || 0), 0);
-  const totalCost = txs.reduce((s, t) => s + (t.qty || 0) * (t.buyEur || 0), 0);
-  const avgBuyEur = totalQty > 0 ? totalCost / totalQty : 0;
-  holdings[editIndex] = { ...holdings[editIndex], ticker, type, qty: totalQty, buy: avgBuyEur, buyEur: avgBuyEur };
+  // Net sell transactions (closed:true) against buys to get correct held quantity
+  const buyTxs  = txs.filter(t => !t.closed);
+  const sellTxs = txs.filter(t =>  t.closed);
+  const totalBought = buyTxs.reduce((s, t) => s + (t.qty || 0), 0);
+  const totalSold   = sellTxs.reduce((s, t) => s + (t.qty || 0), 0);
+  const netQty      = Math.max(totalBought - totalSold, 0);
+  const totalCost   = buyTxs.reduce((s, t) => s + (t.qty || 0) * (t.buyEur || 0), 0);
+  const avgBuyEur   = totalBought > 0 ? totalCost / totalBought : 0;
+  holdings[editIndex] = { ...holdings[editIndex], ticker, type, qty: netQty, buy: avgBuyEur, buyEur: avgBuyEur };
   closeEdit();
   save();
   try {
