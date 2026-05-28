@@ -1533,7 +1533,15 @@ function renderTxRows(ticker) {
   }
   container.innerHTML = transactions.filter(t => t.ticker === ticker).map((tx, idx) => {
     const globalIdx = transactions.indexOf(tx);
-    return `<div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:6px;align-items:end;">
+    return `<div style="display:grid;grid-template-columns:auto 1fr 1fr 1fr auto;gap:6px;align-items:end;">
+      <div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-bottom:3px;">Type</div>
+        <select onchange="updateTx(${globalIdx},'closed',this.value==='sell')"
+          style="background:var(--bg);border:1px solid var(--border2);color:var(--text);font-family:var(--mono);font-size:12px;padding:6px 8px;border-radius:4px;cursor:pointer;">
+          <option value="buy" ${tx.closed ? '' : 'selected'}>Buy</option>
+          <option value="sell" ${tx.closed ? 'selected' : ''}>Sell</option>
+        </select>
+      </div>
       <div>
         <div style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-bottom:3px;">Date</div>
         <input type="date" value="${tx.date || ''}" onchange="updateTx(${globalIdx},'date',this.value)"
@@ -1545,8 +1553,8 @@ function renderTxRows(ticker) {
           style="width:100%;background:var(--bg);border:1px solid var(--border2);color:var(--text);font-family:var(--mono);font-size:12px;padding:6px 8px;border-radius:4px;" />
       </div>
       <div>
-        <div style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-bottom:3px;">Buy price (€)</div>
-        <input type="number" value="${tx.buyEur.toFixed(2)}" step="any" min="0" onchange="updateTx(${globalIdx},'buyEur',parseFloat(this.value))"
+        <div style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-bottom:3px;">Price (€)</div>
+        <input type="number" value="${(tx.buyEur || 0).toFixed(2)}" step="any" min="0" onchange="updateTx(${globalIdx},'buyEur',parseFloat(this.value))"
           style="width:100%;background:var(--bg);border:1px solid var(--border2);color:var(--text);font-family:var(--mono);font-size:12px;padding:6px 8px;border-radius:4px;" />
       </div>
       <button onclick="removeTx(${globalIdx})" style="font-family:var(--mono);font-size:11px;background:transparent;border:1px solid transparent;color:var(--muted);padding:6px 8px;border-radius:3px;cursor:pointer;margin-bottom:0;" onmouseover="this.style.color='var(--red)';this.style.borderColor='rgba(248,113,113,0.3)'" onmouseout="this.style.color='var(--muted)';this.style.borderColor='transparent'">✕</button>
