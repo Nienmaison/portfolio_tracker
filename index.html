@@ -2211,7 +2211,9 @@ function calculateNetPositions() {
       netQty,    avgBuy,
       buyCount:  data.buys.length,
       sellCount: data.sells.length,
-      stakingQty: data.staking
+      stakingQty: data.staking,
+      // valid=false warns user when ticker looks like a company name (spaces stripped)
+      valid:     data.assetType !== 'stock' || /^[A-Z0-9]{1,5}(\.[A-Z]{1,3})?$/.test(data.ticker)
     });
   }
 
@@ -2226,8 +2228,11 @@ function renderCsvPreview(coins) {
   coins.forEach((c, i) => {
     const tr = document.createElement('tr');
     tr.style.borderBottom = '1px solid var(--border)';
+    const tickerCell = c.valid === false
+      ? `<span style="color:#d29922;" title="Ticker looks like a company name — check your column mapping">&#x26a0; ${c.ticker}</span>`
+      : c.ticker;
     tr.innerHTML = `
-      <td style="padding:8px;font-weight:500;">${c.ticker}</td>
+      <td style="padding:8px;font-weight:500;">${tickerCell}</td>
       <td style="padding:8px;font-size:11px;color:var(--muted);">${c.type}</td>
       <td style="padding:8px;text-align:right;font-family:var(--mono);font-size:11px;">${c.netQty.toFixed(6)}</td>
       <td style="padding:8px;text-align:right;font-family:var(--mono);font-size:11px;">€${c.avgBuy > 0 ? c.avgBuy.toFixed(4) : '—'}</td>
