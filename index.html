@@ -621,12 +621,13 @@ select option { background: var(--bg); }
 <header>
   <div class="logo">Portfolio.track</div>
   <div class="header-right">
-    <button class="btn-refresh" id="guest-btn" onclick="toggleGuest()">Guest mode</button>
+    <button class="btn-refresh" id="guest-btn" onclick="toggleGuest()">Discrete mode</button>
     <div class="status-pill">
       <div class="dot" id="status-dot"></div>
       <span id="status-text">Initialising</span>
     </div>
     <span class="last-updated" id="last-updated"></span>
+    <span id="sync-status" class="last-updated" style="font-size:11px;opacity:0.75;margin-left:4px;"></span>
     <button class="btn-refresh" onclick="refreshAll()">Refresh prices</button>
   </div>
 </header>
@@ -990,6 +991,18 @@ select option { background: var(--bg); }
 <script>
 const FINNHUB_KEY = 'd7j746pr01qp3g1s2f0gd7j746pr01qp3g1s2f10';
 let GITHUB_TOKEN = localStorage.getItem('github-token') || '';
+// Restore sync status indicator from previous session
+(function() {
+  const saved = localStorage.getItem('github-sync-status');
+  if (!saved) return;
+  try {
+    const {state, time} = JSON.parse(saved);
+    const el = document.getElementById('sync-status');
+    if (!el) return;
+    el.textContent = state === 'ok' ? `Saved ${time}` : `Failed ${time}`;
+    el.style.color = state === 'ok' ? 'var(--accent, #58a6ff)' : 'var(--red, #f85149)';
+  } catch(e) {}
+})();
 let transactions = JSON.parse(localStorage.getItem('portfolio-transactions') || '[]');
 const COLORS = ['#4C8BF5','#6B7FA3','#8B9EC9','#3D6B9E','#5E7DA8','#A3B4CC','#2E5480','#7B8FA8','#4A6D99','#90A4BE'];
 const CRYPTO_IDS = {
@@ -1183,18 +1196,24 @@ async function saveToGitHub(data) {
   // Always fetch the current SHA immediately before writing.
   // Using a cached SHA causes 409 Conflict if anything changed GitHub's
   // version since page load (manual push, localStorage clear, rapid saves).
-  const current = await githubRequest('GET', null);
-  const freshSha = current?.sha;
+  try {
+    const current = await githubRequest('GET', null);
+    const freshSha = current?.sha;
 
-  const body = {
-    message: `Portfolio update ${new Date().toISOString()}`,
-    content: btoa(unescape(encodeURIComponent(JSON.stringify(data, null, 2)))),
-    branch:  'main',
-    sha:     freshSha
-  };
+    const body = {
+      message: `Portfolio update ${new Date().toISOString()}`,
+      content: btoa(unescape(encodeURIComponent(JSON.stringify(data, null, 2)))),
+      branch:  'main',
+      sha:     freshSha
+    };
 
-  const result = await githubRequest('PUT', body);
-  portfolioFileSha = result.content.sha; // keep cache in sync for reference
+    const result = await githubRequest('PUT', body);
+    portfolioFileSha = result.content.sha; // keep cache in sync for reference
+    setSyncStatus('ok');
+  } catch (e) {
+    setSyncStatus('error');
+    throw e;
+  }
 }
 
 function setSyncStatus(state) {
@@ -1596,7 +1615,7 @@ function toggleGuest() {
   guestMode = !guestMode;
   document.querySelector('main').classList.toggle('guest-blur', guestMode);
   const btn = document.getElementById('guest-btn');
-  btn.textContent = guestMode ? 'Exit guest' : 'Guest mode';
+  btn.textContent = guestMode ? 'Exit discrete' : 'Discrete mode';
   btn.classList.toggle('active', guestMode);
   renderMetrics();
 }
@@ -1604,7 +1623,7 @@ function applyGuestMode() {
   if (!guestMode) return;
   document.querySelector('main').classList.add('guest-blur');
   const btn = document.getElementById('guest-btn');
-  if (btn) { btn.textContent = 'Exit guest'; btn.classList.add('active'); }
+  if (btn) { btn.textContent = 'Exit discrete'; btn.classList.add('active'); }
 }
 
 // ── Tab switcher ──────────────────────────────────────────────────────────────
@@ -1636,10 +1655,18 @@ function syncHoldingsToFunnel() {
     });
   }
 
+  // Build holdings_positions for tranche-action context in synthesis (Item 2A)
+  const holdingsPositions = holdings.map(h => ({
+    ticker: h.ticker.toUpperCase(),
+    avg_buy_price: h.buyEur || h.buy || 0,
+    quantity: h.qty,
+    weight_pct: holdingsWithValues[h.ticker.toUpperCase()] || 0
+  }));
+
   fetch('https://fincr.duckdns.org/holdings', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
-    body: JSON.stringify({ holdings: tickers, watchlist: [], holdings_with_values: holdingsWithValues })
+    body: JSON.stringify({ holdings: tickers, watchlist: [], holdings_with_values: holdingsWithValues, holdings_positions: holdingsPositions })
   })
   .then(r => r.json())
   .then(d => console.log('[funnel] Holdings synced:', d.holdings))
