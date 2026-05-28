@@ -1190,6 +1190,31 @@ async function saveToGitHub(data) {
   portfolioFileSha = result.content.sha;
 }
 
+function mergeHoldings(arr) {
+  // Merge duplicate ticker+type entries into single weighted average positions.
+  // Called after every load, import, and manual add to keep holdings clean.
+  const map = {};
+  for (const h of arr) {
+    const key = h.ticker + '__' + h.type;
+    if (!map[key]) {
+      map[key] = { ...h };
+    } else {
+      // Weighted average buy price across all entries for this ticker
+      const prev = map[key];
+      const totalQty  = prev.qty + h.qty;
+      const totalCost = (prev.buyEur || prev.buy || 0) * prev.qty + (h.buyEur || h.buy || 0) * h.qty;
+      const avgBuy    = totalQty > 0 ? totalCost / totalQty : 0;
+      map[key] = {
+        ...prev,
+        qty:    totalQty,
+        buy:    avgBuy,
+        buyEur: avgBuy,
+      };
+    }
+  }
+  return Object.values(map);
+}
+
 async function load() {
   setStatus('loading', 'Loading from GitHub...');
   try {
@@ -1207,6 +1232,7 @@ async function load() {
     if (raw) holdings = JSON.parse(raw);
     setStatus('error', 'GitHub load failed — using local data');
   }
+  holdings = mergeHoldings(holdings); // deduplicate on load — same ticker from multiple imports
   render();
   applyGuestMode();
   if (holdings.length) fetchEurUsd().then(refreshAll);
@@ -1426,6 +1452,7 @@ async function addHolding() {
   } else {
     holdings.push({ ticker, type, qty, buy, buyEur, currency, cur, priceOk });
   }
+  holdings = mergeHoldings(holdings); // deduplicate after manual add
   save(); render();
   syncHoldingsToFunnel();
   ['f-ticker','f-qty','f-buy'].forEach(id => document.getElementById(id).value = '');
@@ -2183,6 +2210,7 @@ async function importFromCsv() {
   }
 
   localStorage.setItem('portfolio-transactions', JSON.stringify(transactions));
+  holdings = mergeHoldings(holdings); // deduplicate after import
   save(); render(); syncHoldingsToFunnel();
 
   // Write import log entry
