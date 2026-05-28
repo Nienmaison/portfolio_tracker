@@ -1508,7 +1508,18 @@ async function saveEdit() {
   const ticker = document.getElementById('e-ticker').value.trim().toUpperCase();
   const type   = document.getElementById('e-type').value;
   // Recalculate holding from transactions
-  const txs = transactions.filter(t => t.ticker === ticker);
+  // Find transactions by OLD ticker (before user's edit) — editIndex points to the holding
+  // being edited, use its current ticker as the lookup key, not the new value
+  const oldTicker = holdings[editIndex]?.ticker || ticker;
+  const txs = transactions.filter(t => t.ticker === oldTicker);
+
+  // If ticker was renamed, update all matching transactions to the new ticker
+  if (oldTicker !== ticker) {
+    transactions.forEach(t => {
+      if (t.ticker === oldTicker) t.ticker = ticker;
+    });
+    localStorage.setItem('portfolio-transactions', JSON.stringify(transactions));
+  }
   if (!txs.length) return;
   const totalQty = txs.reduce((s, t) => s + (t.qty || 0), 0);
   const totalCost = txs.reduce((s, t) => s + (t.qty || 0) * (t.buyEur || 0), 0);
