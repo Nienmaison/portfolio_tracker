@@ -1672,7 +1672,20 @@ function syncHoldingsToFunnel() {
   const apiKey = localStorage.getItem('fincr-api-key');
   if (!apiKey) return;
   const txs = JSON.parse(localStorage.getItem('portfolio-transactions') || '[]');
-  const tickers = [...new Set(txs.map(t => t.ticker))];
+
+  // Net all transactions per ticker — only sync tickers with net qty > 0.
+  // Closed positions (tx.closed === true) are sells; subtract their qty.
+  // Prevents sold-out positions from being written to holdings.json on the VPS.
+  const netQty = {};
+  for (const tx of txs) {
+    if (!tx.ticker) continue;
+    const ticker = tx.ticker.toUpperCase();
+    const qty = tx.closed === true ? -(tx.qty || 0) : (tx.qty || 0);
+    netQty[ticker] = (netQty[ticker] || 0) + qty;
+  }
+  const tickers = Object.entries(netQty)
+    .filter(([_, qty]) => qty > 0)
+    .map(([ticker]) => ticker);
 
   // Build holdings_with_values from live prices if available.
   // Sends {} if prices haven't loaded yet — backend preserves previous values in that case.
