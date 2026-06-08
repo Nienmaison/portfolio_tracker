@@ -1,25 +1,5 @@
 [
   {
-    "ticker": "NEAR",
-    "type": "crypto",
-    "qty": 240.16330824,
-    "buyEur": 1.7204,
-    "buy": 1.7204,
-    "currency": "eur",
-    "cur": 1.86,
-    "priceOk": true
-  },
-  {
-    "ticker": "TAO",
-    "type": "crypto",
-    "qty": 1.59722672,
-    "buyEur": 318.45,
-    "buy": 318.45,
-    "currency": "eur",
-    "cur": 185.55,
-    "priceOk": true
-  },
-  {
     "ticker": "LINK",
     "type": "crypto",
     "qty": 40.84003129,
