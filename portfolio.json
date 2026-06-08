@@ -128,5 +128,15 @@
     "currency": "eur",
     "cur": 0.00430409,
     "priceOk": true
+  },
+  {
+    "ticker": "SEI",
+    "type": "crypto",
+    "qty": 2421.63,
+    "buy": 0.45946,
+    "buyEur": 0.45946,
+    "currency": "eur",
+    "cur": 0.04335822,
+    "priceOk": true
   }
 ]
