@@ -6,7 +6,7 @@
     "buyEur": 165,
     "buy": 165,
     "currency": "eur",
-    "cur": 135.792,
+    "cur": 135.9116,
     "priceOk": true
   },
   {
@@ -16,17 +16,17 @@
     "buyEur": 300.62,
     "buy": 300.62,
     "currency": "eur",
-    "cur": 233.09120000000001,
+    "cur": 233.15560000000002,
     "priceOk": true
   },
   {
     "ticker": "NOW",
     "type": "stock",
-    "qty": 4,
-    "buyEur": 99,
-    "buy": 99,
+    "qty": 9.818587390000001,
+    "buyEur": 95.27484278121804,
+    "buy": 95.27484278121804,
     "currency": "eur",
-    "cur": 105.4504,
+    "cur": 105.36760000000001,
     "priceOk": true
   },
   {
@@ -36,7 +36,7 @@
     "buyEur": 17.185,
     "buy": 17.185,
     "currency": "eur",
-    "cur": 14.674,
+    "cur": 14.729200000000002,
     "priceOk": true
   },
   {
@@ -46,17 +46,17 @@
     "buyEur": 10.67,
     "buy": 10.67,
     "currency": "eur",
-    "cur": 8.556000000000001,
+    "cur": 8.5836,
     "priceOk": true
   },
   {
     "ticker": "NOK",
     "type": "stock",
-    "qty": 10,
-    "buyEur": 13.325,
-    "buy": 13.325,
+    "qty": 18.10795454,
+    "buyEur": 12.875004706787825,
+    "buy": 12.875004706787825,
     "currency": "eur",
-    "cur": 13.625200000000001,
+    "cur": 13.643600000000001,
     "priceOk": true
   },
   {
@@ -66,7 +66,7 @@
     "buyEur": 98.5964,
     "buy": 98.5964,
     "currency": "eur",
-    "cur": 107.272,
+    "cur": 107.6584,
     "priceOk": true
   },
   {
@@ -76,7 +76,7 @@
     "buyEur": 202.952,
     "buy": 202.952,
     "currency": "eur",
-    "cur": 207.48760000000001,
+    "cur": 207.5244,
     "priceOk": true
   },
   {
@@ -86,7 +86,7 @@
     "buyEur": 0.13718501069259037,
     "buy": 0.13718501069259037,
     "currency": "eur",
-    "cur": 0.02583704,
+    "cur": 0.0258038,
     "priceOk": true
   },
   {
@@ -96,7 +96,7 @@
     "buy": 1.8194,
     "buyEur": 1.8194,
     "currency": "eur",
-    "cur": 1.86,
+    "cur": 1.85,
     "priceOk": true
   },
   {
@@ -106,7 +106,7 @@
     "buy": 268.67,
     "buyEur": 268.67,
     "currency": "eur",
-    "cur": 185.61,
+    "cur": 185.68,
     "priceOk": true
   },
   {
@@ -116,7 +116,7 @@
     "buy": 12.980741084971433,
     "buyEur": 12.980741084971433,
     "currency": "eur",
-    "cur": 6.92,
+    "cur": 6.93,
     "priceOk": true
   },
   {
@@ -126,7 +126,7 @@
     "buy": 0.026332,
     "buyEur": 0.026332,
     "currency": "eur",
-    "cur": 0.00430409,
+    "cur": 0.00430215,
     "priceOk": true
   },
   {
@@ -136,7 +136,7 @@
     "buy": 0.45946,
     "buyEur": 0.45946,
     "currency": "eur",
-    "cur": 0.04335822,
+    "cur": 0.0433305,
     "priceOk": true
   },
   {
@@ -146,7 +146,7 @@
     "buy": 2121.250015338738,
     "buyEur": 2121.250015338738,
     "currency": "eur",
-    "cur": 1438.21,
+    "cur": 1459.89,
     "priceOk": true
   },
   {
@@ -156,7 +156,37 @@
     "buy": 1.0387534884856617,
     "buyEur": 1.0387534884856617,
     "currency": "eur",
-    "cur": 0.070598,
+    "cur": 0.072329,
+    "priceOk": true
+  },
+  {
+    "ticker": "TSM",
+    "type": "stock",
+    "qty": 1.02481428,
+    "buy": 389.92494079932226,
+    "buyEur": 389.92494079932226,
+    "currency": "eur",
+    "cur": 393.99,
+    "priceOk": true
+  },
+  {
+    "ticker": "MSFT",
+    "type": "stock",
+    "qty": 0.85169306,
+    "buy": 410.522501218338,
+    "buyEur": 410.522501218338,
+    "currency": "eur",
+    "cur": 379.9784,
+    "priceOk": true
+  },
+  {
+    "ticker": "SOFI",
+    "type": "stock",
+    "qty": 4.93196869,
+    "buy": 16.61,
+    "buyEur": 16.61,
+    "currency": "eur",
+    "cur": 15.088,
     "priceOk": true
   }
 ]
