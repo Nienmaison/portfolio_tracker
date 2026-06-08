@@ -88,5 +88,15 @@
     "currency": "eur",
     "cur": 0.02583704,
     "priceOk": true
+  },
+  {
+    "ticker": "NEAR",
+    "type": "crypto",
+    "qty": 389.48,
+    "buy": 1.8194,
+    "buyEur": 1.8194,
+    "currency": "eur",
+    "cur": 1.86,
+    "priceOk": true
   }
 ]
