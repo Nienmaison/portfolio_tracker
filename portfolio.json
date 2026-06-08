@@ -16,7 +16,7 @@
     "buyEur": 300.62,
     "buy": 300.62,
     "currency": "eur",
-    "cur": 233.4224,
+    "cur": 233.01760000000002,
     "priceOk": true
   },
   {
@@ -26,7 +26,7 @@
     "buyEur": 99,
     "buy": 99,
     "currency": "eur",
-    "cur": 104.80640000000001,
+    "cur": 104.8984,
     "priceOk": true
   },
   {
@@ -36,7 +36,7 @@
     "buyEur": 17.185,
     "buy": 17.185,
     "currency": "eur",
-    "cur": 14.554400000000001,
+    "cur": 14.5084,
     "priceOk": true
   },
   {
@@ -46,7 +46,7 @@
     "buyEur": 10.67,
     "buy": 10.67,
     "currency": "eur",
-    "cur": 8.464,
+    "cur": 8.4824,
     "priceOk": true
   },
   {
@@ -56,7 +56,7 @@
     "buyEur": 13.325,
     "buy": 13.325,
     "currency": "eur",
-    "cur": 13.478000000000002,
+    "cur": 13.459600000000002,
     "priceOk": true
   },
   {
@@ -66,7 +66,7 @@
     "buyEur": 98.5964,
     "buy": 98.5964,
     "currency": "eur",
-    "cur": 107.11560000000001,
+    "cur": 107.2076,
     "priceOk": true
   },
   {
@@ -76,7 +76,7 @@
     "buyEur": 202.952,
     "buy": 202.952,
     "currency": "eur",
-    "cur": 206.5216,
+    "cur": 205.78560000000002,
     "priceOk": true
   },
   {
@@ -117,6 +117,16 @@
     "buyEur": 11.98,
     "currency": "eur",
     "cur": 6.91,
+    "priceOk": true
+  },
+  {
+    "ticker": "VET",
+    "type": "crypto",
+    "qty": 48057.4,
+    "buy": 0.026332,
+    "buyEur": 0.026332,
+    "currency": "eur",
+    "cur": 0.00430409,
     "priceOk": true
   }
 ]
