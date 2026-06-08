@@ -1,35 +1,5 @@
 [
   {
-    "ticker": "OP",
-    "type": "crypto",
-    "qty": 894.32049691,
-    "buyEur": 1.5473,
-    "buy": 1.5473,
-    "currency": "eur",
-    "cur": 0.085174,
-    "priceOk": true
-  },
-  {
-    "ticker": "DUSK",
-    "type": "crypto",
-    "qty": 542.216,
-    "buyEur": 0.47085,
-    "buy": 0.47085,
-    "currency": "eur",
-    "cur": 0.079988,
-    "priceOk": true
-  },
-  {
-    "ticker": "HOT",
-    "type": "crypto",
-    "qty": 81567.46,
-    "buyEur": 0.0067804,
-    "buy": 0.0067804,
-    "currency": "eur",
-    "cur": 0.00027592,
-    "priceOk": true
-  },
-  {
     "ticker": "VST",
     "type": "stock",
     "qty": 8,
