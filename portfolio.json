@@ -2,11 +2,11 @@
   {
     "ticker": "VST",
     "type": "stock",
-    "qty": 8,
+    "qty": 4,
     "buyEur": 165,
     "buy": 165,
     "currency": "eur",
-    "cur": 135.6816,
+    "cur": 135.7552,
     "priceOk": true
   },
   {
@@ -16,7 +16,7 @@
     "buyEur": 300.62,
     "buy": 300.62,
     "currency": "eur",
-    "cur": 232.87040000000002,
+    "cur": 232.9532,
     "priceOk": true
   },
   {
@@ -26,7 +26,7 @@
     "buyEur": 99,
     "buy": 99,
     "currency": "eur",
-    "cur": 104.7972,
+    "cur": 105.0364,
     "priceOk": true
   },
   {
@@ -36,7 +36,7 @@
     "buyEur": 17.185,
     "buy": 17.185,
     "currency": "eur",
-    "cur": 14.582,
+    "cur": 14.609600000000002,
     "priceOk": true
   },
   {
@@ -46,7 +46,7 @@
     "buyEur": 10.67,
     "buy": 10.67,
     "currency": "eur",
-    "cur": 8.4732,
+    "cur": 8.5192,
     "priceOk": true
   },
   {
@@ -56,7 +56,7 @@
     "buyEur": 13.325,
     "buy": 13.325,
     "currency": "eur",
-    "cur": 13.496400000000001,
+    "cur": 13.5332,
     "priceOk": true
   },
   {
@@ -66,7 +66,7 @@
     "buyEur": 98.5964,
     "buy": 98.5964,
     "currency": "eur",
-    "cur": 106.8212,
+    "cur": 107.2076,
     "priceOk": true
   },
   {
@@ -76,7 +76,7 @@
     "buyEur": 202.952,
     "buy": 202.952,
     "currency": "eur",
-    "cur": 204.2492,
+    "cur": 206.65040000000002,
     "priceOk": true
   },
   {
