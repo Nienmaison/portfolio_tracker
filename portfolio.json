@@ -22,9 +22,9 @@
   {
     "ticker": "LINK",
     "type": "crypto",
-    "qty": 230.95500113999998,
-    "buyEur": 12.803071594611673,
-    "buy": 12.803071594611673,
+    "qty": 81.68003129,
+    "buyEur": 11.977999999233841,
+    "buy": 11.977999999233841,
     "currency": "eur",
     "cur": 6.97,
     "priceOk": true
@@ -37,16 +37,6 @@
     "buy": 0.026339000000000005,
     "currency": "eur",
     "cur": 0.00432723,
-    "priceOk": true
-  },
-  {
-    "ticker": "TRX",
-    "type": "crypto",
-    "qty": 477.213543,
-    "buyEur": 0.30909,
-    "buy": 0.30909,
-    "currency": "eur",
-    "cur": 0.282667,
     "priceOk": true
   },
   {
