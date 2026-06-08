@@ -138,15 +138,5 @@
     "currency": "eur",
     "cur": 0.04335822,
     "priceOk": true
-  },
-  {
-    "ticker": "OP",
-    "type": "crypto",
-    "qty": 894.33,
-    "buy": 1.5473,
-    "buyEur": 1.5473,
-    "currency": "eur",
-    "cur": 0.085174,
-    "priceOk": true
   }
 ]
