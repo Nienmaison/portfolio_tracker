@@ -6,8 +6,8 @@
     "buyEur": 1.7204,
     "buy": 1.7204,
     "currency": "eur",
-    "cur": 0,
-    "priceOk": false
+    "cur": 1.86,
+    "priceOk": true
   },
   {
     "ticker": "TAO",
@@ -16,8 +16,8 @@
     "buyEur": 318.45,
     "buy": 318.45,
     "currency": "eur",
-    "cur": 0,
-    "priceOk": false
+    "cur": 185.55,
+    "priceOk": true
   },
   {
     "ticker": "LINK",
@@ -26,8 +26,8 @@
     "buyEur": 11.976,
     "buy": 11.976,
     "currency": "eur",
-    "cur": 0,
-    "priceOk": false
+    "cur": 6.91,
+    "priceOk": true
   },
   {
     "ticker": "VET",
@@ -36,8 +36,8 @@
     "buyEur": 0.026339000000000005,
     "buy": 0.026339000000000005,
     "currency": "eur",
-    "cur": 0,
-    "priceOk": false
+    "cur": 0.00430409,
+    "priceOk": true
   },
   {
     "ticker": "TRX",
@@ -46,8 +46,8 @@
     "buyEur": 0.30909,
     "buy": 0.30909,
     "currency": "eur",
-    "cur": 0,
-    "priceOk": false
+    "cur": 0.282929,
+    "priceOk": true
   },
   {
     "ticker": "SEI",
@@ -56,8 +56,8 @@
     "buyEur": 0.45959,
     "buy": 0.45959,
     "currency": "eur",
-    "cur": 0,
-    "priceOk": false
+    "cur": 0.04335822,
+    "priceOk": true
   },
   {
     "ticker": "OP",
@@ -66,8 +66,8 @@
     "buyEur": 1.5473,
     "buy": 1.5473,
     "currency": "eur",
-    "cur": 0,
-    "priceOk": false
+    "cur": 0.085174,
+    "priceOk": true
   },
   {
     "ticker": "DUSK",
@@ -76,8 +76,8 @@
     "buyEur": 0.47085,
     "buy": 0.47085,
     "currency": "eur",
-    "cur": 0,
-    "priceOk": false
+    "cur": 0.079988,
+    "priceOk": true
   },
   {
     "ticker": "HOT",
@@ -86,8 +86,8 @@
     "buyEur": 0.0067804,
     "buy": 0.0067804,
     "currency": "eur",
-    "cur": 0,
-    "priceOk": false
+    "cur": 0.00027592,
+    "priceOk": true
   },
   {
     "ticker": "VST",
@@ -96,8 +96,8 @@
     "buyEur": 165,
     "buy": 165,
     "currency": "eur",
-    "cur": 0,
-    "priceOk": false
+    "cur": 136.14159999999998,
+    "priceOk": true
   },
   {
     "ticker": "CEG",
@@ -106,8 +106,8 @@
     "buyEur": 300.62,
     "buy": 300.62,
     "currency": "eur",
-    "cur": 0,
-    "priceOk": false
+    "cur": 233.3856,
+    "priceOk": true
   },
   {
     "ticker": "NOW",
@@ -116,8 +116,8 @@
     "buyEur": 99,
     "buy": 99,
     "currency": "eur",
-    "cur": 0,
-    "priceOk": false
+    "cur": 104.5488,
+    "priceOk": true
   },
   {
     "ticker": "CLSK",
@@ -126,8 +126,8 @@
     "buyEur": 17.185,
     "buy": 17.185,
     "currency": "eur",
-    "cur": 0,
-    "priceOk": false
+    "cur": 14.628,
+    "priceOk": true
   },
   {
     "ticker": "TE",
@@ -136,8 +136,8 @@
     "buyEur": 10.67,
     "buy": 10.67,
     "currency": "eur",
-    "cur": 0,
-    "priceOk": false
+    "cur": 8.4732,
+    "priceOk": true
   },
   {
     "ticker": "NOK",
@@ -146,8 +146,8 @@
     "buyEur": 13.325,
     "buy": 13.325,
     "currency": "eur",
-    "cur": 0,
-    "priceOk": false
+    "cur": 13.468800000000002,
+    "priceOk": true
   },
   {
     "ticker": "DUOL",
@@ -156,8 +156,8 @@
     "buyEur": 98.5964,
     "buy": 98.5964,
     "currency": "eur",
-    "cur": 0,
-    "priceOk": false
+    "cur": 106.4532,
+    "priceOk": true
   },
   {
     "ticker": "NBIS",
@@ -166,8 +166,8 @@
     "buyEur": 202.952,
     "buy": 202.952,
     "currency": "eur",
-    "cur": 0,
-    "priceOk": false
+    "cur": 206.8988,
+    "priceOk": true
   },
   {
     "ticker": "UBT",
@@ -176,7 +176,7 @@
     "buyEur": 0.13718501069259037,
     "buy": 0.13718501069259037,
     "currency": "eur",
-    "cur": 0,
-    "priceOk": false
+    "cur": 0.02583704,
+    "priceOk": true
   }
 ]
