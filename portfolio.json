@@ -92,7 +92,7 @@
   {
     "ticker": "VST",
     "type": "stock",
-    "qty": 12,
+    "qty": 8,
     "buyEur": 165,
     "buy": 165,
     "currency": "eur",
@@ -102,7 +102,7 @@
   {
     "ticker": "CEG",
     "type": "stock",
-    "qty": 4,
+    "qty": 2,
     "buyEur": 300.62,
     "buy": 300.62,
     "currency": "eur",
@@ -112,9 +112,9 @@
   {
     "ticker": "NOW",
     "type": "stock",
-    "qty": 13.818587390000001,
-    "buyEur": 96.35314611676093,
-    "buy": 96.35314611676093,
+    "qty": 4,
+    "buyEur": 99,
+    "buy": 99,
     "currency": "eur",
     "cur": 0,
     "priceOk": false
@@ -122,7 +122,7 @@
   {
     "ticker": "CLSK",
     "type": "stock",
-    "qty": 24,
+    "qty": 12,
     "buyEur": 17.185,
     "buy": 17.185,
     "currency": "eur",
@@ -132,7 +132,7 @@
   {
     "ticker": "TE",
     "type": "stock",
-    "qty": 32,
+    "qty": 16,
     "buyEur": 10.67,
     "buy": 10.67,
     "currency": "eur",
@@ -142,49 +142,9 @@
   {
     "ticker": "NOK",
     "type": "stock",
-    "qty": 28.10795454,
-    "buyEur": 13.035100060781582,
-    "buy": 13.035100060781582,
-    "currency": "eur",
-    "cur": 0,
-    "priceOk": false
-  },
-  {
-    "ticker": "4COP",
-    "type": "stock",
-    "qty": 10.575119070000001,
-    "buyEur": 57.15302058478855,
-    "buy": 57.15302058478855,
-    "currency": "eur",
-    "cur": 0,
-    "priceOk": false
-  },
-  {
-    "ticker": "TSM",
-    "type": "stock",
-    "qty": 1.02481428,
-    "buyEur": 389.92494079932226,
-    "buy": 389.92494079932226,
-    "currency": "eur",
-    "cur": 0,
-    "priceOk": false
-  },
-  {
-    "ticker": "MSFT",
-    "type": "stock",
-    "qty": 0.85169306,
-    "buyEur": 410.522501218338,
-    "buy": 410.522501218338,
-    "currency": "eur",
-    "cur": 0,
-    "priceOk": false
-  },
-  {
-    "ticker": "MRVL",
-    "type": "stock",
-    "qty": 1.0324696100000001,
-    "buyEur": 81.27599937694049,
-    "buy": 81.27599937694049,
+    "qty": 10,
+    "buyEur": 13.325,
+    "buy": 13.325,
     "currency": "eur",
     "cur": 0,
     "priceOk": false
