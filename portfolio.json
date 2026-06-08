@@ -1,45 +1,5 @@
 [
   {
-    "ticker": "LINK",
-    "type": "crypto",
-    "qty": 40.84003129,
-    "buyEur": 11.976,
-    "buy": 11.976,
-    "currency": "eur",
-    "cur": 6.91,
-    "priceOk": true
-  },
-  {
-    "ticker": "VET",
-    "type": "crypto",
-    "qty": 48043.65746464,
-    "buyEur": 0.026339000000000005,
-    "buy": 0.026339000000000005,
-    "currency": "eur",
-    "cur": 0.00430409,
-    "priceOk": true
-  },
-  {
-    "ticker": "TRX",
-    "type": "crypto",
-    "qty": 477.213543,
-    "buyEur": 0.30909,
-    "buy": 0.30909,
-    "currency": "eur",
-    "cur": 0.282929,
-    "priceOk": true
-  },
-  {
-    "ticker": "SEI",
-    "type": "crypto",
-    "qty": 2420.93287502,
-    "buyEur": 0.45959,
-    "buy": 0.45959,
-    "currency": "eur",
-    "cur": 0.04335822,
-    "priceOk": true
-  },
-  {
     "ticker": "OP",
     "type": "crypto",
     "qty": 894.32049691,
