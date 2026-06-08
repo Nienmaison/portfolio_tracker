@@ -98,5 +98,25 @@
     "currency": "eur",
     "cur": 1.86,
     "priceOk": true
+  },
+  {
+    "ticker": "TAO",
+    "type": "crypto",
+    "qty": 2.58,
+    "buy": 268.67,
+    "buyEur": 268.67,
+    "currency": "eur",
+    "cur": 185.61,
+    "priceOk": true
+  },
+  {
+    "ticker": "LINK",
+    "type": "crypto",
+    "qty": 40.84,
+    "buy": 11.98,
+    "buyEur": 11.98,
+    "currency": "eur",
+    "cur": 6.91,
+    "priceOk": true
   }
 ]
