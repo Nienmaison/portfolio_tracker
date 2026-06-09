@@ -66,7 +66,7 @@
     "buyEur": 165,
     "buy": 165,
     "currency": "eur",
-    "cur": 132.6824,
+    "cur": 132.4984,
     "priceOk": true
   },
   {
@@ -76,7 +76,7 @@
     "buyEur": 300.62,
     "buy": 300.62,
     "currency": "eur",
-    "cur": 228.3624,
+    "cur": 228.1876,
     "priceOk": true
   },
   {
@@ -86,7 +86,7 @@
     "buyEur": 95.27484278121804,
     "buy": 95.27484278121804,
     "currency": "eur",
-    "cur": 97.68560000000001,
+    "cur": 97.3084,
     "priceOk": true
   },
   {
@@ -96,7 +96,7 @@
     "buyEur": 17.185,
     "buy": 17.185,
     "currency": "eur",
-    "cur": 14.6464,
+    "cur": 14.4992,
     "priceOk": true
   },
   {
@@ -106,7 +106,7 @@
     "buyEur": 10.67,
     "buy": 10.67,
     "currency": "eur",
-    "cur": 7.7648,
+    "cur": 7.709600000000001,
     "priceOk": true
   },
   {
@@ -116,7 +116,7 @@
     "buyEur": 12.875004706787825,
     "buy": 12.875004706787825,
     "currency": "eur",
-    "cur": 12.6132,
+    "cur": 12.5304,
     "priceOk": true
   },
   {
@@ -126,7 +126,7 @@
     "buyEur": 98.5964,
     "buy": 98.5964,
     "currency": "eur",
-    "cur": 108.59680000000002,
+    "cur": 108.3024,
     "priceOk": true
   },
   {
@@ -136,7 +136,7 @@
     "buyEur": 202.952,
     "buy": 202.952,
     "currency": "eur",
-    "cur": 197.3032,
+    "cur": 194.6904,
     "priceOk": true
   },
   {
@@ -176,7 +176,7 @@
     "buyEur": 389.92494079932226,
     "buy": 389.92494079932226,
     "currency": "eur",
-    "cur": 386.2528,
+    "cur": 383.87,
     "priceOk": true
   },
   {
@@ -186,7 +186,7 @@
     "buyEur": 410.522501218338,
     "buy": 410.522501218338,
     "currency": "eur",
-    "cur": 370.4656,
+    "cur": 370.346,
     "priceOk": true
   },
   {
@@ -196,7 +196,7 @@
     "buyEur": 16.61,
     "buy": 16.61,
     "currency": "eur",
-    "cur": 14.894800000000002,
+    "cur": 14.8488,
     "priceOk": true
   },
   {
@@ -216,7 +216,7 @@
     "buyEur": 70.45425437109508,
     "buy": 70.45425437109508,
     "currency": "eur",
-    "cur": 237.82000000000002,
+    "cur": 234.1952,
     "priceOk": true
   }
 ]
