@@ -1,0 +1,149 @@
+/* Fincr 2.0 — mutation primitives: Modal2 (centered overlay), Drawer2 (right
+   slide-over), Field2 / NumberField2 / SegPick2 / Select2, and small action
+   buttons. All flat, hairline-ruled, mono figures — matches the Desk system.
+   Exports under window.* at file end. */
+
+/* Centered modal. Click backdrop or Esc to close. */
+function Modal2({ open, onClose, title, sub, width = 460, children, footer }) {
+  const t = useTheme2();
+  React.useEffect(() => {
+    if (!open) return;
+    const onKey = (e) => {if (e.key === 'Escape') onClose();};
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
+  if (!open) return null;
+  // Portal to body: cards use backdrop-filter, which creates a stacking context
+  // that would trap this modal behind later sibling cards. Escaping to body
+  // makes zIndex global again.
+  return ReactDOM.createPortal(
+    <div onMouseDown={(e) => {if (e.target === e.currentTarget) onClose();}}
+    style={{ position: 'fixed', inset: 0, zIndex: 95, background: t.dark ? 'rgba(4,5,7,0.62)' : 'rgba(23,25,30,0.28)', backdropFilter: 'blur(2px)', display: 'flex', justifyContent: 'center', alignItems: 'flex-start', paddingTop: '11vh' }}>
+      <div style={{ width, maxWidth: 'calc(100vw - 32px)', background: t.raise, border: `1px solid ${t.hairStrong}`, borderRadius: 16, overflow: 'hidden', boxShadow: t.dark ? '0 40px 100px -24px rgba(0,0,0,0.92)' : '0 40px 100px -34px rgba(23,25,30,0.5)', animation: 'fincrSlide 0.18s ease' }}>
+        <div style={{ padding: '20px 24px 16px', borderBottom: `1px solid ${t.hair}` }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 17, fontWeight: 700, color: t.ink, letterSpacing: '-0.01em' }}>{title}</div>
+              {sub && <div style={{ fontSize: 12.5, color: t.faint, marginTop: 3, lineHeight: 1.45 }}>{sub}</div>}
+            </div>
+            <button onClick={onClose} className="f2-press" style={{ width: 28, height: 28, borderRadius: 7, border: 'none', background: 'transparent', color: t.dim, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><path d="M3 3l8 8M11 3l-8 8"></path></svg>
+            </button>
+          </div>
+        </div>
+        <div style={{ padding: '20px 24px' }}>{children}</div>
+        {footer && <div style={{ padding: '14px 24px', borderTop: `1px solid ${t.hair}`, display: 'flex', justifyContent: 'flex-end', gap: 10, background: t.dark ? 'rgba(255,255,255,0.015)' : 'rgba(23,25,30,0.015)' }}>{footer}</div>}
+      </div>
+    </div>, document.body);
+
+}
+
+/* Right slide-over drawer. */
+function Drawer2({ open, onClose, width = 480, children }) {
+  const t = useTheme2();
+  React.useEffect(() => {
+    if (!open) return;
+    const onKey = (e) => {if (e.key === 'Escape') onClose();};
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
+  if (!open) return null;
+  return ReactDOM.createPortal(
+    <div onMouseDown={(e) => {if (e.target === e.currentTarget) onClose();}}
+    style={{ position: 'fixed', inset: 0, zIndex: 94, background: t.dark ? 'rgba(4,5,7,0.5)' : 'rgba(23,25,30,0.22)', display: 'flex', justifyContent: 'flex-end' }}>
+      <div style={{ width, maxWidth: 'calc(100vw - 24px)', height: '100%', background: t.raise, borderLeft: `1px solid ${t.hairStrong}`, overflowY: 'auto', boxShadow: t.dark ? '-30px 0 80px -20px rgba(0,0,0,0.8)' : '-30px 0 80px -34px rgba(23,25,30,0.35)', animation: 'f2drawer 0.24s cubic-bezier(.2,.7,.3,1)' }}>
+        {children}
+      </div>
+    </div>, document.body);
+
+}
+
+/* Labeled field wrapper. */
+function Field2({ label, hint, children, style }) {
+  const t = useTheme2();
+  return (
+    <label style={{ display: 'flex', flexDirection: 'column', gap: 6, ...style }}>
+      <span style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+        <span style={{ fontFamily: t.mono, fontSize: 10, fontWeight: 500, letterSpacing: '0.12em', textTransform: 'uppercase', color: t.faint }}>{label}</span>
+        {hint && <span style={{ fontSize: 11, color: t.ghost }}>{hint}</span>}
+      </span>
+      {children}
+    </label>);
+
+}
+
+const f2InputStyle = (t) => ({
+  fontFamily: t.sans, fontSize: 14, color: t.ink, background: t.inputBg,
+  border: `1px solid ${t.inputBorder}`, borderRadius: 9, padding: '10px 12px',
+  outline: 'none', width: '100%', transition: 'border-color 0.13s'
+});
+
+/* Text input. */
+function TextField2({ value, onChange, placeholder, mono, autoFocus, onEnter }) {
+  const t = useTheme2();
+  return (
+    <input value={value} autoFocus={autoFocus} placeholder={placeholder}
+    onChange={(e) => onChange(e.target.value)}
+    onKeyDown={(e) => {if (e.key === 'Enter' && onEnter) onEnter();}}
+    onFocus={(e) => e.target.style.borderColor = t.accent}
+    onBlur={(e) => e.target.style.borderColor = t.inputBorder}
+    style={{ ...f2InputStyle(t), fontFamily: mono ? t.mono : t.sans, fontVariantNumeric: mono ? 'tabular-nums' : 'normal' }} />);
+
+}
+
+/* Numeric input with a leading unit (€, qty) and tabular mono. */
+function NumberField2({ value, onChange, prefix, placeholder, step, autoFocus, onEnter }) {
+  const t = useTheme2();
+  return (
+    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+      {prefix && <span style={{ position: 'absolute', left: 12, fontFamily: t.mono, fontSize: 13, color: t.faint, pointerEvents: 'none' }}>{prefix}</span>}
+      <input type="number" inputMode="decimal" step={step || 'any'} value={value} autoFocus={autoFocus} placeholder={placeholder}
+      onChange={(e) => onChange(e.target.value)}
+      onKeyDown={(e) => {if (e.key === 'Enter' && onEnter) onEnter();}}
+      onFocus={(e) => e.target.style.borderColor = t.accent}
+      onBlur={(e) => e.target.style.borderColor = t.inputBorder}
+      style={{ ...f2InputStyle(t), fontFamily: t.mono, fontVariantNumeric: 'tabular-nums', paddingLeft: prefix ? 26 : 12 }} />
+    </div>);
+
+}
+
+/* Two/three-way segmented pick (buy/sell, stock/crypto). */
+function Seg2({ options, value, onChange }) {
+  const t = useTheme2();
+  return (
+    <div style={{ display: 'flex', gap: 4, background: t.inputBg, border: `1px solid ${t.inputBorder}`, borderRadius: 9, padding: 3 }}>
+      {options.map((o) => {
+        const on = o.value === value;
+        return (
+          <button key={o.value} onClick={() => onChange(o.value)} type="button"
+          style={{ flex: 1, fontFamily: t.sans, fontSize: 12.5, fontWeight: 600, cursor: 'pointer', padding: '7px 10px', borderRadius: 6, border: 'none', transition: 'all 0.13s',
+            color: on ? o.tone === 'sell' ? '#fff' : o.tone === 'buy' ? '#fff' : t.ink : t.dim,
+            background: on ? o.tone === 'sell' ? t.red : o.tone === 'buy' ? t.green : t.press : 'transparent' }}>{o.label}</button>);
+
+      })}
+    </div>);
+
+}
+
+/* Drawer section header — like SecHead but lighter, for drawer internals. */
+function DrawerSec2({ label, right, style }) {
+  const t = useTheme2();
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '0 0 2px', ...style }}>
+      <span style={{ fontFamily: t.mono, fontSize: 10, fontWeight: 500, letterSpacing: '0.16em', textTransform: 'uppercase', color: t.faint, whiteSpace: 'nowrap' }}>{label}</span>
+      <span style={{ flex: 1, height: 1, background: t.hair }}></span>
+      {right || null}
+    </div>);
+
+}
+
+/* Danger / text button. */
+function TextBtn2({ children, onClick, tone, style }) {
+  const t = useTheme2();
+  const c = tone === 'danger' ? t.red : tone === 'accent' ? t.accent : t.dim;
+  return (
+    <button onClick={onClick} type="button" className="f2-press" style={{ fontFamily: t.sans, fontSize: 12.5, fontWeight: 600, color: c, background: 'none', border: 'none', cursor: 'pointer', padding: '6px 8px', borderRadius: 6, ...style }}>{children}</button>);
+
+}
+
+Object.assign(window, { Modal2, Drawer2, Field2, TextField2, NumberField2, Seg2, DrawerSec2, TextBtn2, f2InputStyle });

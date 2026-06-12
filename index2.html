@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Fincr 2.0</title>
+<link rel="icon" type="image/png" href="assets/fincr-logo-clean.png" />
+<link rel="apple-touch-icon" href="assets/fincr-logo-clean.png" />
+<meta name="theme-color" content="#0A0B0D" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=Spline+Sans+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body { font-family: 'Hanken Grotesk', -apple-system, sans-serif; -webkit-font-smoothing: antialiased; background: #0C1120; }
+
+  /* view transition */
+  @keyframes fincrView { from { transform: translateY(8px); } to { transform: translateY(0); } }
+  .fincr-view { animation: fincrView 0.32s cubic-bezier(.2,.7,.3,1); }
+  @keyframes fincrSlide { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+  @keyframes f2drawer { from { transform: translateX(28px); opacity: 0.4; } to { transform: none; opacity: 1; } }
+  @keyframes fincrPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
+  .fincr-pulse { animation: fincrPulse 2s ease-in-out infinite; }
+  @keyframes fincrDraw { to { stroke-dashoffset: 0; } }
+  .fincr-draw { stroke-dasharray: 2600; stroke-dashoffset: 2600; animation: fincrDraw 1.1s ease forwards; }
+
+  *::-webkit-scrollbar { width: 9px; height: 9px; }
+  *::-webkit-scrollbar-thumb { background: rgba(140,140,160,0.3); border-radius: 9px; }
+  *::-webkit-scrollbar-track { background: transparent; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .fincr-view, .fincr-draw, .fincr-pulse { animation: none; }
+    .fincr-draw { stroke-dashoffset: 0; }
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script src="fincr/data.js"></script>
+<script src="fincr-app/appdata.js"></script>
+<script src="fincr-v2/theme2.js"></script>
+
+<script type="text/babel" src="fincr/shared.jsx"></script>
+<script type="text/babel" src="fincr-app/wordmark.jsx"></script>
+<script type="text/babel" src="fincr-v2/ui2.jsx"></script>
+<script type="text/babel" src="fincr-v2/store2.jsx"></script>
+<script type="text/babel" src="fincr-v2/forms2.jsx"></script>
+<script type="text/babel" src="fincr-v2/guardrails2.jsx"></script>
+<script type="text/babel" src="fincr-v2/history2.jsx"></script>
+<script type="text/babel" src="fincr-v2/overview2.jsx"></script>
+<script type="text/babel" src="fincr-v2/positions2.jsx"></script>
+<script type="text/babel" src="fincr-v2/agent2.jsx"></script>
+<script type="text/babel" src="fincr-v2/import2.jsx"></script>
+<script type="text/babel" src="fincr-v2/settings2.jsx"></script>
+<script type="text/babel" src="fincr-v2/palette2.jsx"></script>
+<script type="text/babel" src="fincr-v2/addposition2.jsx"></script>
+<script type="text/babel" src="fincr-v2/drawer2.jsx"></script>
+<script type="text/babel" src="fincr-v2/shell2.jsx"></script>
+
+<script type="text/babel" data-presets="react">
+  ReactDOM.createRoot(document.getElementById('root')).render(<Shell2 />);
+</script>
+</body>
+</html>
