@@ -40,7 +40,7 @@ function PositionsTab2({ highlight }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 34 }}>
       <section>
-        <SecHead n="01" right={<MonoTxt size={10.5} color={t.faint}>{F.thesis.length} WRITTEN · {F.holdings.length - F.thesis.length} MISSING</MonoTxt>}>Thesis on record</SecHead>
+        <SecHead n="01" right={<MonoTxt size={10.5} color={t.faint}>{F.thesis.length} WRITTEN · {Math.max(0, F.holdings.length - F.thesis.length)} MISSING</MonoTxt>}>Thesis on record</SecHead>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 16, marginTop: 16 }}>
           {F.thesis.map((th) => <ThesisCard2 key={th.ticker} th={th} highlight={highlight} />)}
           {/* positions without a written thesis — honest gap, not filler */}
