@@ -66,5 +66,16 @@
 <script type="text/babel" data-presets="react">
   ReactDOM.createRoot(document.getElementById('root')).render(<Shell2 />);
 </script>
+
+<script>
+  // Register service worker for PWA caching and offline support.
+  // V2 carries forward the PWA capability from V1 (architecture §20).
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/portfolio_tracker/sw.js')
+        .catch(err => console.warn('[PWA] SW registration failed:', err));
+    });
+  }
+</script>
 </body>
 </html>
