@@ -48,7 +48,7 @@ function GuardrailsEditor2({ open, onClose }) {
 
   const sum = Object.values(draft).reduce((s, v) => s + (parseFloat(v) || 0), 0);
   const equalWeight = () => {
-    const ew = +(100 / F.holdings.length).toFixed(1);
+    const ew = F.holdings.length ? +(100 / F.holdings.length).toFixed(1) : 0;
     const seed = {}; F.holdings.forEach((h) => { seed[h.ticker] = String(ew); }); setDraft(seed);
   };
   const useCurrent = () => {
