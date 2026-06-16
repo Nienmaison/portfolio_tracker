@@ -92,7 +92,10 @@ function OverviewTab2({ go }) {
 
   const cryptoPct = F.cryptoValue / F.totalValue * 100;
   const top = [...F.holdings].sort((a, b) => b.value - a.value)[0];
-  const topPct = top.value / F.totalValue * 100;
+  // Guard the empty book: with no holdings (no-key load, or the initial render
+  // before GET /holdings hydrates), top is undefined — top.value would throw and
+  // crash OverviewTab2 (no error boundary). Fall back to 0.
+  const topPct = F.totalValue > 0 ? (top?.value ?? 0) / F.totalValue * 100 : 0;
 
   const sorted = React.useMemo(() => {
     const arr = [...F.holdings];
