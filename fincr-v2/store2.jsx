@@ -47,17 +47,36 @@ function f2BuildHoldingsPayload(derived, closed) {
   };
 }
 
+// f2Sync — fire-and-forget POST to the VPS, with honest success/failure reporting.
+// Returns a {ok, status, reason} result so the caller (the holdings-sync effect) can
+// update window.FINCR.lastSyncMs only when the server actually confirmed the write
+// ([C2-D42]). fetch() does NOT throw on HTTP 4xx/5xx — only on network failure — so
+// an HTTP 500 with a JSON body would otherwise look identical to success. The r.ok
+// check (status 200-299) catches that silent-failure mode.
 function f2Sync(path, body) {
   const key = f2ApiKey();
-  if (!key) return; // not configured on this device — stay local-only
-  fetch(F2_API_BASE + path, {
+  if (!key) return Promise.resolve({ ok: false, reason: 'no-key' }); // local-only device
+  return fetch(F2_API_BASE + path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-API-Key': key },
     body: JSON.stringify(body),
   })
-    .then((r) => r.json())
-    .then((d) => console.log('[sync] POST ' + path, d))
-    .catch((e) => console.warn('[sync] POST ' + path + ' failed:', e.message));
+    .then((r) => {
+      if (!r.ok) {
+        return r.text().then((txt) => {
+          console.warn('[sync] POST ' + path + ' HTTP ' + r.status + ':', txt.slice(0, 200));
+          return { ok: false, status: r.status, reason: 'http-error' };
+        });
+      }
+      return r.json().then((d) => {
+        console.log('[sync] POST ' + path, d);
+        return { ok: true, status: r.status, data: d };
+      });
+    })
+    .catch((e) => {
+      console.warn('[sync] POST ' + path + ' failed:', e.message);
+      return { ok: false, reason: 'network-error', error: e.message };
+    });
 }
 
 function useStore2() { return React.useContext(FincrStoreCtx); }
@@ -324,7 +343,23 @@ function FincrProvider({ children }) {
   React.useEffect(() => {
     if (!f2HoldingsMounted.current) { f2HoldingsMounted.current = true; return; }
     if (f2SuppressHoldingsSync.current) { f2SuppressHoldingsSync.current = false; return; } // hydration echo
-    f2Sync('/holdings', f2BuildHoldingsPayload(derived, closed));
+    // Real mutation — fire the sync and record the result. Only /holdings drives the
+    // sync indicator: it's the file the 05:00 briefing reads ([C2-D41]). /portfolio
+    // (targets) is intentionally NOT tracked here.
+    f2Sync('/holdings', f2BuildHoldingsPayload(derived, closed))
+      .then((result) => {
+        window.FINCR = window.FINCR || {};
+        if (result.ok) {
+          window.FINCR.lastSyncMs = Date.now();
+          window.FINCR.lastSyncStatus = 'ok';
+        } else {
+          // Mark failed but keep the last good timestamp — "last good sync was X ago"
+          // is more useful than wiping it.
+          window.FINCR.lastSyncStatus = 'failed';
+          window.FINCR.lastSyncReason = result.reason;
+        }
+        window.dispatchEvent(new CustomEvent('fincr:sync-status-change'));
+      });
   }, [holdings, closed]);
 
   // Targets: POST /portfolio on any real change to targets. DEVIATION from §4's
@@ -409,6 +444,29 @@ function FincrProvider({ children }) {
     let cancelled = false;
     f2HydrateHoldings(() => cancelled);
     return () => { cancelled = true; };
+  }, []);
+
+  // FX rate poller — fetch on mount, then every 5 minutes. SaaS-NOTE (manifesto §6,
+  // [C2-D44]): pair is hardcoded 'EURUSD' for now; in P3 this becomes
+  // user.homeCurrency + 'USD'. The /fx-rate endpoint already accepts ?pair=, so only
+  // this caller changes. Silent-fail keeps the last known rate, never blanks ([C2-D43]).
+  React.useEffect(() => {
+    let cancelled = false;
+    async function fetchFxRate() {
+      try {
+        const r = await fetch(F2_API_BASE + '/fx-rate?pair=EURUSD');
+        if (!r.ok) return; // keep last known rate
+        const d = await r.json();
+        if (cancelled) return;
+        window.FINCR = window.FINCR || {};
+        window.FINCR.fxRate = d.rate;
+        window.FINCR.fxPair = d.pair;
+        window.dispatchEvent(new CustomEvent('fincr:fx-update'));
+      } catch (e) { /* silent — keep last known value */ }
+    }
+    fetchFxRate();
+    const interval = setInterval(fetchFxRate, 5 * 60 * 1000);
+    return () => { cancelled = true; clearInterval(interval); };
   }, []);
 
   const ctx = { holdings: derived, closed, targets, totals, loading, drawerTicker, addOpen, actions, deriveHolding: f2DeriveHolding };

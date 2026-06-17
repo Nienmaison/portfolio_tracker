@@ -8,6 +8,21 @@ const NAV2 = [
 { id: 'agent', label: 'Agent', d: 'M10 3a4 4 0 014 4v1a4 4 0 01-8 0V7a4 4 0 014-4zM4 17a6 6 0 0112 0' },
 { id: 'import', label: 'Add assets', d: 'M10 3v9M6 8l4 4 4-4M4 16h12' }];
 
+// Short relative-time strings for the provenance bar: "JUST NOW", "2M AGO",
+// "1H AGO", "3D AGO".
+function f2FormatRelativeTime(ms) {
+  const diff = Date.now() - ms;
+  const sec = Math.floor(diff / 1000);
+  if (sec < 30) return 'JUST NOW';
+  if (sec < 60) return sec + 'S AGO';
+  const min = Math.floor(sec / 60);
+  if (min < 60) return min + 'M AGO';
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return hr + 'H AGO';
+  const days = Math.floor(hr / 24);
+  return days + 'D AGO';
+}
+
 
 function Shell2() {
   const [mode, setMode] = React.useState(() => localStorage.getItem('fincr2-mode') || 'ink');
@@ -24,6 +39,23 @@ function Shell2() {
   React.useEffect(() => {localStorage.setItem('fincr2-tab', tab);}, [tab]);
   React.useEffect(() => {localStorage.setItem('fincr2-discrete', discrete ? '1' : '0');}, [discrete]);
   React.useEffect(() => {localStorage.setItem('fincr2-rail', railOpen ? '1' : '0');}, [railOpen]);
+
+  // Provenance-bar live state lives on window.FINCR (sync status, FX rate), not in
+  // React state. This counter forces a re-render when those change, or when the
+  // relative-time label needs refreshing ([C2-D43]).
+  const [, forceRerender] = React.useState(0);
+  React.useEffect(() => {
+    const handler = () => forceRerender((n) => n + 1);
+    window.addEventListener('fincr:sync-status-change', handler);
+    window.addEventListener('fincr:fx-update', handler);
+    // Tick every 30s so "SYNC 5M AGO" stays fresh between syncs.
+    const tick = setInterval(() => forceRerender((n) => n + 1), 30000);
+    return () => {
+      window.removeEventListener('fincr:sync-status-change', handler);
+      window.removeEventListener('fincr:fx-update', handler);
+      clearInterval(tick);
+    };
+  }, []);
 
   const actions = React.useMemo(() => ({
     go: setTab,
@@ -69,6 +101,27 @@ function Shell2() {
         {railOpen && <span style={{ whiteSpace: 'nowrap', overflow: 'hidden' }}>{label}</span>}
       </button>);
   };
+
+  // ── Provenance-bar indicators ──
+  // SYNC: reflects the most recent POST /holdings result ([C2-D41]); reads
+  // window.FINCR (set by store2.jsx). SaaS-survivable — window is per-browser.
+  function renderSyncIndicator() {
+    const F = window.FINCR || {};
+    const hasKey = !!localStorage.getItem('fincr-api-key');
+    if (!hasKey) return <span style={{ color: t.dim }}>SYNC OFF</span>;
+    if (F.lastSyncStatus === 'failed') return <span style={{ color: t.amber }}>SYNC FAILED</span>;
+    if (!F.lastSyncMs) return <span style={{ color: t.dim }}>SYNC PENDING</span>;
+    return <span>SYNC {f2FormatRelativeTime(F.lastSyncMs)}</span>;
+  }
+
+  // FX: live rate from /fx-rate via store2.jsx ([C2-D44]). Pair is parameterized
+  // server-side; the single-user default is EUR/USD.
+  function renderFxIndicator() {
+    const F = window.FINCR || {};
+    if (!F.fxRate || !F.fxPair) return <span style={{ color: t.dim }}>FX —</span>;
+    const display = F.fxPair.slice(0, 3) + '/' + F.fxPair.slice(3);
+    return <span>FX {display} {F.fxRate.toFixed(4)}</span>;
+  }
 
   return (
     <window.Theme2Ctx.Provider value={t}>
@@ -134,9 +187,9 @@ function Shell2() {
           <footer style={{ position: 'sticky', bottom: 0, zIndex: 40, background: t.barBg, backdropFilter: t.blur, WebkitBackdropFilter: t.blur, borderTop: `1px solid ${t.hair}` }}>
             <div style={{ maxWidth: 1180, margin: '0 auto', padding: '0 28px', height: 32, display: 'flex', alignItems: 'center', gap: 22, fontFamily: t.mono, fontSize: 9.5, letterSpacing: '0.1em', color: t.faint, whiteSpace: 'nowrap', overflow: 'hidden' }}>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><LiveDot2 />FINNHUB · COINGECKO</span>
-              <span>FX EUR/USD 0.9210</span>
-              <span>SYNC 2M AGO</span>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><LiveDot2 color={t.accent} />NYSE OPEN · CLOSES 22:00 CET</span>
+              {renderFxIndicator()}
+              {renderSyncIndicator()}
+              {/* NYSE indicator removed — deferred to P3 ([C2-D45]) */}
               <span style={{ flex: 1 }}></span>
               <span>⌘K COMMANDS</span>
               <span>1–5 VIEWS</span>
