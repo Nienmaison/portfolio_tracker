@@ -54,7 +54,7 @@ function Shell2() {
   if (tab === 'overview') content = <OverviewTab2 go={setTab} />;else
   if (tab === 'positions') content = <PositionsTab2 highlight={highlight} />;else
   if (tab === 'agent') content = <AgentTab2 />;else
-  if (tab === 'import') content = <ImportTab2 />;else
+  if (tab === 'import') content = <ImportTab2 go={setTab} />;else
   content = <SettingsTab2 mode={mode} setMode={setMode} density={density} setDensity={setDensity} discrete={discrete} setDiscrete={setDiscrete} />;
 
   const IconBtn2 = ({ onClick, title, active, children }) =>
