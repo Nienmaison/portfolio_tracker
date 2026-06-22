@@ -3,6 +3,15 @@
 (function () {
   const F = window.FINCR;
 
+  // Single-user owner identity. Shape mirrors send_email.py ACCOUNT_DEFAULT
+  // ({name, avatar}) so the SaaS migration only swaps how this is populated,
+  // not the shape or the components that read it. See decision [C2-D55].
+  // INTERIM single-user value - at multi-user time this is hydrated from the
+  // backend (planned GET /account route), not a literal here.
+  // avatar: empty string means derive from name - first letter uppercased,
+  // matching the email convention (send_email.py:238).
+  F.account = { name: "Daan", avatar: "" };
+
   F.thesis = [
     { ticker: 'NVDA', name: 'Nvidia', conviction: 'High', stance: 'Hold', target: '€1,300',
       argument: 'AI compute demand still outruns supply; data-center revenue compounding faster than the market prices in. Core long-term position.',

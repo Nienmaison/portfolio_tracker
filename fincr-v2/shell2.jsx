@@ -33,6 +33,15 @@ function Shell2() {
   const [palette, setPalette] = React.useState(false);
   const [highlight, setHighlight] = React.useState(null);
   const t = window.makeTheme2(mode, density);
+  // Owner identity - single source, mirrors backend ACCOUNT_DEFAULT shape ({name, avatar}).
+  // Fallback keeps the chip rendering even if appdata did not load. [C2-D55]
+  const F = window.FINCR || {};
+  const account = (F && F.account) || { name: "User", avatar: "" };
+  const acctName = account.name || "User";
+  const acctAvatar = account.avatar || (acctName ? acctName[0].toUpperCase() : "•");
+  // Real time-of-day greeting (was hardcoded "Good evening"). Client clock.
+  const hr = new Date().getHours();
+  const partOfDay = hr < 12 ? "morning" : hr < 18 ? "afternoon" : "evening";
 
   React.useEffect(() => {localStorage.setItem('fincr2-mode', mode);}, [mode]);
   React.useEffect(() => {localStorage.setItem('fincr2-density', density);}, [density]);
@@ -150,11 +159,10 @@ function Shell2() {
           <div style={{ flex: 1 }}></div>
           {railItem('settings', 'Settings', 'M3 6h14M3 14h14M3 6h14', '018875887f-path-103-203')}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: railOpen ? 'flex-start' : 'center', gap: 11, padding: railOpen ? '13px 10px 4px' : '13px 0 4px', borderTop: `1px solid ${t.railBorder}`, marginTop: 9 }}>
-            <div style={{ width: 28, height: 28, borderRadius: 999, background: 'rgba(255,255,255,0.18)', border: `1px solid ${t.railBorder}`, color: t.railInk, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }} title={railOpen ? undefined : 'Sam Okonkwo · Pro plan'}>S</div>
+            <div style={{ width: 28, height: 28, borderRadius: 999, background: 'rgba(255,255,255,0.18)', border: `1px solid ${t.railBorder}`, color: t.railInk, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }} title={railOpen ? undefined : acctName}>{acctAvatar}</div>
             {railOpen &&
             <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 12.5, fontWeight: 600, color: t.railInk, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Sam Okonkwo</div>
-              <div style={{ fontSize: 10.5, color: t.railFaint }}>Pro plan</div>
+              <div style={{ fontSize: 12.5, fontWeight: 600, color: t.railInk, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{acctName}</div>
             </div>}
           </div>
         </aside>
@@ -162,7 +170,7 @@ function Shell2() {
         {/* ── Main column ── */}
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 28px 0', maxWidth: 1180, width: '100%', margin: '0 auto' }}>
-            <div style={{ fontSize: 13, color: t.dim }}>Good evening, Sam</div>
+            <div style={{ fontSize: 13, color: t.dim }}>Good {partOfDay}, {acctName}</div>
             <div style={{ flex: 1 }}></div>
             <button onClick={() => setPalette(true)} className="f2-press" style={{ display: 'flex', alignItems: 'center', gap: 22, fontFamily: t.sans, fontSize: 12.5, color: t.faint, background: t.inputBg, border: `1px solid ${t.hair}`, borderRadius: 8, padding: '6px 8px 6px 12px', cursor: 'pointer' }}>
               Search or command… <Kbd2>⌘K</Kbd2>
