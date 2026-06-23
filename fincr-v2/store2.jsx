@@ -446,6 +446,12 @@ function FincrProvider({ children }) {
     return () => { cancelled = true; };
   }, []);
 
+  // Thesis hydration (C2-S2): fetch GET /thesis and transform -> F.thesis via the
+  // thesis adapter (thesis-adapter.js). Non-blocking and independent of the holdings
+  // render; the adapter dispatches 'fincr:thesis-update', which the shell listens for
+  // to re-render. No-key devices get F.thesis = [] (honest gap-card state).
+  React.useEffect(() => { if (window.loadThesis) window.loadThesis(); }, []);
+
   // FX rate poller — fetch on mount, then every 5 minutes. SaaS-NOTE (manifesto §6,
   // [C2-D44]): pair is hardcoded 'EURUSD' for now; in P3 this becomes
   // user.homeCurrency + 'USD'. The /fx-rate endpoint already accepts ?pair=, so only

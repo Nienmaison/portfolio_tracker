@@ -8,7 +8,7 @@
 // Bump CACHE_VERSION after any significant frontend change to force a full
 // cache flush on all clients.
 
-const CACHE_VERSION = 'fincr-v8';
+const CACHE_VERSION = 'fincr-v9';
 
 const SHELL_ASSETS = [
   './index.html',

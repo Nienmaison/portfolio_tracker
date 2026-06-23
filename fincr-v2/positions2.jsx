@@ -37,14 +37,26 @@ function ThesisCard2({ th, highlight }) {
 function PositionsTab2({ highlight }) {
   const t = useTheme2();
   const F = window.FINCR;
+  // C2-S2: a holding's thesis is "written" only if its argument exists AND is not
+  // the scaffold sentinel (the auto-stub written by sync_thesis_with_holdings,
+  // api.py). The sentinel must match api.py exactly (em-dash, not a hyphen).
+  const THESIS_SENTINEL = "Position opened via dashboard — thesis details pending.";
+  const isWritten = (th) => th && th.argument && th.argument !== THESIS_SENTINEL;
+  // Count live holdings with a real authored argument; the rest are MISSING.
+  const written = F.holdings.filter((h) =>
+    F.thesis.some((x) => x.ticker === h.ticker && isWritten(x))
+  ).length;
+  const missing = Math.max(0, F.holdings.length - written);
+  // Authored theses render as cards; stubs/unwritten fall through to gap cards.
+  const authored = F.thesis.filter(isWritten);
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 34 }}>
       <section>
-        <SecHead n="01" right={<MonoTxt size={10.5} color={t.faint}>{F.thesis.length} WRITTEN · {Math.max(0, F.holdings.length - F.thesis.length)} MISSING</MonoTxt>}>Thesis on record</SecHead>
+        <SecHead n="01" right={<MonoTxt size={10.5} color={t.faint}>{written} WRITTEN · {missing} MISSING</MonoTxt>}>Thesis on record</SecHead>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 16, marginTop: 16 }}>
-          {F.thesis.map((th) => <ThesisCard2 key={th.ticker} th={th} highlight={highlight} />)}
+          {authored.map((th) => <ThesisCard2 key={th.ticker} th={th} highlight={highlight} />)}
           {/* positions without a written thesis — honest gap, not filler */}
-          {F.holdings.filter((h) => !F.thesis.some((x) => x.ticker === h.ticker)).map((h) => (
+          {F.holdings.filter((h) => !F.thesis.some((x) => x.ticker === h.ticker && isWritten(x))).map((h) => (
             <div key={h.ticker} style={{ border: `1px dashed ${t.hairStrong}`, borderRadius: 12, padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: 8, justifyContent: 'center' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <span style={{ width: 3, height: 24, borderRadius: 2, background: h.color }}></span>

@@ -57,11 +57,13 @@ function Shell2() {
     const handler = () => forceRerender((n) => n + 1);
     window.addEventListener('fincr:sync-status-change', handler);
     window.addEventListener('fincr:fx-update', handler);
+    window.addEventListener('fincr:thesis-update', handler);  // C2-S2: repaint on thesis load
     // Tick every 30s so "SYNC 5M AGO" stays fresh between syncs.
     const tick = setInterval(() => forceRerender((n) => n + 1), 30000);
     return () => {
       window.removeEventListener('fincr:sync-status-change', handler);
       window.removeEventListener('fincr:fx-update', handler);
+      window.removeEventListener('fincr:thesis-update', handler);
       clearInterval(tick);
     };
   }, []);

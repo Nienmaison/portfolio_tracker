@@ -12,20 +12,12 @@
   // matching the email convention (send_email.py:238).
   F.account = { name: "Daan", avatar: "" };
 
-  F.thesis = [
-    { ticker: 'NVDA', name: 'Nvidia', conviction: 'High', stance: 'Hold', target: '€1,300',
-      argument: 'AI compute demand still outruns supply; data-center revenue compounding faster than the market prices in. Core long-term position.',
-      triggers: ['Trim 25% above €1,300', 'Reassess if data-center growth <40% YoY', 'Add on any >15% drawdown'] },
-    { ticker: 'BTC', name: 'Bitcoin', conviction: 'High', stance: 'Accumulate', target: '€110k',
-      argument: 'Post-halving supply shock plus ETF inflows. Treating as a multi-year store-of-value sleeve, not a trade.',
-      triggers: ['DCA €250/week', 'Take 20% off above €110k', 'Never exceed 35% of book'] },
-    { ticker: 'ETH', name: 'Ethereum', conviction: 'Medium', stance: 'Hold', target: '€3,200',
-      argument: 'Staking yield + L2 fee capture, but ETF flows lag BTC. Watching the rotation closely before adding.',
-      triggers: ['Add below €2,200', 'Reassess if L2 fees decline 2 quarters'] },
-    { ticker: 'VOO', name: 'Vanguard S&P 500', conviction: 'Medium', stance: 'Hold', target: '—',
-      argument: 'The boring core. Automatic monthly buy regardless of price. This is the ballast.',
-      triggers: ['€500/month auto-buy', 'Never sell'] },
-  ];
+  // F.thesis is now live-fetched + transformed from GET /thesis by
+  // fincr-v2/thesis-adapter.js (Spec C2-S2, C2-D60). The old 4-item sample
+  // (NVDA/BTC/ETH/VOO) is removed from the startup path; default to [] so the
+  // Positions tab always has a valid array before the adapter resolves and on
+  // no-key devices. F.watchlist / F.rules below stay sample (rules wiring deferred).
+  F.thesis = [];
 
   F.watchlist = [
     { ticker: 'AMD',  name: 'Advanced Micro Devices', conviction: 'Medium', note: 'Second-source AI compute. Waiting for a better entry below €130.', color: '#ED1C24' },
