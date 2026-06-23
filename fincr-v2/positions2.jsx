@@ -19,17 +19,24 @@ function ThesisCard2({ th, highlight }) {
       </div>
       <div style={{ fontSize: 12.5, color: t.dim, lineHeight: 1.55 }}>{th.argument}</div>
       <div style={{ display: 'flex', flexDirection: 'column' }}>
+        {/* Renamed from T1/T2 — these are exit conditions, not targets (C2-S3) */}
+        {th.triggers && th.triggers.length > 0 && (
+          <MonoTxt size={10} color={t.faint} style={{ letterSpacing: '0.12em', padding: '2px 0 1px' }}>THESIS RISKS</MonoTxt>
+        )}
         {th.triggers.map((tr, i) => (
           <div key={i} style={{ display: 'flex', alignItems: 'baseline', gap: 9, padding: '7px 0', borderTop: `1px solid ${t.hair}` }}>
-            <span style={{ fontFamily: t.mono, fontSize: 9.5, color: t.ghost, flexShrink: 0 }}>T{i + 1}</span>
+            <span style={{ fontFamily: t.mono, fontSize: 9.5, color: t.ghost, flexShrink: 0 }}>·</span>
             <span style={{ fontSize: 12, color: t.ink }}>{tr}</span>
           </div>
         ))}
       </div>
+      {/* Only render TARGET when a price target has been set (null until set via editor, C2-S3) */}
+      {th.target && (
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', borderTop: `1px solid ${t.hair}`, paddingTop: 10 }}>
         <MonoTxt size={10} color={t.faint} style={{ letterSpacing: '0.12em' }}>TARGET</MonoTxt>
         <Money size={12.5} weight={600}>{th.target}</Money>
       </div>
+      )}
     </div>
   );
 }

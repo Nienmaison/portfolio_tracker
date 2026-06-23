@@ -89,6 +89,35 @@
     return transformed;
   }
 
-  // Expose as a global for the text/babel store to call on mount (Step 2).
+  // Save edited thesis fields for a single holding (or archived entry) via
+  // POST /thesis/update (C2-S3). `changes` should contain ONLY the fields the
+  // caller actually changed (diffed upstream) to avoid needless version bumps.
+  // conversationSummary, if non-empty, the endpoint writes to last_update_reason.
+  // Returns true on 200, false on 4xx/5xx/network/no-key (never throws).
+  async function saveThesis(ticker, changes, conversationSummary) {
+    const key = localStorage.getItem('fincr-api-key') || '';
+    if (!key) { console.warn('[thesis] saveThesis: no api key — skipped'); return false; }
+    const payload = Object.assign({ ticker: ticker }, changes || {});
+    if (conversationSummary != null) payload.conversation_summary = conversationSummary;
+    try {
+      const r = await fetch(THESIS_API_BASE + '/thesis/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-API-Key': key },
+        body: JSON.stringify(payload),
+      });
+      if (!r.ok) {
+        const txt = await r.text();
+        console.warn('[thesis] POST /thesis/update HTTP ' + r.status + ':', txt.slice(0, 200));
+        return false;
+      }
+      return true;
+    } catch (e) {
+      console.warn('[thesis] POST /thesis/update failed:', e.message);
+      return false;
+    }
+  }
+
+  // Expose as globals for the text/babel store + drawer to call (Step 2 / C2-S3).
   window.loadThesis = loadThesis;
+  window.saveThesis = saveThesis;
 })();

@@ -32,6 +32,7 @@ function Shell2() {
   const [railOpen, setRailOpen] = React.useState(() => localStorage.getItem('fincr2-rail') !== '0');
   const [palette, setPalette] = React.useState(false);
   const [highlight, setHighlight] = React.useState(null);
+  const [toast, setToast] = React.useState(null);  // C2-S3 transient non-blocking notice
   const t = window.makeTheme2(mode, density);
   // Owner identity - single source, mirrors backend ACCOUNT_DEFAULT shape ({name, avatar}).
   // Fallback keeps the chip rendering even if appdata did not load. [C2-D55]
@@ -67,6 +68,19 @@ function Shell2() {
       clearInterval(tick);
     };
   }, []);
+
+  // C2-S3 — transient toast for non-blocking notices (e.g. a post-close thesis
+  // update that failed). Fired via window CustomEvent('fincr:toast', {detail:{message}}).
+  React.useEffect(() => {
+    const onToast = (e) => setToast((e.detail && e.detail.message) || '');
+    window.addEventListener('fincr:toast', onToast);
+    return () => window.removeEventListener('fincr:toast', onToast);
+  }, []);
+  React.useEffect(() => {
+    if (!toast) return;
+    const id = setTimeout(() => setToast(null), 6000);  // auto-dismiss
+    return () => clearTimeout(id);
+  }, [toast]);
 
   const actions = React.useMemo(() => ({
     go: setTab,
@@ -207,6 +221,12 @@ function Shell2() {
           </footer>
         </div>
 
+        {toast && (
+          <div onClick={() => setToast(null)} style={{ position: 'fixed', bottom: 48, left: '50%', transform: 'translateX(-50%)', zIndex: 96, background: t.raise, border: `1px solid ${t.hairStrong}`, borderRadius: 10, padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', maxWidth: 'calc(100vw - 32px)', boxShadow: t.dark ? '0 12px 32px -12px rgba(0,0,0,0.8)' : '0 12px 32px -16px rgba(23,25,30,0.4)' }}>
+            <span style={{ fontSize: 12.5, color: t.ink }}>{toast}</span>
+            <span style={{ fontSize: 11, color: t.faint }}>✕</span>
+          </div>
+        )}
         <CmdPalette2 open={palette} onClose={() => setPalette(false)} actions={actions} />
         <AddPosition2 />
         <PositionDrawer2 />

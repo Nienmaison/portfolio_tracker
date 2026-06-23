@@ -107,18 +107,27 @@ function NumberField2({ value, onChange, prefix, placeholder, step, autoFocus, o
 
 }
 
-/* Two/three-way segmented pick (buy/sell, stock/crypto). */
+/* Two/three-way segmented pick (buy/sell, conviction, stance, …). The active
+   segment fills with a tone colour: buy/ok → green, sell/bad → red, watch → amber,
+   anything else (incl. 'mute' or no tone) → neutral press. White text on a colour
+   fill, ink on neutral. buy/sell behaviour is unchanged (C2-S3 added ok/watch/bad). */
 function Seg2({ options, value, onChange }) {
   const t = useTheme2();
+  const fillFor = (tone) => (
+    tone === 'sell' || tone === 'bad' ? t.red :
+    tone === 'buy'  || tone === 'ok'  ? t.green :
+    tone === 'watch'                  ? t.amber : null
+  );
   return (
     <div style={{ display: 'flex', gap: 4, background: t.inputBg, border: `1px solid ${t.inputBorder}`, borderRadius: 9, padding: 3 }}>
       {options.map((o) => {
         const on = o.value === value;
+        const fill = fillFor(o.tone);
         return (
           <button key={o.value} onClick={() => onChange(o.value)} type="button"
           style={{ flex: 1, fontFamily: t.sans, fontSize: 12.5, fontWeight: 600, cursor: 'pointer', padding: '7px 10px', borderRadius: 6, border: 'none', transition: 'all 0.13s',
-            color: on ? o.tone === 'sell' ? '#fff' : o.tone === 'buy' ? '#fff' : t.ink : t.dim,
-            background: on ? o.tone === 'sell' ? t.red : o.tone === 'buy' ? t.green : t.press : 'transparent' }}>{o.label}</button>);
+            color: on ? (fill ? '#fff' : t.ink) : t.dim,
+            background: on ? (fill || t.press) : 'transparent' }}>{o.label}</button>);
 
       })}
     </div>);

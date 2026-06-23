@@ -301,6 +301,55 @@ function FincrProvider({ children }) {
       setDrawerTicker(null);
     },
 
+    // C2-S3 — close a position AND record the sell decision on its archived thesis
+    // entry. Sequenced: commit the close locally (suppressing the echo POST), fire a
+    // controlled POST /holdings so the backend archives the ticker, THEN patch the
+    // now-archived thesis entry via POST /thesis/update. Thesis-patch failure is
+    // non-blocking (logged + soft toast) — the position is already closed.
+    closePositionWithThesis: async (ticker, { sellPrice, date, note }, thesisPatch, summary) => {
+      const src = holdings.find((h) => h.ticker === ticker);
+      if (!src) return { closeOk: false, thesisOk: false };
+      const live = f2DeriveHolding(src);
+      const realizedThisSale = live.qty * (+sellPrice - live.avgCost);
+      const priorOpen = src.txns.find((tx) => tx.kind === 'buy');
+      const closedEntry = {
+        ticker: live.ticker, name: live.name, type: live.type, color: live.color,
+        openedAt: priorOpen ? priorOpen.date : '—',
+        closedAt: date || new Date().toISOString().slice(0, 10),
+        qty: live.qty, avgCost: live.avgCost, sellPrice: +sellPrice,
+        realized: (live.realized || 0) + realizedThisSale, note: note || '',
+      };
+      const nextHoldings = holdings.filter((h) => h.ticker !== ticker);
+      const nextClosed = [closedEntry, ...closed];
+      // Commit locally; suppress the holdings-sync effect's echo POST (we POST below).
+      f2SuppressHoldingsSync.current = true;
+      setHoldings(nextHoldings);
+      setClosed(nextClosed);
+      setDrawerTicker(null);
+      // Controlled POST /holdings — this is what archives the ticker server-side.
+      const derivedNext = nextHoldings.map(f2DeriveHolding).filter((h) => h.qty > 1e-7);
+      const closeRes = await f2Sync('/holdings', f2BuildHoldingsPayload(derivedNext, nextClosed));
+      // Keep the provenance bar honest (the effect we suppressed normally does this).
+      window.FINCR = window.FINCR || {};
+      if (closeRes.ok) { window.FINCR.lastSyncMs = Date.now(); window.FINCR.lastSyncStatus = 'ok'; }
+      else if (closeRes.reason !== 'no-key') { window.FINCR.lastSyncStatus = 'failed'; window.FINCR.lastSyncReason = closeRes.reason; }
+      window.dispatchEvent(new CustomEvent('fincr:sync-status-change'));
+      // Patch the now-archived thesis entry with the sell decision (after close synced).
+      let thesisOk = false;
+      if (closeRes.ok && thesisPatch && window.saveThesis) {
+        thesisOk = await window.saveThesis(ticker, thesisPatch, summary || '');
+        if (!thesisOk) {
+          console.warn('[close] thesis update failed for ' + ticker + ' — set it manually via the editor');
+          window.dispatchEvent(new CustomEvent('fincr:toast', { detail: { message: 'Position closed. Thesis update failed — you can set it manually.' } }));
+        }
+      } else if (!closeRes.ok && closeRes.reason !== 'no-key') {
+        console.warn('[close] /holdings sync failed; thesis update skipped: ' + closeRes.reason);
+      }
+      // Refresh F.thesis — the closed ticker drops off the Positions tab.
+      if (window.loadThesis) window.loadThesis();
+      return { closeOk: closeRes.ok, thesisOk };
+    },
+
     deletePosition: (ticker) => { setHoldings((hs) => hs.filter((h) => h.ticker !== ticker)); setDrawerTicker(null); },
 
     setTarget: (ticker, pct) => setTargets((tg) => {
@@ -325,7 +374,7 @@ function FincrProvider({ children }) {
       if (f2ApiKey()) { f2HydrateHoldings(); f2HydrateTargets(); }
       else { const s = f2SeedFromSample(); setHoldings(s.holdings); setClosed(s.closed); setTargets(null); }
     },
-  }), [holdings]);
+  }), [holdings, closed]);  // C2-S3: closePositionWithThesis reads `closed`
 
   // ── Backend sync (SPEC P1-04 §4) — fire-and-forget, never blocks the UI ──
   // Holdings: POST /holdings whenever the book or the closed list changes. The

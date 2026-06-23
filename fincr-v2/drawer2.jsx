@@ -3,6 +3,10 @@
    recomputed live), and the Close-position flow that captures a sell price and
    the realized P&L. Exports window.PositionDrawer2. */
 
+// Scaffold sentinel written by sync_thesis_with_holdings (api.py); means a holding
+// has no authored thesis yet. Em-dash, not a hyphen. (C2-S3)
+const THESIS_SENTINEL = "Position opened via dashboard \u2014 thesis details pending.";
+
 function TxnRow2({ ticker, tx, avgCost }) {
   const t = useTheme2();
   const F = window.FINCR;
@@ -74,7 +78,11 @@ function AddTxnForm2({ ticker, maxSell, onDone }) {
   );
 }
 
-/* Close-position flow. */
+/* Close-position flow. A sell is a thesis decision (C2-S3): CAPITAL MOVE
+   (sell_type) and CONVICTION RETAINED are required before the close can fire.
+   ROTATING INTO appears only for a rotate. On close, the position is archived
+   (via the holdings sync) and these fields are written to the archived thesis
+   entry — see store.actions.closePositionWithThesis. */
 function CloseForm2({ h, onCancel }) {
   const t = useTheme2();
   const F = window.FINCR;
@@ -82,10 +90,25 @@ function CloseForm2({ h, onCancel }) {
   const [sell, setSell] = React.useState(String(h.price));
   const [date, setDate] = React.useState(new Date().toISOString().slice(0, 10));
   const [note, setNote] = React.useState('');
+  const [sellType, setSellType] = React.useState(null);          // 'rotate' | 'exit' — required
+  const [convRetained, setConvRetained] = React.useState(null);  // true | false — required
+  const [rotatedInto, setRotatedInto] = React.useState('');      // ticker, rotate only
+  const [busy, setBusy] = React.useState(false);
   const sellN = parseFloat(sell);
-  const valid = sellN > 0;
-  const realized = valid ? h.qty * (sellN - h.avgCost) + (h.realized || 0) : 0;
+  const priceValid = sellN > 0;
+  // Both sell-intent fields must be answered before Close enables.
+  const valid = priceValid && !!sellType && convRetained !== null && !busy;
+  const realized = priceValid ? h.qty * (sellN - h.avgCost) + (h.realized || 0) : 0;
   const up = realized >= 0;
+  const doClose = async () => {
+    if (!valid) return;
+    setBusy(true);
+    const patch = { sell_type: sellType, conviction_retained: convRetained };
+    if (sellType === "rotate" && rotatedInto.trim()) patch.rotated_into = rotatedInto.trim().toUpperCase();
+    // Close first; the thesis patch fires after the archive sync succeeds (store).
+    // The drawer closes itself once the holding leaves the store.
+    await store.actions.closePositionWithThesis(h.ticker, { sellPrice: sellN, date, note }, patch, note);
+  };
   return (
     <div style={{ background: t.redSoft, border: `1px solid ${t.cardBorder}`, borderRadius: 12, padding: 16, display: 'flex', flexDirection: 'column', gap: 13 }}>
       <div style={{ fontSize: 13.5, fontWeight: 700, color: t.ink }}>Close {h.ticker} — sell all {h.qty} units</div>
@@ -94,15 +117,28 @@ function CloseForm2({ h, onCancel }) {
         <Field2 label="Close date"><TextField2 value={date} onChange={setDate} mono /></Field2>
       </div>
       <Field2 label="Note" hint="optional"><TextField2 value={note} onChange={setNote} placeholder="Why you closed it" /></Field2>
+      <Field2 label="Capital move" hint="required">
+        <Seg2 options={[{ value: "rotate", label: "Rotate" }, { value: "exit", label: "Exit" }]} value={sellType} onChange={setSellType} />
+      </Field2>
+      <Field2 label="Conviction retained" hint="required">
+        <Seg2 options={[{ value: "keep", label: "Still hold" }, { value: "lost", label: "Lost it" }]}
+          value={convRetained === null ? null : (convRetained ? "keep" : "lost")}
+          onChange={(v) => setConvRetained(v === "keep")} />
+      </Field2>
+      {sellType === "rotate" && (
+        <Field2 label="Rotating into" hint="optional">
+          <TextField2 value={rotatedInto} onChange={(v) => setRotatedInto(v.toUpperCase())} placeholder="TICKER" />
+        </Field2>
+      )}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', borderTop: `1px solid ${t.hair}`, paddingTop: 12 }}>
         <MonoTxt size={10.5} color={t.faint} style={{ letterSpacing: '0.12em' }}>REALIZED P&L</MonoTxt>
-        <Money size={17} weight={700} color={valid ? (up ? t.green : t.red) : t.ghost}>{valid ? F.signed(realized) : '—'}</Money>
+        <Money size={17} weight={700} color={priceValid ? (up ? t.green : t.red) : t.ghost}>{priceValid ? F.signed(realized) : '—'}</Money>
       </div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
         <Btn2 onClick={onCancel}>Cancel</Btn2>
-        <Btn2 primary onClick={() => store.actions.closePosition(h.ticker, { sellPrice: sellN, date, note })}
+        <Btn2 primary onClick={doClose}
           style={{ background: t.red, borderColor: t.red, color: '#fff', opacity: valid ? 1 : 0.4, pointerEvents: valid ? 'auto' : 'none' }}>
-          Close position
+          {busy ? 'Closing…' : 'Close position'}
         </Btn2>
       </div>
     </div>
@@ -119,13 +155,72 @@ function Stat2({ label, children, color }) {
   );
 }
 
+/* C2-S3 — inline per-holding thesis editor. Edits core_argument / conviction /
+   stance / target_price via POST /thesis/update (window.saveThesis), sends only
+   changed fields, then refreshes F.thesis via loadThesis(). Transient local state. */
+function ThesisEditor2({ th, onDone }) {
+  const t = useTheme2();
+  // Original backend values. The adapter display-cases conviction/stance; lowercasing
+  // is the lossless inverse of its titleCase, giving back the stored enum.
+  const origArg = (th.argument && th.argument !== THESIS_SENTINEL) ? th.argument : '';
+  const origConv = th.conviction ? th.conviction.toLowerCase() : 'medium';
+  const origStance = th.stance ? th.stance.toLowerCase() : 'hold';
+  const origTarget = th.target_price != null ? th.target_price : null;
+  const [arg, setArg] = React.useState(origArg);
+  const [conv, setConv] = React.useState(origConv);
+  const [stance, setStance] = React.useState(origStance);
+  const [targetStr, setTargetStr] = React.useState(origTarget != null ? String(origTarget) : '');
+  const [busy, setBusy] = React.useState(false);
+  const [err, setErr] = React.useState(false);
+  const save = async () => {
+    setBusy(true); setErr(false);
+    // Diff against originals — only send what changed (avoid needless version bumps).
+    const changes = {};
+    if (arg !== origArg) changes.core_argument = arg;
+    if (conv !== origConv) changes.conviction = conv;
+    if (stance !== origStance) changes.stance = stance;
+    const newTarget = targetStr.trim() === '' ? null : Number(targetStr);
+    if (newTarget !== origTarget) changes.target_price = newTarget;
+    if (Object.keys(changes).length === 0) { onDone(); return; } // no-op — just close
+    const ok = await window.saveThesis(th.ticker, changes, '');
+    if (!ok) { setErr(true); setBusy(false); return; }
+    if (window.loadThesis) await window.loadThesis(); // refresh card + drawer
+    onDone();
+  };
+  const inputStyle = window.f2InputStyle(t);
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 10 }}>
+      <Field2 label="Core argument">
+        <textarea value={arg} onChange={(e) => setArg(e.target.value)} rows={3} placeholder="Why do you hold this?"
+          onFocus={(e) => e.target.style.borderColor = t.accent} onBlur={(e) => e.target.style.borderColor = t.inputBorder}
+          style={{ ...inputStyle, resize: 'vertical', minHeight: 66, lineHeight: 1.5 }} />
+      </Field2>
+      <Field2 label="Conviction">
+        <Seg2 options={[{ value: 'high', label: 'High', tone: 'ok' }, { value: 'medium', label: 'Medium', tone: 'watch' }, { value: 'low', label: 'Low', tone: 'mute' }]} value={conv} onChange={setConv} />
+      </Field2>
+      <Field2 label="Stance">
+        <Seg2 options={[{ value: 'accumulate', label: 'Accumulate', tone: 'ok' }, { value: 'hold', label: 'Hold', tone: 'mute' }, { value: 'trim', label: 'Trim', tone: 'watch' }]} value={stance} onChange={setStance} />
+      </Field2>
+      <Field2 label="Price target" hint="optional">
+        <NumberField2 value={targetStr} onChange={setTargetStr} prefix="€" placeholder="—" />
+      </Field2>
+      {err && <MonoTxt size={11} color={t.red}>Failed to save — try again</MonoTxt>}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+        <Btn2 onClick={onDone}>Cancel</Btn2>
+        <Btn2 primary onClick={save} style={{ opacity: busy ? 0.5 : 1, pointerEvents: busy ? 'none' : 'auto' }}>{busy ? 'Saving…' : 'Save'}</Btn2>
+      </div>
+    </div>
+  );
+}
+
 function PositionDrawer2() {
   const t = useTheme2();
   const F = window.FINCR;
   const store = useStore2();
   const { drawerTicker, actions } = store;
   const [mode, setMode] = React.useState('detail'); // detail | addtx | close
-  React.useEffect(() => { setMode('detail'); }, [drawerTicker]);
+  const [editingThesis, setEditingThesis] = React.useState(false); // C2-S3 thesis editor toggle
+  React.useEffect(() => { setMode('detail'); setEditingThesis(false); }, [drawerTicker]);
 
   const h = drawerTicker ? store.holdings.find((x) => x.ticker === drawerTicker) : null;
   const open = !!h;
@@ -184,11 +279,22 @@ function PositionDrawer2() {
               : <button onClick={() => setMode('addtx')} className="f2-press" style={{ marginTop: 12, width: '100%', fontFamily: t.sans, fontSize: 12.5, fontWeight: 600, color: t.accent, background: 'none', border: `1px dashed ${t.hairStrong}`, borderRadius: 9, padding: '10px', cursor: 'pointer' }}>+ Record a buy or sell</button>}
           </div>
 
-          {/* thesis link */}
+          {/* thesis on record + inline editor (C2-S3) */}
           {th && (
             <div style={{ padding: '16px 26px', borderBottom: `1px solid ${t.hair}` }}>
-              <DrawerSec2 label="Thesis on record" right={<Chip2 tone={th.conviction === 'High' ? 'ok' : 'mute'}>{th.conviction}</Chip2>} />
-              <div style={{ fontSize: 12.5, color: t.dim, lineHeight: 1.55, marginTop: 10 }}>{th.argument}</div>
+              <DrawerSec2 label="Thesis on record" right={
+                <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Chip2 tone={th.conviction === 'High' ? 'ok' : th.conviction === 'Medium' ? 'watch' : 'mute'}>{th.conviction}</Chip2>
+                  {!editingThesis && <TextBtn2 tone="accent" onClick={() => setEditingThesis(true)} style={{ padding: '2px 4px' }}>Edit</TextBtn2>}
+                </span>
+              } />
+              {editingThesis
+                ? <ThesisEditor2 th={th} onDone={() => setEditingThesis(false)} />
+                : <div style={{ fontSize: 12.5, color: t.dim, lineHeight: 1.55, marginTop: 10 }}>
+                    {(th.argument && th.argument !== THESIS_SENTINEL)
+                      ? th.argument
+                      : <span style={{ color: t.faint, fontStyle: 'italic' }}>No thesis written yet — add one.</span>}
+                  </div>}
             </div>
           )}
 
