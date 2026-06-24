@@ -256,6 +256,12 @@ function FincrProvider({ children }) {
 
   const actions = React.useMemo(() => ({
     openDrawer: (tk) => setDrawerTicker(tk),
+    openDrawerWithPrefill: (ticker, prefill) => {
+      // Uses window.__fincrDrawerPrefill (not window.__fincrStore.drawerPrefill)
+      // because window.__fincrStore is replaced on each render (C2-S4b).
+      window.__fincrDrawerPrefill = prefill;
+      setDrawerTicker(ticker);
+    },
     closeDrawer: () => setDrawerTicker(null),
     openAdd: () => setAddOpen(true),
     closeAdd: () => setAddOpen(false),

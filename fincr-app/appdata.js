@@ -30,19 +30,8 @@
     { title: 'Selling discipline', lines: ['Trim into strength, never panic-sell', 'Take profits in tranches of 20–25%', 'Tax-loss harvest in December'] },
   ];
 
-  F.conversations = [
-    { id: 1, title: 'Is my crypto allocation too high?', when: 'Today', tickers: ['BTC', 'ETH'], active: true },
-    { id: 2, title: 'NVDA — trim or hold into earnings?', when: 'Today', tickers: ['NVDA'] },
-    { id: 3, title: 'Rebalancing for Q3', when: 'Yesterday', tickers: ['VOO', 'BTC'] },
-    { id: 4, title: 'Tax-loss harvesting plan', when: 'Mar 14', tickers: ['ETH'] },
-  ];
-
-  // A representative chat thread (for the active conversation)
-  F.chatThread = [
-    { who: 'user', text: 'Is my crypto allocation too high right now?' },
-    { who: 'agent', text: 'Crypto is 42.5% of your €128,440 book (BTC 30.3%, ETH 12.2%). Your own rule caps the crypto sleeve at 45%, so you are inside your guardrail — but only just.\n\nBTC alone is 30.3%, approaching your 35% single-name ceiling. If BTC runs another ~15% without you trimming, you would breach it.' },
-    { who: 'agent', card: { ticker: 'BTC', field: 'Suggested action', value: 'Trim 5% on strength', argument: 'Keeps you clear of the 35% single-name cap while staying long the thesis.', summary: 'Aligns with your “take 20% off above €110k” trigger.' } },
-  ];
+  F.conversations = []; // C2-S4b: agent2.jsx is now live
+  F.chatThread = [];
 
   // Chart sample: a watchlist of pickable tickers (holdings already exist)
   F.chartRanges = ['1W', '1M', '3M', '6M', '1Y'];

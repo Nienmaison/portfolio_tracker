@@ -166,9 +166,14 @@ function ThesisEditor2({ th, onDone }) {
   const origConv = th.conviction ? th.conviction.toLowerCase() : 'medium';
   const origStance = th.stance ? th.stance.toLowerCase() : 'hold';
   const origTarget = th.target_price != null ? th.target_price : null;
+  // Pre-fill from agent proposal card (C2-S4b).
+  // The stash is set by openDrawerWithPrefill() in store2.jsx and cleared here on first render.
+  const prefill = window.__fincrDrawerPrefill || null;
+  if (prefill) window.__fincrDrawerPrefill = null;
+
   const [arg, setArg] = React.useState(origArg);
-  const [conv, setConv] = React.useState(origConv);
-  const [stance, setStance] = React.useState(origStance);
+  const [conv, setConv] = React.useState(prefill && prefill.conviction != null ? prefill.conviction : origConv);
+  const [stance, setStance] = React.useState(prefill && prefill.stance != null ? prefill.stance : origStance);
   const [targetStr, setTargetStr] = React.useState(origTarget != null ? String(origTarget) : '');
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState(false);
@@ -220,7 +225,11 @@ function PositionDrawer2() {
   const { drawerTicker, actions } = store;
   const [mode, setMode] = React.useState('detail'); // detail | addtx | close
   const [editingThesis, setEditingThesis] = React.useState(false); // C2-S3 thesis editor toggle
-  React.useEffect(() => { setMode('detail'); setEditingThesis(false); }, [drawerTicker]);
+  React.useEffect(() => {
+    setMode('detail');
+    // Auto-open thesis editor if an agent proposal prefill is waiting (C2-S4b).
+    setEditingThesis(!!(window.__fincrDrawerPrefill));
+  }, [drawerTicker]);
 
   const h = drawerTicker ? store.holdings.find((x) => x.ticker === drawerTicker) : null;
   const open = !!h;
