@@ -82,7 +82,28 @@
       };
     });
 
-    // 4. Publish + notify. Mirrors the fxRate pattern: set window.FINCR, then
+    // 4. Extract portfolio-level fields from the raw thesis response.
+    // F.liquidity: { total_eur, realized_eur, last_updated } | null
+    // null when the key is absent (pre-migration) or on auth failure.
+    // Derived fields (liquidity_eur, gap_eur, target_eur) are computed
+    // in the card component, never stored here.
+    F.liquidity = (data && data.thesis && data.thesis.liquidity != null)
+      ? data.thesis.liquidity
+      : null;
+
+    // F.cashTargetPct: the dip_readiness cash target percentage (number | null).
+    // Path: thesis.dip_readiness.cash_target.target_pct
+    // Used by LiquidityCard2 to compute gap_eur vs total portfolio value.
+    // Null when absent — the TARGET row is hidden in the card.
+    try {
+      var dr = data && data.thesis && data.thesis.dip_readiness;
+      F.cashTargetPct = (dr && dr.cash_target && dr.cash_target.target_pct != null)
+        ? Number(dr.cash_target.target_pct) : null;
+    } catch (e) {
+      F.cashTargetPct = null;
+    }
+
+    // 5. Publish + notify. Mirrors the fxRate pattern: set window.FINCR, then
     //    dispatch so the shell's forceRerender listener repaints Positions + drawer.
     F.thesis = transformed;
     window.dispatchEvent(new CustomEvent('fincr:thesis-update'));

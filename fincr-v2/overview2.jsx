@@ -208,8 +208,10 @@ function OverviewTab2({ go }) {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 18, position: narrow ? 'static' : 'sticky', top: 76 }}>
         <GuardrailsCard2 />
 
+        <LiquidityCard2 />
+
         <Card2 pad="18px 20px 14px">
-          <SecHead n="05" style={{ marginBottom: 4 }}>Trigger distance</SecHead>
+          <SecHead n="06" style={{ marginBottom: 4 }}>Trigger distance</SecHead>
           <TriggerRow ticker="NVDA" action="Trim 25% above" level="€1,300" dist="+22.9%" />
           <TriggerRow ticker="BTC" action="Take 20% off above" level="€110k" dist="+27.3%" />
           <TriggerRow ticker="ETH" action="Add below" level="€2,200" dist="−12.9%" />
@@ -219,7 +221,7 @@ function OverviewTab2({ go }) {
         </Card2>
 
         <Card2 pad="18px 20px 16px">
-          <SecHead n="06" style={{ marginBottom: 14 }}>Ask Fincr</SecHead>
+          <SecHead n="07" style={{ marginBottom: 14 }}>Ask Fincr</SecHead>
           <button onClick={() => go('agent')} className="f2-press" style={{ width: '100%', textAlign: 'left', fontFamily: t.mono, fontSize: 11.5, color: t.faint, background: t.inputBg, border: `1px solid ${t.inputBorder}`, borderRadius: 9, padding: '11px 13px', cursor: 'text', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
             Why is my day P&L positive?
             <Kbd2>⌘K</Kbd2>
