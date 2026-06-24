@@ -204,6 +204,8 @@ function OverviewTab2({ go }) {
         </Card2>
       </div>
 
+        <DepositsSection2 />
+
       {/* ── Right rail ── */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 18, position: narrow ? 'static' : 'sticky', top: 76 }}>
         <GuardrailsCard2 />
