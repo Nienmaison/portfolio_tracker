@@ -202,9 +202,9 @@ function OverviewTab2({ go }) {
             </div>
           </div>
         </Card2>
-      </div>
 
         <DepositsSection2 />
+      </div>
 
       {/* ── Right rail ── */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 18, position: narrow ? 'static' : 'sticky', top: 76 }}>
