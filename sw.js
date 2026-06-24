@@ -8,7 +8,7 @@
 // Bump CACHE_VERSION after any significant frontend change to force a full
 // cache flush on all clients.
 
-const CACHE_VERSION = 'fincr-v12'; // C2-S5: liquidity card, POST /liquidity/update, thesis.json liquidity key
+const CACHE_VERSION = 'fincr-v13'; // C2-S5 follow-up: liquidity in portfolio total; guardrails modal scrollable
 
 const SHELL_ASSETS = [
   './index.html',

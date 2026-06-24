@@ -75,6 +75,7 @@ function GuardrailsEditor2({ open, onClose }) {
         <Btn2 onClick={useCurrent} style={{ fontSize: 11.5, padding: '6px 10px' }}>Match current</Btn2>
       </div>
       <div>
+        <div style={{ overflowY: 'auto', maxHeight: 'calc(100vh - 380px)' }}>
         {F.holdings.map((h) => (
           <div key={h.ticker} style={{ display: 'grid', gridTemplateColumns: '1fr 96px', gap: 12, alignItems: 'center', padding: '8px 0', borderTop: `1px solid ${t.hair}` }}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 9 }}>
@@ -85,6 +86,7 @@ function GuardrailsEditor2({ open, onClose }) {
             <NumberField2 value={draft[h.ticker] || ''} onChange={(v) => setDraft((s) => ({ ...s, [h.ticker]: v }))} prefix="%" placeholder="—" />
           </div>
         ))}
+        </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', borderTop: `1px solid ${t.hairStrong}`, marginTop: 6, paddingTop: 11 }}>
           <MonoTxt size={10.5} color={t.faint} style={{ letterSpacing: '0.12em' }}>ALLOCATED</MonoTxt>
           <Money size={14} weight={700} color={Math.abs(sum - 100) <= 0.5 ? t.green : sum > 100 ? t.red : t.dim}>{sum.toFixed(1)}%</Money>

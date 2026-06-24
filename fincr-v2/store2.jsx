@@ -222,6 +222,15 @@ function FincrProvider({ children }) {
   // fetch and we stay on the Phase-1 localStorage render). Non-blocking: display
   // components may read F.loading for a subtle indicator.
   const [loading, setLoading] = React.useState(() => !!f2ApiKey());
+  const [liquidityEur, setLiquidityEur] = React.useState(0);
+  React.useEffect(function() {
+    const handler = function() {
+      const liq = window.FINCR && window.FINCR.liquidity;
+      setLiquidityEur(liq ? (Number(liq.total_eur) || 0) : 0);
+    };
+    window.addEventListener('fincr:thesis-update', handler);
+    return function() { window.removeEventListener('fincr:thesis-update', handler); };
+  }, []);
 
   React.useEffect(() => {
     try { localStorage.setItem(F2_LS_KEY, JSON.stringify({ holdings, closed, targets })); }
@@ -230,7 +239,8 @@ function FincrProvider({ children }) {
 
   const derived = React.useMemo(() => holdings.map(f2DeriveHolding).filter((h) => h.qty > 1e-7), [holdings]);
   const totals = React.useMemo(() => {
-    const totalValue = derived.reduce((s, h) => s + h.value, 0);
+    // Include undeployed liquidity in total portfolio value (C2-S5 follow-up) — cash between positions is still invested capital.
+    const totalValue = derived.reduce((s, h) => s + h.value, 0) + liquidityEur;
     const totalCost = derived.reduce((s, h) => s + h.costNow, 0);
     const totalPnl = totalValue - totalCost;
     const realizedTotal = (closed.reduce((s, c) => s + (c.realized || 0), 0))
@@ -244,7 +254,7 @@ function FincrProvider({ children }) {
       stocksValue, cryptoValue, realizedTotal,
       dayChange, dayChangePct: totalValue > 0 ? (dayChange / totalValue) * 100 : 0,
     };
-  }, [derived, closed, holdings]);
+  }, [derived, closed, holdings, liquidityEur]);
 
   // mirror onto window.FINCR (render phase) so display children read fresh numbers
   const F = window.FINCR;
