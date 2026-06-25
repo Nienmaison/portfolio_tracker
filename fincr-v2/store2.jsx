@@ -248,11 +248,26 @@ function FincrProvider({ children }) {
     const stocksValue = derived.filter((h) => h.type === 'stock').reduce((s, h) => s + h.value, 0);
     const cryptoValue = derived.filter((h) => h.type === 'crypto').reduce((s, h) => s + h.value, 0);
     const dayChange = derived.reduce((s, h) => s + h.value * ((h.dayPct || 0) / 100), 0);
+    // Derive total invested capital from the transaction log (C2-S6b, C2-D68).
+    // totalInvested = net salary/savings capital deployed into the portfolio.
+    // Formula: totalValue - unrealisedPnl - realisedPnl
+    // This holds exactly because the owner always sells to EUR before rebuying —
+    // every transaction has a clean EUR value, so no ambiguous cost bases.
+    const totalUnrealisedPnl = derived.reduce((s, h) => s + (h.pnl ?? 0), 0);
+    // realizedTotal already computed above — reuse for total realised across all positions.
+    const totalRealisedPnl = realizedTotal;
+    const allPnl = totalUnrealisedPnl + totalRealisedPnl;
+    const totalInvested = totalValue - allPnl;
+    // trueReturnPct: null when totalInvested <= 0 (no transactions yet).
+    // UI hides the row when null — avoids divide-by-zero and misleading display.
+    const trueReturnPct = totalInvested > 0 ? (allPnl / totalInvested) * 100 : null;
+
     return {
       totalValue, totalCost, totalPnl,
       totalPnlPct: totalCost > 0 ? (totalPnl / totalCost) * 100 : 0,
       stocksValue, cryptoValue, realizedTotal,
       dayChange, dayChangePct: totalValue > 0 ? (dayChange / totalValue) * 100 : 0,
+      totalInvested, trueReturnPct,
     };
   }, [derived, closed, holdings, liquidityEur]);
 

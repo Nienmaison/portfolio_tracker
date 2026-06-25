@@ -103,18 +103,6 @@
       F.cashTargetPct = null;
     }
 
-    // Expose deposits array on window.FINCR.
-    // F.deposits: array of deposit objects sorted by date descending (newest first).
-    // F.totalDeposited: sum of all amount_eur values (the invested capital denominator).
-    // Both are [] / 0 when the deposits key is absent (pre-migration) or on auth failure.
-    const deposits = (data.thesis.deposits) ? data.thesis.deposits : [];
-    window.FINCR.deposits = deposits.slice().sort(function(a, b) {
-      return new Date(b.date) - new Date(a.date);
-    });
-    window.FINCR.totalDeposited = deposits.reduce(function(sum, d) {
-      return sum + (d.amount_eur != null ? d.amount_eur : 0);
-    }, 0);
-
     // 5. Publish + notify. Mirrors the fxRate pattern: set window.FINCR, then
     //    dispatch so the shell's forceRerender listener repaints Positions + drawer.
     F.thesis = transformed;

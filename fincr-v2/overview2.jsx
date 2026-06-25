@@ -129,6 +129,18 @@ function OverviewTab2({ go }) {
                 <Delta2 pct={F.totalPnlPct} value={F.totalPnl} size={12.5} />
                 <MonoTxt size={10.5} color={t.faint}>SINCE INCEPTION</MonoTxt>
               </div>
+              {F.trueReturnPct !== null && F.trueReturnPct !== undefined && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8 }}>
+                  <span style={{ fontFamily: t.mono, fontSize: 12.5, fontWeight: 600, color: F.trueReturnPct >= 0 ? t.green : t.red }}>
+                    {F.trueReturnPct >= 0 ? '+' : ''}{F.trueReturnPct.toFixed(1)}%
+                  </span>
+                  <MonoTxt size={10.5} color={t.faint}>TRUE RETURN</MonoTxt>
+                  <span style={{ width: 1, height: 10, background: t.hair }}></span>
+                  <MonoTxt size={10.5} color={t.dim}>
+                    {F.eur(F.totalValue - F.totalInvested)} on {F.eur(F.totalInvested)} invested
+                  </MonoTxt>
+                </div>
+              )}
             </div>
             <div style={{ textAlign: 'right', paddingBottom: 2 }}>
               <MonoTxt size={10.5} color={t.faint} style={{ display: 'block', letterSpacing: '0.1em' }}>COST BASIS</MonoTxt>
@@ -202,8 +214,6 @@ function OverviewTab2({ go }) {
             </div>
           </div>
         </Card2>
-
-        <DepositsSection2 />
       </div>
 
       {/* ── Right rail ── */}

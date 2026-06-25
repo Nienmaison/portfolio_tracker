@@ -8,7 +8,7 @@
 // Bump CACHE_VERSION after any significant frontend change to force a full
 // cache flush on all clients.
 
-const CACHE_VERSION = 'fincr-v14'; // C2-S6: deposit ledger, true return, CSV import
+const CACHE_VERSION = 'fincr-v15'; // C2-S6b: deposit ledger removed, true return derived from transactions
 
 const SHELL_ASSETS = [
   './index.html',
