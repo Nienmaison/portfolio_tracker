@@ -93,21 +93,42 @@ function CloseForm2({ h, onCancel }) {
   const [sellType, setSellType] = React.useState(null);          // 'rotate' | 'exit' — required
   const [convRetained, setConvRetained] = React.useState(null);  // true | false — required
   const [rotatedInto, setRotatedInto] = React.useState('');      // ticker, rotate only
+  const [rotationLinks, setRotationLinks] = React.useState([]);   // C2-S8 picker output
+  const [rotationValid, setRotationValid] = React.useState(true);
   const [busy, setBusy] = React.useState(false);
   const sellN = parseFloat(sell);
   const priceValid = sellN > 0;
-  // Both sell-intent fields must be answered before Close enables.
-  const valid = priceValid && !!sellType && convRetained !== null && !busy;
+  const isRotate = sellType === "rotate";
+  const targetTicker = rotatedInto.trim().toUpperCase();
+  const grossProceeds = priceValid ? sellN * h.qty : null;
+  // Both sell-intent fields required; for a rotation the linked portions must be valid (C2-S8).
+  const valid = priceValid && !!sellType && convRetained !== null && (!isRotate || rotationValid) && !busy;
   const realized = priceValid ? h.qty * (sellN - h.avgCost) + (h.realized || 0) : 0;
   const up = realized >= 0;
   const doClose = async () => {
     if (!valid) return;
     setBusy(true);
+    // Build rotation links from the picker, or a single unlinked entry if none picked (C2-S8).
+    let finalLinks = [];
+    if (isRotate) {
+      if (rotationLinks.length > 0) finalLinks = rotationLinks;
+      else if (targetTicker) finalLinks = [{ target_ticker: targetTicker, target_txn_id: null, portion_eur: grossProceeds }];
+    }
     const patch = { sell_type: sellType, conviction_retained: convRetained };
-    if (sellType === "rotate" && rotatedInto.trim()) patch.rotated_into = rotatedInto.trim().toUpperCase();
+    if (isRotate && targetTicker) patch.rotated_into = targetTicker;
+    if (isRotate) patch.rotation_links = finalLinks;
     // Close first; the thesis patch fires after the archive sync succeeds (store).
     // The drawer closes itself once the holding leaves the store.
     await store.actions.closePositionWithThesis(h.ticker, { sellPrice: sellN, date, note }, patch, note);
+    // Forward link: tag each linked buy txn as funded by this rotation. The target
+    // ticker is a still-held holding, so this patches local state regardless of sync.
+    finalLinks.forEach((l) => {
+      if (l.target_txn_id) {
+        store.actions.addRotatedFromToTxn(l.target_ticker, l.target_txn_id, {
+          source_ticker: h.ticker, source_closed_at: date || new Date().toISOString().slice(0, 10), portion_eur: l.portion_eur,
+        });
+      }
+    });
   };
   return (
     <div style={{ background: t.redSoft, border: `1px solid ${t.cardBorder}`, borderRadius: 12, padding: 16, display: 'flex', flexDirection: 'column', gap: 13 }}>
@@ -125,10 +146,13 @@ function CloseForm2({ h, onCancel }) {
           value={convRetained === null ? null : (convRetained ? "keep" : "lost")}
           onChange={(v) => setConvRetained(v === "keep")} />
       </Field2>
-      {sellType === "rotate" && (
-        <Field2 label="Rotating into" hint="optional">
+      {isRotate && (
+        <Field2 label="Rotating into" hint="ticker">
           <TextField2 value={rotatedInto} onChange={(v) => setRotatedInto(v.toUpperCase())} placeholder="TICKER" />
         </Field2>
+      )}
+      {isRotate && targetTicker && (
+        <RotationLinkPicker2 key={targetTicker} targetTicker={targetTicker} closedAt={date} grossProceeds={grossProceeds} initialLinks={[]} onChange={(links, v) => { setRotationLinks(links); setRotationValid(v); }} />
       )}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', borderTop: `1px solid ${t.hair}`, paddingTop: 12 }}>
         <MonoTxt size={10.5} color={t.faint} style={{ letterSpacing: '0.12em' }}>REALIZED P&L</MonoTxt>

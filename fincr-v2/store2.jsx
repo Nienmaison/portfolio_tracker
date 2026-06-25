@@ -107,6 +107,20 @@ function f2DeriveHolding(h) {
   return { ...h, txns, qty, avgCost, value, costNow, pnl, pnlPct, realized, soldQty };
 }
 
+/* Rotation migration (C2-S8): convert the flat rotated_into string (C2-S7) into a
+   rotation_links array. Idempotent — skips entries that already have rotation_links.
+   The flat rotated_into field is kept one release as a fallback display value. */
+function migrateClosedPositionRotations(closedArray) {
+  return (closedArray || []).map((c) => {
+    if (c.rotation_links !== undefined) return c;                 // already migrated
+    if (c.sell_type !== 'rotate' || !c.rotated_into) return { ...c, rotation_links: [] };
+    // Gross proceeds = sell price x units (the cash redeployed). The link starts
+    // unlinked (target_txn_id null) — the owner resolves it via the review modal.
+    const gross = (c.sellPrice != null && c.qty != null) ? c.sellPrice * c.qty : null;
+    return { ...c, rotation_links: [{ target_ticker: c.rotated_into, target_txn_id: null, portion_eur: gross }] };
+  });
+}
+
 /* ── Seed: turn the static sample holdings into ledgered holdings ─────── */
 function f2SeedFromSample() {
   const F = window.FINCR;
@@ -204,7 +218,7 @@ function f2LoadInitial() {
     const raw = localStorage.getItem(F2_LS_KEY);
     if (raw) {
       const p = JSON.parse(raw);
-      if (p && Array.isArray(p.holdings)) return p;
+      if (p && Array.isArray(p.holdings)) return { ...p, closed: migrateClosedPositionRotations(p.closed || []) };
     }
   } catch (e) { /* fall through to empty */ }
   return { holdings: [], closed: [], targets: null };
@@ -264,6 +278,14 @@ function FincrProvider({ children }) {
       .filter((c) => c.sell_type === 'exit')
       .reduce((s, c) => s + (c.realized ?? 0), 0);
     const untaggedClosedCount = closed.filter((c) => !c.sell_type).length;
+    // C2-S8: rotations that are tagged but not yet linked to a specific buy txn —
+    // counted as "tagged" for the formula (sell_type is set) but flagged for the UI
+    // so the owner can complete the chain. Drives the closed-positions warning.
+    const unlinkedRotationCount = closed.filter((c) =>
+      c.sell_type === 'rotate' &&
+      (c.rotation_links && c.rotation_links.length > 0) &&
+      c.rotation_links.some((l) => l.target_txn_id == null)
+    ).length;
     const allPnl = totalUnrealisedPnl + exitRealisedPnl;
     const totalInvested = totalValue - allPnl;
     // trueReturnPct is null when every closed position is untagged (can't compute
@@ -279,7 +301,7 @@ function FincrProvider({ children }) {
       totalPnlPct: totalCost > 0 ? (totalPnl / totalCost) * 100 : 0,
       stocksValue, cryptoValue, realizedTotal,
       dayChange, dayChangePct: totalValue > 0 ? (dayChange / totalValue) * 100 : 0,
-      totalInvested, trueReturnPct, untaggedClosedCount,
+      totalInvested, trueReturnPct, untaggedClosedCount, unlinkedRotationCount,
     };
   }, [derived, closed, holdings, liquidityEur]);
 
@@ -367,6 +389,9 @@ function FincrProvider({ children }) {
         sell_type: (thesisPatch && thesisPatch.sell_type) || null,
         conviction_retained: (thesisPatch && thesisPatch.conviction_retained != null) ? thesisPatch.conviction_retained : null,
         rotated_into: (thesisPatch && thesisPatch.rotated_into) || null,
+        // C2-S8: rotation links captured at close (usually empty here — the target
+        // buy may not exist yet; the owner links later via the review modal).
+        rotation_links: (thesisPatch && Array.isArray(thesisPatch.rotation_links)) ? thesisPatch.rotation_links : [],
       };
       const nextHoldings = holdings.filter((h) => h.ticker !== ticker);
       const nextClosed = [closedEntry, ...closed];
@@ -386,7 +411,9 @@ function FincrProvider({ children }) {
       // Patch the now-archived thesis entry with the sell decision (after close synced).
       let thesisOk = false;
       if (closeRes.ok && thesisPatch && window.saveThesis) {
-        thesisOk = await window.saveThesis(ticker, thesisPatch, summary || '');
+        // rotation_links belongs on the closed entry, not the thesis — strip it.
+        const thesisOnly = Object.assign({}, thesisPatch); delete thesisOnly.rotation_links;
+        thesisOk = await window.saveThesis(ticker, thesisOnly, summary || '');
         if (!thesisOk) {
           console.warn('[close] thesis update failed for ' + ticker + ' — set it manually via the editor');
           window.dispatchEvent(new CustomEvent('fincr:toast', { detail: { message: 'Position closed. Thesis update failed — you can set it manually.' } }));
@@ -408,14 +435,34 @@ function FincrProvider({ children }) {
     // fires POST /holdings — same fire-and-forget pattern as the other mutations.
     // Ticker is the match key (closed entries have no id); assumed unique in the
     // closed list for this owner. Does NOT recompute P&L — realised is immutable.
-    editClosedPosition: (ticker, { sell_type, conviction_retained, rotated_into }) => {
+    editClosedPosition: (ticker, { sell_type, conviction_retained, rotated_into, rotation_links }) => {
       setClosed((cs) => cs.map((c) => {
         if (c.ticker !== ticker) return c;
         const next = { ...c };
         if (sell_type !== undefined) next.sell_type = sell_type;
         if (conviction_retained !== undefined) next.conviction_retained = conviction_retained;
         if (rotated_into !== undefined) next.rotated_into = rotated_into;
+        if (rotation_links !== undefined) next.rotation_links = rotation_links;
         return next;
+      }));
+    },
+
+    // addRotatedFromToTxn (C2-S8): tag a buy transaction as funded by a rotation.
+    // The reverse link (closed position -> buy txn) lives in rotation_links; this is
+    // the forward link (buy txn -> source closed position). Both directions are kept
+    // so the chain can be traversed from either end. Transactions live on the
+    // holding's .txns array (no separate txn store), so this patches like editTxn;
+    // setHoldings fires the POST /holdings sync (transactions round-trip verbatim).
+    addRotatedFromToTxn: (ticker, txnId, link) => {
+      setHoldings((hs) => hs.map((h) => {
+        if (h.ticker !== ticker) return h;
+        return { ...h, txns: (h.txns || []).map((tx) => {
+          if (tx.id !== txnId) return tx;
+          const existing = Array.isArray(tx.rotated_from) ? tx.rotated_from : [];
+          // Idempotent: drop any prior link from the same source close before appending.
+          const kept = existing.filter((r) => !(r.source_ticker === link.source_ticker && r.source_closed_at === link.source_closed_at));
+          return { ...tx, rotated_from: [...kept, link] };
+        }) };
       }));
     },
 
@@ -520,7 +567,7 @@ function FincrProvider({ children }) {
       if (shouldCancel()) return;
       f2SuppressHoldingsSync.current = true; // suppress the echo POST from this commit
       setHoldings(next);
-      if (Array.isArray(data.closed_positions)) setClosed(data.closed_positions);
+      if (Array.isArray(data.closed_positions)) setClosed(migrateClosedPositionRotations(data.closed_positions));
       setLoading(false);
     } catch (e) {
       console.warn('[load] GET /holdings failed — keeping local state:', e.message);

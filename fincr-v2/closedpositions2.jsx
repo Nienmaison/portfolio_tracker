@@ -1,10 +1,14 @@
-/* Fincr 2.0 — Closed positions list + historical sell_type tagging (C2-S7, C2-D69/70).
-   Primary purpose: let the owner tag historical closes with sell_type so the true
-   return formula (store2.jsx totals) can count only EXIT closes as realised P&L.
-   Secondary: visibility into realised P&L history.
-   Reads:  F.closed (closed position entries) via useStore2().closed
-           F.untaggedClosedCount (drives the warning)
-   Writes: store.actions.editClosedPosition(ticker, { sell_type, conviction_retained, rotated_into }) */
+/* Fincr 2.0 — Closed positions list + sell_type tagging + rotation linking
+   (C2-S7 tagging, C2-S8 linking; decisions C2-D69/70/71).
+   Primary purpose: tag historical closes with sell_type AND, for rotations, link
+   the close to the specific subsequent buy transaction(s) the proceeds funded.
+   Reads:  useStore2().closed (closed entries), useStore2().holdings (buy txns live
+           on each holding's .txns array — there is NO separate transaction store),
+           F.unlinkedRotationCount (set in store2.jsx totals).
+   Writes: store.actions.editClosedPosition(ticker, { sell_type, conviction_retained,
+             rotated_into, rotation_links })
+           store.actions.addRotatedFromToTxn(ticker, txnId, { source_ticker,
+             source_closed_at, portion_eur })  — forward link on the buy txn. */
 
 // Human-readable label for a sell_type value. '—' when untagged.
 function sellTypeLabel(st) {
@@ -13,29 +17,156 @@ function sellTypeLabel(st) {
   return '—';
 }
 
-// ── Review modal (C2-S7) ──────────────────────────────────────────────────────
-// Opened from the closed positions list to tag a historical close. The transaction
-// itself is immutable (ticker/date/sell price/qty/realized shown read-only); only
-// the metadata fields (sell_type / conviction_retained / rotated_into) are editable.
-// This is how pre-Spec-3 closes — and any close not yet tagged on the local entry —
-// get their sell_type. On save it calls editClosedPosition(), never recalculates P&L.
+// ── RotationLinkPicker2 (C2-S8) ───────────────────────────────────────────────
+// Shown in both the close modal (drawer2 CloseForm2) and the review modal below
+// when sell_type === 'rotate' and a target ticker is set. Lets the owner link the
+// rotation to the specific buy transaction(s) it funded — picked from the target
+// ticker's existing buys (no data re-entry). Defined at top level so drawer2.jsx
+// (loaded later, same global scope) can reference it by bare name.
+//
+// Data source note: transactions are NOT in a separate localStorage key — they
+// live as .txns arrays on each holding. We read the target ticker's buys from
+// useStore2().holdings. If the target is not currently held, the list is empty
+// and the owner saves "without link" (resolves later).
+function RotationLinkPicker2({ targetTicker, closedAt, grossProceeds, initialLinks, onChange }) {
+  const t = useTheme2();
+  const F = window.FINCR;
+  const store = useStore2();
+  const [showAll, setShowAll] = React.useState(false);
+
+  const targetHolding = (store.holdings || []).find((h) => h.ticker === targetTicker);
+  const allBuys = ((targetHolding && targetHolding.txns) || []).filter((tx) => tx.kind === 'buy');
+
+  // ±30 day window around the close date unless "Show all" is on.
+  const closeMs = new Date(closedAt + 'T00:00:00').getTime();
+  const WINDOW_MS = 30 * 86400000;
+  const inWindow = allBuys.filter((tx) => {
+    const d = new Date(tx.date + 'T00:00:00').getTime();
+    return isFinite(d) && Math.abs(d - closeMs) <= WINDOW_MS;
+  });
+  const buys = (showAll ? allBuys : inWindow).slice().sort((a, b) => (a.date < b.date ? 1 : -1)); // newest first
+  const hiddenCount = allBuys.length - inWindow.length;
+
+  const txnValue = (tx) => tx.qty * tx.price;
+
+  // Seed selection from initialLinks ONCE (review re-edit). Only seed links whose
+  // target_ticker matches — guards against stale ids if the owner changed ticker.
+  const seed = React.useRef(null);
+  if (seed.current === null) {
+    const sel = {}, por = {};
+    (initialLinks || []).forEach((l) => {
+      if (l.target_txn_id && l.target_ticker === targetTicker) {
+        sel[l.target_txn_id] = true;
+        if (l.portion_eur != null) por[l.target_txn_id] = String(l.portion_eur);
+      }
+    });
+    seed.current = { sel, por };
+  }
+  const [selected, setSelected] = React.useState(seed.current.sel);
+  const [portions, setPortions] = React.useState(seed.current.por);
+
+  const buildLinks = (sel, por) => Object.keys(sel).filter((id) => sel[id]).map((id) => {
+    const tx = allBuys.find((b) => b.id === id);
+    const raw = (por[id] != null && por[id] !== '') ? parseFloat(por[id]) : (tx ? txnValue(tx) : 0);
+    return { target_ticker: targetTicker, target_txn_id: id, portion_eur: isNaN(raw) ? 0 : raw };
+  });
+
+  const emit = (sel, por) => {
+    const links = buildLinks(sel, por);
+    const sum = links.reduce((s, l) => s + (l.portion_eur || 0), 0);
+    const valid = grossProceeds == null || sum <= grossProceeds + 0.5; // €0.50 epsilon
+    onChange(links, valid, sum);
+  };
+
+  // Emit the seeded selection once on mount (deps [] — no re-emit loop).
+  React.useEffect(() => { emit(selected, portions); }, []);
+
+  const toggle = (id) => { const next = { ...selected, [id]: !selected[id] }; setSelected(next); emit(next, portions); };
+  const setPortion = (id, v) => { const next = { ...portions, [id]: v }; setPortions(next); emit(selected, next); };
+
+  const currentSum = buildLinks(selected, portions).reduce((s, l) => s + (l.portion_eur || 0), 0);
+  const overLimit = grossProceeds != null && currentSum > grossProceeds + 0.5;
+
+  const linkBtn = (label, onClick) => (
+    <button onClick={onClick} className="f2-press"
+      style={{ fontFamily: t.mono, fontSize: 10.5, fontWeight: 600, color: t.accent, background: 'none', border: 'none', cursor: 'pointer', padding: 0, textDecoration: 'underline' }}>
+      {label}
+    </button>
+  );
+
+  return (
+    <div style={{ marginTop: 4, padding: '12px 13px', background: t.amberSoft, borderRadius: 9 }}>
+      <MonoTxt size={9.5} color={t.faint} style={{ letterSpacing: '0.12em', display: 'block', marginBottom: 3 }}>ROTATED INTO BUY TRANSACTION(S)</MonoTxt>
+      <MonoTxt size={11} color={t.dim} style={{ display: 'block', marginBottom: 10 }}>Which {targetTicker || '—'} buy(s) did this rotation fund?</MonoTxt>
+
+      {buys.length === 0 ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <MonoTxt size={11} color={t.faint}>
+            No {targetTicker || ''} buys {showAll ? 'in your ledger' : 'within 30 days of the close'}. Save to tag without a link — you can link it later.
+          </MonoTxt>
+          {!showAll && hiddenCount > 0 && linkBtn('Show all buys (' + hiddenCount + ' more)', () => setShowAll(true))}
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+          {buys.map((tx) => {
+            const on = !!selected[tx.id];
+            return (
+              <div key={tx.id} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 9, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={on} onChange={() => toggle(tx.id)} style={{ accentColor: t.accent, width: 14, height: 14, flexShrink: 0 }} />
+                  <MonoTxt size={11} color={t.dim} style={{ width: 80, flexShrink: 0 }}>{tx.date}</MonoTxt>
+                  <MonoTxt size={11} color={t.ink} style={{ flex: 1 }}>{tx.qty} @ {F.eur(tx.price, 2)}</MonoTxt>
+                  <Money size={11.5} weight={600}>{F.eur(txnValue(tx))}</Money>
+                </label>
+                {on && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingLeft: 23 }}>
+                    <MonoTxt size={9.5} color={t.faint} style={{ letterSpacing: '0.1em' }}>PORTION</MonoTxt>
+                    <div style={{ width: 130 }}>
+                      <NumberField2 value={portions[tx.id] != null ? portions[tx.id] : String(txnValue(tx))} onChange={(v) => setPortion(tx.id, v)} prefix="€" />
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          {!showAll && hiddenCount > 0 && linkBtn('Show all buys (' + hiddenCount + ' more)', () => setShowAll(true))}
+        </div>
+      )}
+
+      {overLimit && (
+        <MonoTxt size={10.5} color={t.red} style={{ display: 'block', marginTop: 8 }}>
+          Linked portions ({F.eur(currentSum)}) exceed rotation proceeds ({F.eur(grossProceeds)}).
+        </MonoTxt>
+      )}
+    </div>
+  );
+}
+
+// ── Review modal (C2-S7 tagging + C2-S8 linking) ──────────────────────────────
+// Opened from the closed positions list. Transaction facts are read-only; the
+// intent fields (sell_type / conviction_retained / rotated_into) are editable, and
+// for rotations the RotationLinkPicker2 links the close to specific buy txns.
 function ClosedReviewModal2({ entry, onClose }) {
   const t = useTheme2();
   const F = window.FINCR;
   const store = useStore2();
   const open = !!entry;
 
-  // Pre-fill from the entry's current values so re-editing is non-destructive.
-  const [sellType, setSellType] = React.useState(null);          // 'rotate' | 'exit'
-  const [convRetained, setConvRetained] = React.useState(null);  // true | false
+  const [sellType, setSellType] = React.useState(null);
+  const [convRetained, setConvRetained] = React.useState(null);
   const [rotatedInto, setRotatedInto] = React.useState('');
+  const [rotationLinks, setRotationLinks] = React.useState([]);
+  const [rotationValid, setRotationValid] = React.useState(true);
   const [busy, setBusy] = React.useState(false);
 
   React.useEffect(() => {
     if (!entry) return;
     setSellType(entry.sell_type || null);
     setConvRetained(entry.conviction_retained == null ? null : !!entry.conviction_retained);
-    setRotatedInto(entry.rotated_into || '');
+    const links = entry.rotation_links || [];
+    setRotatedInto((links[0] && links[0].target_ticker) || entry.rotated_into || '');
+    setRotationLinks(links);
+    setRotationValid(true);
     setBusy(false);
   }, [entry]);
 
@@ -43,17 +174,35 @@ function ClosedReviewModal2({ entry, onClose }) {
 
   const realized = Number(entry.realized) || 0;
   const up = realized >= 0;
-  // Both sell-intent fields required before Save enables (mirrors the close modal).
-  const valid = !!sellType && convRetained !== null && !busy;
+  const grossProceeds = (entry.sellPrice != null && entry.qty != null) ? entry.sellPrice * entry.qty : null;
+  const isRotate = sellType === 'rotate';
+  const targetTicker = rotatedInto.trim().toUpperCase();
+  const valid = !!sellType && convRetained !== null && (!isRotate || rotationValid) && !busy;
 
   const save = () => {
     if (!valid) return;
     setBusy(true);
-    const patch = { sell_type: sellType, conviction_retained: convRetained };
-    // rotated_into is only meaningful on a rotate; clear it on an exit.
-    patch.rotated_into = (sellType === 'rotate' && rotatedInto.trim())
-      ? rotatedInto.trim().toUpperCase() : null;
-    store.actions.editClosedPosition(entry.ticker, patch);
+    let finalLinks = [];
+    let rotatedIntoVal = null;
+    if (isRotate) {
+      rotatedIntoVal = targetTicker || null;
+      if (rotationLinks.length > 0) finalLinks = rotationLinks;
+      else if (rotatedIntoVal) finalLinks = [{ target_ticker: rotatedIntoVal, target_txn_id: null, portion_eur: grossProceeds }];
+    }
+    store.actions.editClosedPosition(entry.ticker, {
+      sell_type: sellType,
+      conviction_retained: convRetained,
+      rotated_into: rotatedIntoVal,
+      rotation_links: finalLinks,
+    });
+    // Forward link: tag each linked buy txn as funded by this rotation.
+    finalLinks.forEach((l) => {
+      if (l.target_txn_id) {
+        store.actions.addRotatedFromToTxn(l.target_ticker, l.target_txn_id, {
+          source_ticker: entry.ticker, source_closed_at: entry.closedAt, portion_eur: l.portion_eur,
+        });
+      }
+    });
     onClose();
   };
 
@@ -62,8 +211,8 @@ function ClosedReviewModal2({ entry, onClose }) {
       open={open}
       onClose={onClose}
       title="Review closed position"
-      sub={'Tag how the capital moved when you closed ' + entry.ticker + '. The transaction is already recorded — only the intent fields are editable.'}
-      width={460}
+      sub={'Tag how the capital moved when you closed ' + entry.ticker + '. For a rotation, link the buy(s) the proceeds funded.'}
+      width={480}
       footer={
         <>
           <Btn2 onClick={onClose}>Cancel</Btn2>
@@ -101,19 +250,29 @@ function ClosedReviewModal2({ entry, onClose }) {
             value={convRetained === null ? null : (convRetained ? 'keep' : 'lost')}
             onChange={(v) => setConvRetained(v === 'keep')} />
         </Field2>
-        {sellType === 'rotate' && (
-          <Field2 label="Rotated into" hint="optional">
+        {isRotate && (
+          <Field2 label="Rotated into" hint="ticker">
             <TextField2 value={rotatedInto} onChange={(v) => setRotatedInto(v.toUpperCase())} placeholder="TICKER" />
           </Field2>
+        )}
+        {isRotate && targetTicker && (
+          <RotationLinkPicker2
+            key={targetTicker}
+            targetTicker={targetTicker}
+            closedAt={entry.closedAt}
+            grossProceeds={grossProceeds}
+            initialLinks={entry.rotation_links}
+            onChange={(links, v) => { setRotationLinks(links); setRotationValid(v); }}
+          />
         )}
       </div>
     </Modal2>
   );
 }
 
-// ── Closed positions list (C2-S7) ────────────────────────────────────────────
-// Collapsed by default when all positions are tagged; expanded when any are
-// untagged (so the warning is visible and the owner is prompted to tag them).
+// ── Closed positions list (C2-S7 + C2-S8) ────────────────────────────────────
+// Collapsed by default when all positions are tagged AND all rotations linked;
+// expanded when any need attention (untagged, or rotation with an unlinked link).
 function ClosedPositionsList2() {
   const t = useTheme2();
   const F = window.FINCR;
@@ -121,14 +280,50 @@ function ClosedPositionsList2() {
   const closed = (store && store.closed) || [];
 
   const untagged = closed.filter((c) => !c.sell_type).length;
-  // Collapsed default depends on tag state. Initialised once; the owner can toggle.
-  const [collapsed, setCollapsed] = React.useState(untagged === 0);
+  const unlinked = closed.filter((c) =>
+    c.sell_type === 'rotate' &&
+    (c.rotation_links && c.rotation_links.length > 0) &&
+    c.rotation_links.some((l) => l.target_txn_id == null)
+  ).length;
+
+  const [collapsed, setCollapsed] = React.useState(untagged === 0 && unlinked === 0);
   const [reviewEntry, setReviewEntry] = React.useState(null);
 
-  // Nothing to show until at least one position has been closed.
   if (!closed.length) return null;
 
-  const rowCols = '1fr 92px 96px 70px 56px';
+  // Resolve a linked txn's date from the target holding's ledger (display only).
+  const txnDate = (link) => {
+    const h = (store.holdings || []).find((x) => x.ticker === link.target_ticker);
+    const tx = h && (h.txns || []).find((y) => y.id === link.target_txn_id);
+    return tx ? tx.date : null;
+  };
+
+  // Build the SELL TYPE cell content + whether it needs attention (amber).
+  const rotationCell = (c) => {
+    if (c.sell_type === 'exit') return { text: 'Exit', attn: false };
+    if (c.sell_type !== 'rotate') return { text: '—', attn: false };
+    const links = c.rotation_links || [];
+    const target = (links[0] && links[0].target_ticker) || c.rotated_into || '?';
+    const linked = links.filter((l) => l.target_txn_id != null);
+    if (linked.length === 0) return { text: 'Rotate → ' + target + ' (unlinked)', attn: true };
+    if (linked.length === 1) {
+      const l = linked[0];
+      const d = txnDate(l);
+      const portion = l.portion_eur != null ? F.eur(l.portion_eur) : '';
+      const detail = [d, portion].filter(Boolean).join(', ');
+      return { text: 'Rotate → ' + target + (detail ? ' (' + detail + ')' : ''), attn: false };
+    }
+    const sum = linked.reduce((s, l) => s + (l.portion_eur || 0), 0);
+    return { text: 'Rotate → ' + target + ' ×' + linked.length + ' (' + F.eur(sum) + ')', attn: false };
+  };
+
+  // Combined attention banner.
+  const warnParts = [];
+  if (untagged > 0) warnParts.push(untagged + ' untagged');
+  if (unlinked > 0) warnParts.push(unlinked + ' unlinked rotation' + (unlinked > 1 ? 's' : ''));
+  const warnText = warnParts.join(' · ');
+
+  const rowCols = '64px 88px 92px 1fr 52px';
 
   return (
     <Card2 pad="22px 26px 18px">
@@ -145,26 +340,23 @@ function ClosedPositionsList2() {
         }
       >Closed positions</SecHead>
 
-      {/* Untagged warning — drives the owner to tag historical closes. */}
-      {untagged > 0 && (
+      {warnText && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginTop: 10, padding: '8px 11px', background: t.amberSoft, borderRadius: 8 }}>
           <span style={{ color: t.amber, fontSize: 12 }}>⚠</span>
-          <MonoTxt size={10.5} color={t.amber}>
-            {untagged} untagged — true return excludes {untagged > 1 ? 'these' : 'this'}
-          </MonoTxt>
+          <MonoTxt size={10.5} color={t.amber}>{warnText} — true return is partial</MonoTxt>
         </div>
       )}
 
       {!collapsed && (
         <div style={{ marginTop: 12 }}>
-          {/* Column headers */}
           <div style={{ display: 'grid', gridTemplateColumns: rowCols, gap: 10, padding: '0 6px 6px' }}>
             {['TICKER', 'DATE', 'P&L', 'SELL TYPE', ''].map((h, i) => (
               <MonoTxt key={i} size={9.5} color={t.faint} style={{ letterSpacing: '0.12em', textAlign: i === 2 ? 'right' : 'left' }}>{h}</MonoTxt>
             ))}
           </div>
           {closed.map((c, i) => {
-            const isUntagged = !c.sell_type;
+            const cell = rotationCell(c);
+            const attn = !c.sell_type || cell.attn;
             const realized = Number(c.realized) || 0;
             const up = realized >= 0;
             return (
@@ -172,8 +364,7 @@ function ClosedPositionsList2() {
                 style={{
                   display: 'grid', gridTemplateColumns: rowCols, gap: 10, alignItems: 'center',
                   padding: '9px 6px', borderTop: '1px solid ' + t.hair,
-                  borderLeft: isUntagged ? '2px solid ' + t.amber : '2px solid transparent',
-                  paddingLeft: 8,
+                  borderLeft: attn ? '2px solid ' + t.amber : '2px solid transparent', paddingLeft: 8,
                 }}>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
                   <span style={{ width: 7, height: 7, borderRadius: 999, background: c.color || t.dim, flexShrink: 0 }}></span>
@@ -181,7 +372,7 @@ function ClosedPositionsList2() {
                 </span>
                 <MonoTxt size={11} color={t.dim}>{c.closedAt}</MonoTxt>
                 <Money size={12} weight={600} color={up ? t.green : t.red} style={{ textAlign: 'right' }}>{F.signed(realized)}</Money>
-                <MonoTxt size={11} color={isUntagged ? t.faint : t.dim}>{sellTypeLabel(c.sell_type)}</MonoTxt>
+                <MonoTxt size={11} color={attn ? t.amber : t.dim} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cell.text}</MonoTxt>
                 <button onClick={() => setReviewEntry(c)} className="f2-press"
                   style={{ fontFamily: t.sans, fontSize: 11, fontWeight: 600, color: t.accent, background: 'none', border: '1px solid ' + t.hairStrong, borderRadius: 7, padding: '4px 9px', cursor: 'pointer', justifySelf: 'end' }}>
                   Edit
@@ -197,4 +388,5 @@ function ClosedPositionsList2() {
   );
 }
 
+window.RotationLinkPicker2 = RotationLinkPicker2;
 window.ClosedPositionsList2 = ClosedPositionsList2;
