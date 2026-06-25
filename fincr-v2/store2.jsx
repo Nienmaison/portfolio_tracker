@@ -248,26 +248,38 @@ function FincrProvider({ children }) {
     const stocksValue = derived.filter((h) => h.type === 'stock').reduce((s, h) => s + h.value, 0);
     const cryptoValue = derived.filter((h) => h.type === 'crypto').reduce((s, h) => s + h.value, 0);
     const dayChange = derived.reduce((s, h) => s + h.value * ((h.dayPct || 0) / 100), 0);
-    // Derive total invested capital from the transaction log (C2-S6b, C2-D68).
-    // totalInvested = net salary/savings capital deployed into the portfolio.
-    // Formula: totalValue - unrealisedPnl - realisedPnl
-    // This holds exactly because the owner always sells to EUR before rebuying —
-    // every transaction has a clean EUR value, so no ambiguous cost bases.
+    // CORRECTED true return formula (C2-S7, C2-D69).
+    // Previous formula (C2-S6b) treated ALL closed positions as realised exits —
+    // wrong for a portfolio where most closes are rotations (capital stays deployed,
+    // just changes form). Corrected logic:
+    //   - Only EXIT-tagged closes contribute to realised P&L.
+    //   - ROTATE-tagged closes are pass-throughs (their P&L is embedded in the next
+    //     position), so they are NOT counted as extracted capital.
+    //   - Untagged closes are EXCLUDED entirely (neither exit nor rotate assumed);
+    //     untaggedClosedCount drives a UI warning so the number is honest, not wrong.
+    //   - totalInvested = what is currently at risk from salary/savings, derived as
+    //     totalValue − totalPnl (exact for this owner's EUR-only workflow).
     const totalUnrealisedPnl = derived.reduce((s, h) => s + (h.pnl ?? 0), 0);
-    // realizedTotal already computed above — reuse for total realised across all positions.
-    const totalRealisedPnl = realizedTotal;
-    const allPnl = totalUnrealisedPnl + totalRealisedPnl;
+    const exitRealisedPnl = closed
+      .filter((c) => c.sell_type === 'exit')
+      .reduce((s, c) => s + (c.realized ?? 0), 0);
+    const untaggedClosedCount = closed.filter((c) => !c.sell_type).length;
+    const allPnl = totalUnrealisedPnl + exitRealisedPnl;
     const totalInvested = totalValue - allPnl;
-    // trueReturnPct: null when totalInvested <= 0 (no transactions yet).
-    // UI hides the row when null — avoids divide-by-zero and misleading display.
-    const trueReturnPct = totalInvested > 0 ? (allPnl / totalInvested) * 100 : null;
+    // trueReturnPct is null when every closed position is untagged (can't compute
+    // yet — UI shows a "— untagged closes pending" placeholder). A live-only book
+    // (no closes) is always calculable. Guard divide-by-zero with totalInvested > 0.
+    const trueReturnPct = (
+      totalInvested > 0 &&
+      (closed.length === 0 || untaggedClosedCount < closed.length)
+    ) ? (allPnl / totalInvested) * 100 : null;
 
     return {
       totalValue, totalCost, totalPnl,
       totalPnlPct: totalCost > 0 ? (totalPnl / totalCost) * 100 : 0,
       stocksValue, cryptoValue, realizedTotal,
       dayChange, dayChangePct: totalValue > 0 ? (dayChange / totalValue) * 100 : 0,
-      totalInvested, trueReturnPct,
+      totalInvested, trueReturnPct, untaggedClosedCount,
     };
   }, [derived, closed, holdings, liquidityEur]);
 
@@ -349,6 +361,12 @@ function FincrProvider({ children }) {
         closedAt: date || new Date().toISOString().slice(0, 10),
         qty: live.qty, avgCost: live.avgCost, sellPrice: +sellPrice,
         realized: (live.realized || 0) + realizedThisSale, note: note || '',
+        // C2-S7: persist the sell-intent tags on the local closed entry so the
+        // true-return formula (which reads closed[].sell_type) sees new closes as
+        // tagged. thesisPatch carries { sell_type, conviction_retained, rotated_into? }.
+        sell_type: (thesisPatch && thesisPatch.sell_type) || null,
+        conviction_retained: (thesisPatch && thesisPatch.conviction_retained != null) ? thesisPatch.conviction_retained : null,
+        rotated_into: (thesisPatch && thesisPatch.rotated_into) || null,
       };
       const nextHoldings = holdings.filter((h) => h.ticker !== ticker);
       const nextClosed = [closedEntry, ...closed];
@@ -382,6 +400,24 @@ function FincrProvider({ children }) {
     },
 
     deletePosition: (ticker) => { setHoldings((hs) => hs.filter((h) => h.ticker !== ticker)); setDrawerTicker(null); },
+
+    // editClosedPosition (C2-S7) — patch sell_type / conviction_retained /
+    // rotated_into on an existing closed position (used by the review modal to
+    // tag historical closes). Partial update: only supplied fields are written.
+    // setClosed triggers the holdings-sync effect (deps [holdings, closed]) which
+    // fires POST /holdings — same fire-and-forget pattern as the other mutations.
+    // Ticker is the match key (closed entries have no id); assumed unique in the
+    // closed list for this owner. Does NOT recompute P&L — realised is immutable.
+    editClosedPosition: (ticker, { sell_type, conviction_retained, rotated_into }) => {
+      setClosed((cs) => cs.map((c) => {
+        if (c.ticker !== ticker) return c;
+        const next = { ...c };
+        if (sell_type !== undefined) next.sell_type = sell_type;
+        if (conviction_retained !== undefined) next.conviction_retained = conviction_retained;
+        if (rotated_into !== undefined) next.rotated_into = rotated_into;
+        return next;
+      }));
+    },
 
     setTarget: (ticker, pct) => setTargets((tg) => {
       const next = { ...(tg || {}) };
