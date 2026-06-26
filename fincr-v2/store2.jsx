@@ -32,6 +32,7 @@ function f2BuildHoldingsPayload(derived, closed) {
     quantity: h.qty,
     weight_pct: totalValue > 0 ? +((h.value / totalValue) * 100).toFixed(1) : 0,
     type: h.type || 'stock', // Task 1 (C2) §3 — persist asset type to holdings.json
+    tranches_executed: h.tranches_executed || [], // C2-S9 — additive, round-trips verbatim
   }));
   const holdings_with_values = {};
   holdings_positions.forEach((p) => { holdings_with_values[p.ticker] = p.weight_pct; });
@@ -104,7 +105,7 @@ function f2DeriveHolding(h) {
   const costNow = qty * avgCost;
   const pnl = value - costNow;
   const pnlPct = costNow > 0 ? (pnl / costNow) * 100 : 0;
-  return { ...h, txns, qty, avgCost, value, costNow, pnl, pnlPct, realized, soldQty };
+  return { ...h, txns, qty, avgCost, value, costNow, pnl, pnlPct, realized, soldQty, tranches_executed: h.tranches_executed || [] };
 }
 
 /* Rotation migration (C2-S8): convert the flat rotated_into string (C2-S7) into a
@@ -172,6 +173,7 @@ function f2HoldingsFromApi(data) {
       seed: (i * 7 + 3) % 97,
       dayPct: 0,
       txns,
+      tranches_executed: Array.isArray(hp.tranches_executed) ? hp.tranches_executed : [], // C2-S9
     };
   });
 }
@@ -463,6 +465,19 @@ function FincrProvider({ children }) {
           const kept = existing.filter((r) => !(r.source_ticker === link.source_ticker && r.source_closed_at === link.source_closed_at));
           return { ...tx, rotated_from: [...kept, link] };
         }) };
+      }));
+    },
+
+    // editHoldingTrancheExecution (C2-S9): append a tranche level to a holding's
+    // tranches_executed array. Idempotent — won't double-add the same level. Called
+    // by the partial-sell form when a sell is marked a discipline trim. setHoldings
+    // fires the POST /holdings sync (the field is in the payload, round-trips verbatim).
+    editHoldingTrancheExecution: (ticker, trancheLevel) => {
+      setHoldings((hs) => hs.map((h) => {
+        if (h.ticker !== ticker) return h;
+        const ex = Array.isArray(h.tranches_executed) ? h.tranches_executed : [];
+        if (ex.indexOf(trancheLevel) !== -1) return h; // idempotent
+        return { ...h, tranches_executed: [...ex, trancheLevel] };
       }));
     },
 

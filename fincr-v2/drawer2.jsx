@@ -60,7 +60,25 @@ function AddTxnForm2({ ticker, maxSell, onDone }) {
   const qtyN = parseFloat(d.qty), priceN = parseFloat(d.price);
   const overSell = kind === 'sell' && qtyN > maxSell + 1e-9;
   const valid = qtyN > 0 && priceN > 0 && !overSell;
-  const save = () => { if (!valid) return; store.actions.addTxn(ticker, { kind, date: d.date, qty: qtyN, price: priceN }); onDone(); };
+  // Discipline-trim detection (C2-S9): when a PARTIAL sell lands in a tranche region,
+  // offer an optional question that marks the tranche executed (removes it from the
+  // Trigger Distance card). f2ParseTranches/f2TrancheInRegion are globals from
+  // triggerdistance2.jsx (loaded before drawer2.jsx).
+  const [disciplineYes, setDisciplineYes] = React.useState(null); // null | true | false
+  const hForTranche = (store.holdings || []).find((x) => x.ticker === ticker);
+  const trancheRule = (window.FINCR.decisionRules && typeof f2ParseTranches === 'function')
+    ? f2ParseTranches(window.FINCR.decisionRules.tranche_selling) : null;
+  const trancheLevel = (kind === 'sell' && trancheRule && hForTranche && qtyN > 0)
+    ? f2TrancheInRegion(hForTranche, trancheRule, qtyN) : null;
+  const save = () => {
+    if (!valid) return;
+    store.actions.addTxn(ticker, { kind, date: d.date, qty: qtyN, price: priceN });
+    // Mark the tranche executed only if the owner confirmed it was a discipline trim.
+    if (kind === 'sell' && trancheLevel != null && disciplineYes === true) {
+      store.actions.editHoldingTrancheExecution(ticker, trancheLevel);
+    }
+    onDone();
+  };
   return (
     <div style={{ background: t.dark ? 'rgba(255,255,255,0.02)' : 'rgba(23,25,30,0.02)', border: `1px solid ${t.hair}`, borderRadius: 11, padding: 14, display: 'flex', flexDirection: 'column', gap: 11, marginTop: 12 }}>
       <Seg2 options={[{ value: 'buy', label: 'Buy', tone: 'buy' }, { value: 'sell', label: 'Sell', tone: 'sell' }]} value={kind} onChange={setKind} />
@@ -70,6 +88,13 @@ function AddTxnForm2({ ticker, maxSell, onDone }) {
         <NumberField2 value={d.price} onChange={(v) => setD((s) => ({ ...s, price: v }))} prefix="€" onEnter={save} />
       </div>
       {overSell && <MonoTxt size={10.5} color={t.red}>Can't sell more than {maxSell} units held.</MonoTxt>}
+      {kind === 'sell' && trancheLevel != null && (
+        <Field2 label={'Discipline trim at +' + trancheLevel + '% level?'} hint="optional">
+          <Seg2 options={[{ value: 'yes', label: 'Yes — discipline' }, { value: 'no', label: 'No — other' }]}
+            value={disciplineYes === null ? null : (disciplineYes ? 'yes' : 'no')}
+            onChange={(v) => setDisciplineYes(v === 'yes')} />
+        </Field2>
+      )}
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
         <TextBtn2 onClick={onDone}>Cancel</TextBtn2>
         <Btn2 primary onClick={save} style={{ opacity: valid ? 1 : 0.4, pointerEvents: valid ? 'auto' : 'none', padding: '6px 12px' }}>Record {kind}</Btn2>

@@ -103,6 +103,12 @@
       F.cashTargetPct = null;
     }
 
+    // F.decisionRules: the raw decision_rules object (tranche_selling, trailing_stops,
+    // value_gap, rebalancing) | null. The Trigger Distance card (C2-S9) reads
+    // F.decisionRules.tranche_selling. F.thesis is the transformed holdings ARRAY,
+    // so decision_rules must be exposed separately here.
+    F.decisionRules = (data && data.thesis && data.thesis.decision_rules) || null;
+
     // 5. Publish + notify. Mirrors the fxRate pattern: set window.FINCR, then
     //    dispatch so the shell's forceRerender listener repaints Positions + drawer.
     F.thesis = transformed;

@@ -8,7 +8,7 @@
 // Bump CACHE_VERSION after any significant frontend change to force a full
 // cache flush on all clients.
 
-const CACHE_VERSION = 'fincr-v17'; // C2-S8: rotation linking — closed.rotation_links + txn.rotated_from
+const CACHE_VERSION = 'fincr-v18'; // C2-S9: trigger distance card live, tranche execution detection
 
 const SHELL_ASSETS = [
   './index.html',

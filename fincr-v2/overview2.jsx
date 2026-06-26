@@ -241,15 +241,7 @@ function OverviewTab2({ go }) {
 
         <LiquidityCard2 />
 
-        <Card2 pad="18px 20px 14px">
-          <SecHead n="06" style={{ marginBottom: 4 }}>Trigger distance</SecHead>
-          <TriggerRow ticker="NVDA" action="Trim 25% above" level="€1,300" dist="+22.9%" />
-          <TriggerRow ticker="BTC" action="Take 20% off above" level="€110k" dist="+27.3%" />
-          <TriggerRow ticker="ETH" action="Add below" level="€2,200" dist="−12.9%" />
-          <div style={{ borderTop: `1px solid ${t.hair}`, paddingTop: 10 }}>
-            <MonoTxt size={10} color={t.faint}>FROM YOUR THESIS · NEAREST FIRST</MonoTxt>
-          </div>
-        </Card2>
+        <TriggerDistanceCard2 />
 
         <Card2 pad="18px 20px 16px">
           <SecHead n="07" style={{ marginBottom: 14 }}>Ask Fincr</SecHead>
