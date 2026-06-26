@@ -105,7 +105,19 @@ function f2DeriveHolding(h) {
   const costNow = qty * avgCost;
   const pnl = value - costNow;
   const pnlPct = costNow > 0 ? (pnl / costNow) * 100 : 0;
-  return { ...h, txns, qty, avgCost, value, costNow, pnl, pnlPct, realized, soldQty, tranches_executed: h.tranches_executed || [] };
+  // C2-S9b — tranches_skipped: DERIVED (read-only), never persisted. Tranches the
+  // price blew past by more than the midpoint without a discipline trim. Computed
+  // from current gain% (== pnlPct) + tranches_executed via the helpers in
+  // triggerdistance2.jsx. That file loads after store2.jsx, but f2DeriveHolding runs
+  // at render time, so the globals are defined; falls back to [] if the rule isn't
+  // configured or the helpers aren't present (no-key device). The record stores only
+  // tranches_executed — skipped follows from "the price moved past without action."
+  const f2dr = (window.FINCR && window.FINCR.decisionRules) || null;
+  const f2trs = (f2dr && typeof window.f2ParseTranches === 'function')
+    ? window.f2ParseTranches(f2dr.tranche_selling) : null;
+  const tranches_skipped = (f2trs && typeof window.f2ComputeSkipped === 'function')
+    ? window.f2ComputeSkipped(pnlPct, f2trs, h.tranches_executed || []) : [];
+  return { ...h, txns, qty, avgCost, value, costNow, pnl, pnlPct, realized, soldQty, tranches_executed: h.tranches_executed || [], tranches_skipped: tranches_skipped };
 }
 
 /* Rotation migration (C2-S8): convert the flat rotated_into string (C2-S7) into a

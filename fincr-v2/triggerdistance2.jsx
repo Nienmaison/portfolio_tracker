@@ -1,4 +1,4 @@
-/* Fincr 2.0 — Trigger Distance card (C2-S9, decision C2-D72).
+/* Fincr 2.0 — Trigger Distance card (C2-S9 / C2-S9b, decisions C2-D72 / C2-D74).
    Replaces the old sample-data card with a live, thesis-driven discipline alert.
    Reads:
      window.FINCR.decisionRules.tranche_selling — the rule structure (set by
@@ -8,9 +8,18 @@
    Writes: none. Tranche execution flows through the partial-sell form (AddTxnForm2
      in drawer2.jsx), which reuses f2TrancheInRegion() below.
 
-   Globals exported for drawer2.jsx (loaded later, same global scope):
-     f2ParseTranches(rule)              — parse the rule object to a tranches array
-     f2TrancheInRegion(h, tranches, q)  — tranche level a partial sell is executing, or null */
+   C2-S9b — midpoint-aware skip: a tranche passed by more than the midpoint to the
+   next tranche, without being executed, is treated as implicitly SKIPPED. The card
+   then surfaces the next relevant level instead of a long-passed one (e.g. MRVL at
+   +233% shows the +200% trailing stop, not "sell 15%" at +50%). Skip is DERIVED from
+   current gain% — not persisted, not peak-anchored (a retrace below a midpoint un-skips
+   that tranche). Only tranches_executed is stored.
+
+   Globals exported for drawer2.jsx + store2.jsx (loaded around this file, same scope):
+     f2ParseTranches(rule)               — parse the rule object to a tranches array
+     f2TrancheInRegion(h, tranches, q)   — tranche level a partial sell is executing, or null
+     f2ComputeSkipped(gain, tr, exec)    — tranche levels passed by >midpoint without execution (C2-S9b)
+     f2NextActiveTranche(gain, tr, exec) — first tranche neither executed nor skipped (C2-S9b) */
 
 // Parse the tranche_selling rule object into a sorted tranches array.
 // Keys look like "50_pct" / "200_pct_plus". The 25% "hold" tranche is skipped
@@ -33,36 +42,79 @@ function f2ParseTranches(rule) {
   return tranches.sort((a, b) => a.level - b.level);
 }
 
-// For one holding: { eligible, gainPct, nextTranche, isPastTrigger, distancePp }
-// or { eligible: false }. Eligible when gain>0 AND the next unactioned tranche is
-// within 15pp of current gain, OR has been passed without execution.
+// C2-S9b — which tranches are implicitly SKIPPED at the current gain%. A tranche L
+// is skipped when gain% has passed the midpoint between L and the next tranche N
+// (midpoint = (L + N) / 2) and L is not in tranches_executed. Past the midpoint the
+// price is closer to N than to L, so L's trim window has effectively gone by. The
+// last tranche (200%+ trailing stop) has no next level, so it can never be skipped.
+// Returns an array of skipped levels. `tranches` must be sorted ascending (f2ParseTranches does this).
+function f2ComputeSkipped(gainPct, tranches, executed) {
+  const skipped = [];
+  if (!tranches || !isFinite(gainPct)) return skipped;
+  const ex = executed || [];
+  for (let i = 0; i < tranches.length - 1; i++) {
+    const t = tranches[i];
+    if (ex.indexOf(t.level) !== -1) continue;             // executed, not skipped
+    const midpoint = (t.level + tranches[i + 1].level) / 2;
+    if (gainPct >= midpoint) skipped.push(t.level);
+  }
+  return skipped;
+}
+
+// C2-S9b — the next "active" tranche: the first (ascending) that is neither executed
+// nor skipped. Skipped tranches are treated like executed ones when picking what to
+// surface. Returns the tranche object, or null if every tranche is executed/skipped.
+function f2NextActiveTranche(gainPct, tranches, executed) {
+  if (!tranches) return null;
+  const ex = executed || [];
+  for (let i = 0; i < tranches.length; i++) {
+    const t = tranches[i];
+    if (ex.indexOf(t.level) !== -1) continue;             // already executed
+    // Skip check only applies when there is a next tranche (last tier can't be skipped).
+    if (i < tranches.length - 1) {
+      const midpoint = (t.level + tranches[i + 1].level) / 2;
+      if (isFinite(gainPct) && gainPct >= midpoint) continue; // skipped
+    }
+    return t;
+  }
+  return null;
+}
+
+// For one holding: { eligible, gainPct, nextTranche, isPastTrigger, distancePp, skipped }
+// or { eligible: false }. Eligible when gain>0 AND the next ACTIVE tranche (neither
+// executed nor skipped, C2-S9b) is within 15pp of current gain, OR has been passed
+// without execution. `skipped` is the list of levels the price blew past (for display).
 function f2EvaluateHolding(h, tranches) {
   if (!h || !h.qty || h.qty === 0) return { eligible: false };
   const gainPct = ((h.price - h.avgCost) / h.avgCost) * 100;
   if (!isFinite(gainPct) || gainPct <= 0) return { eligible: false };
   const executed = h.tranches_executed || [];
-  const nextTranche = tranches.find((t) => executed.indexOf(t.level) === -1);
-  if (!nextTranche) return { eligible: false };           // all tranches done
+  const nextTranche = f2NextActiveTranche(gainPct, tranches, executed); // C2-S9b: skip-aware
+  if (!nextTranche) return { eligible: false };           // all tranches executed or skipped
+  const skipped = f2ComputeSkipped(gainPct, tranches, executed);
   const distancePp = nextTranche.level - gainPct;
   const isPastTrigger = distancePp <= 0;
   if (isPastTrigger || distancePp <= 15) {
-    return { eligible: true, gainPct: gainPct, nextTranche: nextTranche, isPastTrigger: isPastTrigger, distancePp: distancePp };
+    return { eligible: true, gainPct: gainPct, nextTranche: nextTranche, isPastTrigger: isPastTrigger, distancePp: distancePp, skipped: skipped };
   }
   return { eligible: false };
 }
 
 // The tranche level a PARTIAL sell is executing, or null. "In region" = current
-// gain% has reached the highest unactioned non-trailing tranche, and the sell is a
-// partial (not a full close). Used by AddTxnForm2 to offer the discipline-trim Q.
+// gain% has reached the highest unactioned, UNSKIPPED, non-trailing tranche, and the
+// sell is a partial (not a full close). Used by AddTxnForm2 to offer the discipline-trim Q.
+// C2-S9b: skipped tranches are excluded — at +233% MRVL no longer prompts "+50% trim".
 function f2TrancheInRegion(holding, tranches, sellQty) {
   if (!holding || !tranches) return null;
   if (sellQty >= holding.qty) return null;                // full sell — not a discipline trim
   const gainPct = ((holding.price - holding.avgCost) / holding.avgCost) * 100;
   if (!isFinite(gainPct)) return null;
   const executed = holding.tranches_executed || [];
+  const skipped = f2ComputeSkipped(gainPct, tranches, executed); // C2-S9b
   const candidates = tranches
     .filter((t) => !t.trailingStop)                       // 200%+ is "set manually", not a discrete trim
     .filter((t) => executed.indexOf(t.level) === -1)
+    .filter((t) => skipped.indexOf(t.level) === -1)       // C2-S9b: not an implicitly-skipped level
     .filter((t) => gainPct >= t.level);
   if (!candidates.length) return null;
   return Math.max.apply(null, candidates.map((t) => t.level));
@@ -136,6 +188,9 @@ function TriggerDistanceCard2() {
                   <span style={{ fontSize: 11.5, color: t.dim, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f2TrancheShortAction(e.nextTranche)}</span>
                   <MonoTxt size={10.5} color={amber ? t.amber : t.faint} style={{ fontWeight: amber ? 600 : 500, flexShrink: 0 }}>{distLabel(e)}</MonoTxt>
                 </div>
+                {e.skipped && e.skipped.length > 0 && (
+                  <MonoTxt size={9} color={t.dim} style={{ display: 'block', marginTop: 2 }}>Skipped: {e.skipped.map((lvl) => '+' + lvl + '%').join(', ')}</MonoTxt>
+                )}
               </div>
             );
           })}
@@ -151,4 +206,6 @@ function TriggerDistanceCard2() {
 
 window.f2ParseTranches = f2ParseTranches;
 window.f2TrancheInRegion = f2TrancheInRegion;
+window.f2ComputeSkipped = f2ComputeSkipped;       // C2-S9b — used by store2.jsx f2DeriveHolding
+window.f2NextActiveTranche = f2NextActiveTranche; // C2-S9b
 window.TriggerDistanceCard2 = TriggerDistanceCard2;

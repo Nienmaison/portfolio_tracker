@@ -8,7 +8,7 @@
 // Bump CACHE_VERSION after any significant frontend change to force a full
 // cache flush on all clients.
 
-const CACHE_VERSION = 'fincr-v18'; // C2-S9: trigger distance card live, tranche execution detection
+const CACHE_VERSION = 'fincr-v19'; // C2-S9b: midpoint-aware tranche skip; preserve executed vs skipped distinction
 
 const SHELL_ASSETS = [
   './index.html',
