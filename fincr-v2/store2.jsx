@@ -198,13 +198,23 @@ function f2HoldingsFromApi(data) {
    zero live value). ── */
 async function f2FetchPrices(holdings) {
   const priceByTicker = {};
+  const changeByTicker = {}; // C2-S12 — daily % change, keyed exactly like priceByTicker
   const cryptoCands = holdings.filter((h) => h.type === 'crypto' || !h.type).map((h) => h.ticker);
   if (cryptoCands.length) {
     try {
       const r = await fetch(F2_API_BASE + '/crypto-prices?tickers=' + encodeURIComponent([...new Set(cryptoCands)].join(',')));
       if (r.ok) {
         const m = await r.json();
-        Object.keys(m || {}).forEach((t) => { if (typeof m[t] === 'number') priceByTicker[t.toUpperCase()] = m[t]; });
+        // Response carries bare price keys plus additive "<TICKER>_24h_change" siblings
+        // (C2-S12). Route the change keys into changeByTicker; everything else is a price.
+        Object.keys(m || {}).forEach((t) => {
+          if (typeof m[t] !== 'number') return;
+          if (t.endsWith('_24h_change')) {
+            changeByTicker[t.slice(0, -('_24h_change'.length)).toUpperCase()] = m[t];
+          } else {
+            priceByTicker[t.toUpperCase()] = m[t];
+          }
+        });
       }
     } catch (e) { console.warn('[load] crypto-prices failed:', e.message); }
   }
@@ -218,10 +228,17 @@ async function f2FetchPrices(holdings) {
   await Promise.all([...new Set(stockCands)].map((t) =>
     fetch(F2_API_BASE + '/stock-price?ticker=' + encodeURIComponent(t))
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (d && typeof d.price === 'number') priceByTicker[t] = d.price; })
+      .then((d) => { if (d && typeof d.price === 'number') { priceByTicker[t] = d.price; if (typeof d.change_pct === 'number') changeByTicker[t] = d.change_pct; } })
       .catch(() => {})
   ));
-  return holdings.map((h) => ({ ...h, price: priceByTicker[h.ticker] != null ? priceByTicker[h.ticker] : 0 }));
+  // C2-S12: carry the daily change into dayPct. `!= null` (nullish) preserves a real
+  // 0 (flat market) and falls back to the holding's prior dayPct only when the API
+  // gave null/undefined (unavailable, e.g. market holiday) — never clobbers with 0.
+  return holdings.map((h) => ({
+    ...h,
+    price:  priceByTicker[h.ticker] != null ? priceByTicker[h.ticker] : 0,
+    dayPct: changeByTicker[h.ticker] != null ? changeByTicker[h.ticker] : h.dayPct,
+  }));
 }
 
 /* Phase 1 (instant): last-known book from localStorage. No sample seed — the

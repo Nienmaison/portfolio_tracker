@@ -8,7 +8,7 @@
 // Bump CACHE_VERSION after any significant frontend change to force a full
 // cache flush on all clients.
 
-const CACHE_VERSION = 'fincr-v19'; // C2-S9b: midpoint-aware tranche skip; preserve executed vs skipped distinction
+const CACHE_VERSION = 'fincr-v20'; // C2-S12: DAY column — dayPct from change_pct/eur_24h_change
 
 const SHELL_ASSETS = [
   './index.html',
