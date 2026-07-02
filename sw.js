@@ -8,7 +8,7 @@
 // Bump CACHE_VERSION after any significant frontend change to force a full
 // cache flush on all clients.
 
-const CACHE_VERSION = 'fincr-v21'; // SnapTrade: Connect-a-broker in Settings (broker2.jsx)
+const CACHE_VERSION = 'fincr-v22'; // Spec B2: Sync brokers (positions) source-aware merge
 
 const SHELL_ASSETS = [
   './index.html',

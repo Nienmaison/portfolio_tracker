@@ -32,6 +32,7 @@ function f2BuildHoldingsPayload(derived, closed) {
     quantity: h.qty,
     weight_pct: totalValue > 0 ? +((h.value / totalValue) * 100).toFixed(1) : 0,
     type: h.type || 'stock', // Task 1 (C2) §3 — persist asset type to holdings.json
+    source: h.source, // C2-D82a — provenance (undefined => manual; JSON omits undefined)
     tranches_executed: h.tranches_executed || [], // C2-S9 — additive, round-trips verbatim
   }));
   const holdings_with_values = {};
@@ -161,6 +162,40 @@ function f2SeedFromSample() {
    adapter has written one; otherwise falls back to a synthetic single buy at
    avg_buy_price. holdings_positions carries no name/price/day-change, so name
    falls back to ticker, price is 0 until Phase 3, dayPct is 0. ── */
+/* ── Spec B2 ([C2-D82]) — source-aware snapshot merge of broker positions.
+   Pure + unit-tested. Replace only source=="snaptrade" tickers, skip manual/
+   untagged (protected), add new as snaptrade with one synthetic buy. Idempotent:
+   re-running replaces txns wholesale (never appends) so quantity never doubles. */
+function f2MergeBrokerPositions(holdings, positions) {
+  var today = new Date().toISOString().slice(0, 10);
+  var next = holdings.slice();
+  var added = [], replaced = [], skipped = [];
+  var idxOf = function (tk) { for (var i = 0; i < next.length; i++) { if (next[i].ticker === tk) return i; } return -1; };
+  (positions || []).forEach(function (p) {
+    var tk = String(p.ticker || '').toUpperCase();
+    if (!tk) return;
+    var qty = +p.quantity, price = +p.avg_buy_price;
+    var synthTx = { id: 'stpos_' + tk, kind: 'buy', date: today, qty: qty, price: price, source: 'snaptrade' };
+    var i = idxOf(tk);
+    if (i >= 0) {
+      if (next[i].source === 'snaptrade') {
+        next[i] = Object.assign({}, next[i], { source: 'snaptrade', type: p.type || next[i].type || 'stock', txns: [synthTx] });
+        replaced.push(tk);
+      } else {
+        skipped.push(tk); // manual/untagged — protected ([C2-D82])
+      }
+    } else {
+      next.push({
+        ticker: tk, name: tk, type: p.type || 'stock', source: 'snaptrade',
+        price: 0, color: F2_PALETTE[next.length % F2_PALETTE.length],
+        seed: (next.length * 7 + 3) % 97, dayPct: 0, txns: [synthTx],
+      });
+      added.push(tk);
+    }
+  });
+  return { next: next, added: added, replaced: replaced, skipped: skipped };
+}
+
 function f2HoldingsFromApi(data) {
   const positions = (data && Array.isArray(data.holdings_positions)) ? data.holdings_positions : [];
   const txnMap = (data && data.transactions) || {};
@@ -174,12 +209,14 @@ function f2HoldingsFromApi(data) {
           date: t.date || '2024-01-01',
           qty: +t.qty,
           price: +t.price,
+          source: t.source, // C2-D85 — preserve txn provenance
         }))
       : [{ id: f2uid(), kind: 'buy', date: '2024-01-01', qty: +hp.quantity, price: +hp.avg_buy_price }];
     return {
       ticker,
       name: ticker,
       type: hp.type || 'stock',
+      source: hp.source, // C2-D82a — provenance (undefined => manual)
       price: 0,
       color: F2_PALETTE[i % F2_PALETTE.length],
       seed: (i * 7 + 3) % 97,
@@ -369,6 +406,13 @@ function FincrProvider({ children }) {
         }];
       });
       setAddOpen(false);
+    },
+
+    syncBrokerPositions: async (positions) => {
+      const merged = f2MergeBrokerPositions(holdings, positions || []);
+      const priced = await f2FetchPrices(merged.next); // re-price so P&L/true-return are correct
+      setHoldings(priced); // triggers the single POST /holdings sync
+      return { added: merged.added, replaced: merged.replaced, skipped: merged.skipped };
     },
 
     addTxn: (ticker, tx) => setHoldings((hs) => hs.map((h) => h.ticker === ticker
