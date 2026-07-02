@@ -79,6 +79,7 @@ function SettingsTab2({ mode, setMode, density, setDensity, discrete, setDiscret
             <Btn2>Sync portfolio.json</Btn2>
             <span style={{ fontSize: 11.5, color: t.faint }}>Broker exports map automatically.</span>
           </div>
+          <BrokerConnect2 />
           <div style={{ borderTop: `1px solid ${t.hair}` }}></div>
         </div>
       </section>

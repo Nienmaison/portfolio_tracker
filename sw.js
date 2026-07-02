@@ -8,7 +8,7 @@
 // Bump CACHE_VERSION after any significant frontend change to force a full
 // cache flush on all clients.
 
-const CACHE_VERSION = 'fincr-v20'; // C2-S12: DAY column — dayPct from change_pct/eur_24h_change
+const CACHE_VERSION = 'fincr-v21'; // SnapTrade: Connect-a-broker in Settings (broker2.jsx)
 
 const SHELL_ASSETS = [
   './index.html',
