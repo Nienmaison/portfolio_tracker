@@ -196,6 +196,39 @@ function f2MergeBrokerPositions(holdings, positions) {
   return { next: next, added: added, replaced: replaced, skipped: skipped };
 }
 
+/* ── Spec C2 ([C2-D85]) — source-aware replay of broker ACTIVITY history into
+   the txn ledger. Deterministic st_{activity_id} txns REPLACE a snaptrade
+   ticker's txns wholesale (idempotent — re-sync yields identical ids, no
+   duplicates); manual/untagged tickers are protected/skipped (same guarantee
+   as [C2-D82] positions); new tickers are added with full history. Pure + unit-
+   tested. For real cost basis, run "Sync history" after "Sync brokers". */
+function f2MergeBrokerActivities(holdings, activities) {
+  var byT = {};
+  (activities || []).forEach(function (a) {
+    var tk = String(a.ticker || '').toUpperCase(); if (!tk) return;
+    (byT[tk] = byT[tk] || []).push({ id: a.id, kind: a.kind, date: a.date, qty: +a.qty, price: +a.price, source: 'snaptrade' });
+  });
+  var next = holdings.slice();
+  var added = [], replaced = [], skipped = [];
+  var idxOf = function (tk) { for (var i = 0; i < next.length; i++) { if (next[i].ticker === tk) return i; } return -1; };
+  Object.keys(byT).forEach(function (tk) {
+    var txns = byT[tk].slice().sort(function (a, b) { return a.date < b.date ? -1 : (a.date > b.date ? 1 : 0); });
+    var i = idxOf(tk);
+    if (i >= 0) {
+      var h = next[i];
+      var hasManual = (h.txns || []).some(function (t) { return t.source !== 'snaptrade'; });
+      if (h.source !== 'snaptrade' || hasManual) { skipped.push(tk); return; } // protect manual
+      next[i] = Object.assign({}, h, { source: 'snaptrade', txns: txns });
+      replaced.push(tk);
+    } else {
+      next.push({ ticker: tk, name: tk, type: 'stock', source: 'snaptrade', price: 0,
+        color: F2_PALETTE[next.length % F2_PALETTE.length], seed: (next.length * 7 + 3) % 97, dayPct: 0, txns: txns });
+      added.push(tk);
+    }
+  });
+  return { next: next, added: added, replaced: replaced, skipped: skipped };
+}
+
 function f2HoldingsFromApi(data) {
   const positions = (data && Array.isArray(data.holdings_positions)) ? data.holdings_positions : [];
   const txnMap = (data && data.transactions) || {};
@@ -411,6 +444,13 @@ function FincrProvider({ children }) {
     syncBrokerPositions: async (positions) => {
       const merged = f2MergeBrokerPositions(holdings, positions || []);
       const priced = await f2FetchPrices(merged.next); // re-price so P&L/true-return are correct
+      setHoldings(priced); // triggers the single POST /holdings sync
+      return { added: merged.added, replaced: merged.replaced, skipped: merged.skipped };
+    },
+
+    syncBrokerActivities: async (activities) => {
+      const merged = f2MergeBrokerActivities(holdings, activities || []);
+      const priced = await f2FetchPrices(merged.next); // re-price so true-return is correct
       setHoldings(priced); // triggers the single POST /holdings sync
       return { added: merged.added, replaced: merged.replaced, skipped: merged.skipped };
     },
