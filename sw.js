@@ -8,7 +8,7 @@
 // Bump CACHE_VERSION after any significant frontend change to force a full
 // cache flush on all clients.
 
-const CACHE_VERSION = 'fincr-v23'; // Spec C2: Sync history (activities) replay into txn ledger
+const CACHE_VERSION = 'fincr-v24'; // Spec C3: sync guards (position reconciliation + history precedence)
 
 const SHELL_ASSETS = [
   './index.html',

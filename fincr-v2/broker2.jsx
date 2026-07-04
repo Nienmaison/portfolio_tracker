@@ -1,14 +1,17 @@
-/* Fincr 2.0 — Brokerage aggregation via SnapTrade (read-only). [C2-D77..D85]
+/* Fincr 2.0 — Brokerage aggregation via SnapTrade (read-only). [C2-D77..D88]
 
    Connect a broker  → POST /broker/connect opens the Connection Portal; GET
-     /broker/connections lists linked brokerages (disabled → RECONNECT NEEDED,
-     poll-based per [C2-D79]); re-checks on tab focus.
+     /broker/connections lists linked brokerages (disabled → RECONNECT NEEDED).
    Sync brokers (B2) → GET /broker/positions → syncBrokerPositions: source-aware
-     snapshot merge (replace snaptrade, skip manual, add new). Idempotent.
-   Sync history (C2) → GET /broker/activities → syncBrokerActivities: replay real
-     trade history into the ledger (replace snaptrade tickers' txns, skip manual,
-     add new). Idempotent via st_{activity_id}. Run AFTER "Sync brokers" for real
-     cost basis. All calls auth via X-API-Key from localStorage. Read-only. */
+     snapshot merge. Guard 2 ([C2-D88]): tickers with established per-date-FX
+     history are left untouched (kept: history-managed) — a snapshot must never
+     overwrite the more accurate history cost basis.
+   Sync history (C2) → GET /broker/activities (+ positions for the guard) →
+     syncBrokerActivities: replay real trade history. Guard 1 ([C2-D87]): a
+     ticker is only merged if its replayed net qty matches the CURRENT reported
+     position; otherwise it's skipped (history_incomplete) so an activity feed
+     missing a disposal can't fabricate a phantom holding. All calls auth via
+     X-API-Key from localStorage. Read-only. */
 const BROKER_API_BASE = 'https://fincr.duckdns.org';
 
 function BrokerConnect2() {
@@ -65,11 +68,15 @@ function BrokerConnect2() {
     setBusy(false);
   };
 
+  // skipped is [{ticker, reason}] — group by reason for a readable line.
+  const SKIP_LABEL = { manual: 'kept manual', history_incomplete: 'skipped — incomplete history', history_managed: 'kept — history-managed' };
   const summarize = (label, res, extra) => {
     const n = res.added.length + res.replaced.length;
     const parts = [n + ' ' + label + (n === 1 ? '' : 's') + ' synced'];
     if (res.added.length) parts.push(res.added.length + ' new');
-    if (res.skipped.length) parts.push(res.skipped.length + ' kept manual (' + res.skipped.join(', ') + ')');
+    const byReason = {};
+    (res.skipped || []).forEach((s) => { const r = s.reason || 'skipped'; (byReason[r] = byReason[r] || []).push(s.ticker); });
+    Object.keys(byReason).forEach((r) => parts.push(byReason[r].length + ' ' + (SKIP_LABEL[r] || r) + ' (' + byReason[r].join(', ') + ')'));
     if (extra) parts.push(extra);
     return parts.join(' · ');
   };
@@ -95,11 +102,16 @@ function BrokerConnect2() {
     if (!key) { setErr('Set your API key in the agent panel first.'); return; }
     setHisting(true); setMsg(null); setErr(null);
     try {
-      const r = await fetch(BROKER_API_BASE + '/broker/activities', { headers: { 'X-API-Key': key } });
-      const d = await r.json();
-      if (!r.ok || d.configured === false) { setErr('Activity history unavailable from the server.'); setHisting(false); return; }
-      const res = await store.actions.syncBrokerActivities(d.activities || []);
-      const dropped = d.dropped_activity_count ? (d.dropped_activity_count + ' non-trade dropped') : null;
+      // Guard 1 needs the current-position truth alongside the activity feed.
+      const [ra, rp] = await Promise.all([
+        fetch(BROKER_API_BASE + '/broker/activities', { headers: { 'X-API-Key': key } }),
+        fetch(BROKER_API_BASE + '/broker/positions', { headers: { 'X-API-Key': key } }),
+      ]);
+      const da = await ra.json();
+      const dp = await rp.json();
+      if (!ra.ok || da.configured === false) { setErr('Activity history unavailable from the server.'); setHisting(false); return; }
+      const res = await store.actions.syncBrokerActivities(da.activities || [], dp.positions || []);
+      const dropped = da.dropped_activity_count ? (da.dropped_activity_count + ' non-trade dropped') : null;
       setMsg(summarize('ticker history', res, dropped));
     } catch (e) { setErr('History sync failed. Try again.'); }
     setHisting(false);

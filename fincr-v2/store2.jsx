@@ -171,6 +171,10 @@ function f2MergeBrokerPositions(holdings, positions) {
   var next = holdings.slice();
   var added = [], replaced = [], skipped = [];
   var idxOf = function (tk) { for (var i = 0; i < next.length; i++) { if (next[i].ticker === tk) return i; } return -1; };
+  // Guard 2 ([C2-D88]): a ticker whose ledger holds activity-replay txns (id 'st_...')
+  // has date-accurate per-txn cost basis — a snapshot single-rate update must not
+  // clobber it. Detect via the 'st_' id prefix ('stpos_'/'tx_' are NOT history).
+  var isHistoryEstablished = function (h) { return (h.txns || []).some(function (t) { return String(t.id || '').indexOf('st_') === 0; }); };
   (positions || []).forEach(function (p) {
     var tk = String(p.ticker || '').toUpperCase();
     if (!tk) return;
@@ -179,10 +183,14 @@ function f2MergeBrokerPositions(holdings, positions) {
     var i = idxOf(tk);
     if (i >= 0) {
       if (next[i].source === 'snaptrade') {
-        next[i] = Object.assign({}, next[i], { source: 'snaptrade', type: p.type || next[i].type || 'stock', txns: [synthTx] });
-        replaced.push(tk);
+        if (isHistoryEstablished(next[i])) {
+          skipped.push({ ticker: tk, reason: 'history_managed' }); // cost basis from history wins; refresh via Sync history
+        } else {
+          next[i] = Object.assign({}, next[i], { source: 'snaptrade', type: p.type || next[i].type || 'stock', txns: [synthTx] });
+          replaced.push(tk);
+        }
       } else {
-        skipped.push(tk); // manual/untagged — protected ([C2-D82])
+        skipped.push({ ticker: tk, reason: 'manual' }); // untagged — protected ([C2-D82])
       }
     } else {
       next.push({
@@ -202,7 +210,9 @@ function f2MergeBrokerPositions(holdings, positions) {
    duplicates); manual/untagged tickers are protected/skipped (same guarantee
    as [C2-D82] positions); new tickers are added with full history. Pure + unit-
    tested. For real cost basis, run "Sync history" after "Sync brokers". */
-function f2MergeBrokerActivities(holdings, activities) {
+function f2MergeBrokerActivities(holdings, activities, positions) {
+  var posQty = {};
+  (positions || []).forEach(function (p) { posQty[String(p.ticker || '').toUpperCase()] = +p.quantity; });
   var byT = {};
   (activities || []).forEach(function (a) {
     var tk = String(a.ticker || '').toUpperCase(); if (!tk) return;
@@ -213,11 +223,18 @@ function f2MergeBrokerActivities(holdings, activities) {
   var idxOf = function (tk) { for (var i = 0; i < next.length; i++) { if (next[i].ticker === tk) return i; } return -1; };
   Object.keys(byT).forEach(function (tk) {
     var txns = byT[tk].slice().sort(function (a, b) { return a.date < b.date ? -1 : (a.date > b.date ? 1 : 0); });
+    // Guard 1 ([C2-D87]): only merge when replayed net qty matches the CURRENT
+    // reported position. A missing disposal (feed gap) or an unheld ticker would
+    // otherwise fabricate a phantom (real case: OTLY). Skip + surface, never merge.
+    var net = txns.reduce(function (s, t) { return s + (t.kind === 'buy' ? t.qty : -t.qty); }, 0);
+    var cur = posQty[tk];
+    var tol = Math.max(0.01, Math.abs(cur || 0) * 0.001);
+    if (cur === undefined || Math.abs(net - cur) > tol) { skipped.push({ ticker: tk, reason: 'history_incomplete' }); return; }
     var i = idxOf(tk);
     if (i >= 0) {
       var h = next[i];
       var hasManual = (h.txns || []).some(function (t) { return t.source !== 'snaptrade'; });
-      if (h.source !== 'snaptrade' || hasManual) { skipped.push(tk); return; } // protect manual
+      if (h.source !== 'snaptrade' || hasManual) { skipped.push({ ticker: tk, reason: 'manual' }); return; } // protect manual
       next[i] = Object.assign({}, h, { source: 'snaptrade', txns: txns });
       replaced.push(tk);
     } else {
@@ -448,8 +465,8 @@ function FincrProvider({ children }) {
       return { added: merged.added, replaced: merged.replaced, skipped: merged.skipped };
     },
 
-    syncBrokerActivities: async (activities) => {
-      const merged = f2MergeBrokerActivities(holdings, activities || []);
+    syncBrokerActivities: async (activities, positions) => {
+      const merged = f2MergeBrokerActivities(holdings, activities || [], positions || []);
       const priced = await f2FetchPrices(merged.next); // re-price so true-return is correct
       setHoldings(priced); // triggers the single POST /holdings sync
       return { added: merged.added, replaced: merged.replaced, skipped: merged.skipped };
