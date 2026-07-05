@@ -526,7 +526,7 @@ function AgentTab2() {
         </div>
 
         {!hasKey ? (
-          <div style={{ padding: '6px 14px', fontSize: 11, color: t.faint, fontFamily: t.mono }}>Set API key in Settings.</div>
+          <button onClick={() => window.dispatchEvent(new CustomEvent('fincr:go-tab', { detail: { tab: 'settings' } }))} className="f2-press" style={{ padding: '6px 14px', fontSize: 11, color: t.accent, fontFamily: t.mono, background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left' }}>Set API key in Settings →</button>
         ) : conversations.length === 0 ? (
           <div style={{ padding: '6px 14px', fontSize: 11, color: t.faint, fontFamily: t.mono }}>No conversations yet.</div>
         ) : (

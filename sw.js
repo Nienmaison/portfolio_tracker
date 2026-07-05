@@ -8,7 +8,7 @@
 // Bump CACHE_VERSION after any significant frontend change to force a full
 // cache flush on all clients.
 
-const CACHE_VERSION = 'fincr-v24'; // Spec C3: sync guards (position reconciliation + history precedence)
+const CACHE_VERSION = 'fincr-v25'; // API key entry UI in Settings (fixes circular setup dead-end)
 
 const SHELL_ASSETS = [
   './index.html',

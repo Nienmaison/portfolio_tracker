@@ -28,7 +28,7 @@ function BrokerConnect2() {
 
   const load = React.useCallback(async () => {
     const key = apiKey();
-    if (!key) { setConns([]); setErr('Set your API key in the agent panel first.'); return; }
+    if (!key) { setConns([]); setErr('Enter your API key above (Data & connections) first.'); return; }
     try {
       const r = await fetch(BROKER_API_BASE + '/broker/connections', { headers: { 'X-API-Key': key } });
       if (!r.ok) { setErr('Could not load connections (HTTP ' + r.status + ')'); return; }
@@ -48,7 +48,7 @@ function BrokerConnect2() {
   const connect = async () => {
     if (busy) return;                       // Btn2 has no disabled prop — guard here
     const key = apiKey();
-    if (!key) { setErr('Set your API key in the agent panel first.'); return; }
+    if (!key) { setErr('Enter your API key above (Data & connections) first.'); return; }
     setBusy(true); setErr(null);
     try {
       const r = await fetch(BROKER_API_BASE + '/broker/connect', {
@@ -84,7 +84,7 @@ function BrokerConnect2() {
   const syncBrokers = async () => {
     if (syncing) return;
     const key = apiKey();
-    if (!key) { setErr('Set your API key in the agent panel first.'); return; }
+    if (!key) { setErr('Enter your API key above (Data & connections) first.'); return; }
     setSyncing(true); setMsg(null); setErr(null);
     try {
       const r = await fetch(BROKER_API_BASE + '/broker/positions', { headers: { 'X-API-Key': key } });
@@ -99,7 +99,7 @@ function BrokerConnect2() {
   const syncHistory = async () => {
     if (histing) return;
     const key = apiKey();
-    if (!key) { setErr('Set your API key in the agent panel first.'); return; }
+    if (!key) { setErr('Enter your API key above (Data & connections) first.'); return; }
     setHisting(true); setMsg(null); setErr(null);
     try {
       // Guard 1 needs the current-position truth alongside the activity feed.

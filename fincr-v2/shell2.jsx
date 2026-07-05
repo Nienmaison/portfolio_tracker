@@ -59,12 +59,17 @@ function Shell2() {
     window.addEventListener('fincr:sync-status-change', handler);
     window.addEventListener('fincr:fx-update', handler);
     window.addEventListener('fincr:thesis-update', handler);  // C2-S2: repaint on thesis load
+    window.addEventListener('fincr:key-change', handler);  // C2-D89: repaint status bar + tree when the API key is entered
+    const goTab = (e) => { const tk = e.detail && e.detail.tab; if (tk) setTab(tk); };
+    window.addEventListener('fincr:go-tab', goTab);
     // Tick every 30s so "SYNC 5M AGO" stays fresh between syncs.
     const tick = setInterval(() => forceRerender((n) => n + 1), 30000);
     return () => {
       window.removeEventListener('fincr:sync-status-change', handler);
       window.removeEventListener('fincr:fx-update', handler);
       window.removeEventListener('fincr:thesis-update', handler);
+      window.removeEventListener('fincr:key-change', handler);
+      window.removeEventListener('fincr:go-tab', goTab);
       clearInterval(tick);
     };
   }, []);
