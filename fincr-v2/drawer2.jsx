@@ -51,6 +51,40 @@ function TxnRow2({ ticker, tx, avgCost }) {
   );
 }
 
+/* RotationProposalCard2 (C2-D102) — dismissible "did a recent sell fund this buy?" prompt
+   shown inside AddTxnForm2 when a buy triggers (a candidate within 10% of buy cost). Mirrors
+   ProposalCard2's amber-card visual grammar (agent2.jsx) WITHOUT coupling to its thesis-
+   proposal data shape (per the Researcher's Q6 finding). Presentational — the form owns the
+   checkbox state and the commit (checked candidates link when the buy is recorded, folding
+   into "Record buy" exactly as the discipline-trim block folds into "Record sell"). Lists the
+   FULL 14-day candidate window (not just the trigger match) so the owner can compose a many-
+   to-many match; shows a running SELECTED vs BUY sum. Dismiss hides it and writes nothing. */
+function RotationProposalCard2({ candidates, checked, onToggle, buyTotalCost, onDismiss, t }) {
+  const eur = (n) => '€' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  const sum = candidates.reduce((s, c) => s + (checked[c.txnId] ? c.proceeds : 0), 0);
+  return (
+    <div style={{ background: t.raise, border: `1px solid ${t.cardBorder}`, borderLeft: `3px solid ${t.amber}`, borderRadius: 8, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ fontSize: 12, color: t.dim, lineHeight: 1.4 }}>
+        Did a recent sell fund this buy? Tag any that did — their proceeds are then tracked as rotated capital, not fresh.
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+        {candidates.map((c) => (
+          <label key={c.txnId} style={{ display: 'flex', alignItems: 'center', gap: 9, cursor: 'pointer' }}>
+            <input type="checkbox" checked={!!checked[c.txnId]} onChange={() => onToggle(c.txnId)} />
+            <span style={{ fontFamily: t.mono, fontSize: 11, fontWeight: 600, color: t.ink, minWidth: 46 }}>{c.ticker}</span>
+            <MonoTxt size={10} color={t.faint}>{c.date}</MonoTxt>
+            <Money size={12} weight={600} style={{ marginLeft: 'auto' }}>{eur(c.proceeds)}</Money>
+          </label>
+        ))}
+      </div>
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8, borderTop: `1px solid ${t.hair}`, paddingTop: 7 }}>
+        <MonoTxt size={10} color={t.faint}>SELECTED {eur(sum)} · BUY {eur(buyTotalCost)}</MonoTxt>
+        <button onClick={onDismiss} style={{ background: 'none', border: 'none', cursor: 'pointer', fontFamily: t.mono, fontSize: 11, color: t.dim, padding: '2px 6px' }}>Dismiss</button>
+      </div>
+    </div>
+  );
+}
+
 /* The add-transaction inline form (buy or sell). */
 function AddTxnForm2({ ticker, maxSell, onDone }) {
   const t = useTheme2();
@@ -70,12 +104,46 @@ function AddTxnForm2({ ticker, maxSell, onDone }) {
     ? f2ParseTranches(window.FINCR.decisionRules.tranche_selling) : null;
   const trancheLevel = (kind === 'sell' && trancheRule && hForTranche && qtyN > 0)
     ? f2TrancheInRegion(hForTranche, trancheRule, qtyN) : null;
+
+  // Rotation proposal (C2-D102): on a BUY, surface recent unlinked sells that could have
+  // funded it. buyTotalCost mirrors the idle-cash buy impact (qty*price + fee, C2-D98).
+  // f2FindRotationCandidates returns the full 14-day windowed list (closest-first); the
+  // 10% TRIGGER gate (whether the card appears at all) is checked here on candidates[0].
+  const feeN = parseFloat(d.fee) || 0;
+  const [rotChecked, setRotChecked] = React.useState({});     // { sellTxnId: true }
+  const [rotDismissed, setRotDismissed] = React.useState(false);
+  const buyTotalCost = (kind === 'buy' && qtyN > 0 && priceN > 0) ? (qtyN * priceN + feeN) : 0;
+  const rotCandidates = (kind === 'buy' && buyTotalCost > 0 && typeof window.f2FindRotationCandidates === 'function')
+    ? window.f2FindRotationCandidates(store.holdings, d.date, buyTotalCost) : [];
+  const rotTriggered = rotCandidates.length > 0
+    && Math.abs(rotCandidates[0].proceeds - buyTotalCost) / buyTotalCost <= 0.10;
+  const showRotCard = rotTriggered && !rotDismissed;
+  // Seed the tightest match pre-checked whenever the candidate set (re)appears/changes;
+  // clear when the card isn't shown. A checkbox toggle doesn't change rotSig, so it never
+  // reseeds/clobbers the user's selection.
+  const rotSig = showRotCard ? rotCandidates.map((c) => c.txnId).join(',') : '';
+  React.useEffect(() => {
+    if (showRotCard && rotCandidates.length) setRotChecked({ [rotCandidates[0].txnId]: true });
+    else setRotChecked({});
+  }, [rotSig]);
+  const toggleRot = (txnId) => setRotChecked((prev) => ({ ...prev, [txnId]: !prev[txnId] }));
+
   const save = () => {
     if (!valid) return;
-    store.actions.addTxn(ticker, { kind, date: d.date, qty: qtyN, price: priceN, fee_eur: parseFloat(d.fee) || 0 });
-    // Mark the tranche executed only if the owner confirmed it was a discipline trim.
-    if (kind === 'sell' && trancheLevel != null && disciplineYes === true) {
-      store.actions.editHoldingTrancheExecution(ticker, trancheLevel);
+    if (kind === 'buy' && showRotCard) {
+      // Record the buy with a known id, then link each CHECKED candidate sell to it
+      // (many-to-many → one linkRotation per checked sell). Unchecked/none → plain buy.
+      const buyId = (typeof window.f2uid === 'function') ? window.f2uid() : ('tx_' + Math.random().toString(36).slice(2, 9));
+      store.actions.addTxn(ticker, { kind: 'buy', date: d.date, qty: qtyN, price: priceN, fee_eur: feeN, id: buyId });
+      rotCandidates.filter((c) => rotChecked[c.txnId]).forEach((c) => {
+        store.actions.linkRotation(c.ticker, c.txnId, ticker, buyId, c.proceeds);
+      });
+    } else {
+      store.actions.addTxn(ticker, { kind, date: d.date, qty: qtyN, price: priceN, fee_eur: feeN });
+      // Mark the tranche executed only if the owner confirmed it was a discipline trim.
+      if (kind === 'sell' && trancheLevel != null && disciplineYes === true) {
+        store.actions.editHoldingTrancheExecution(ticker, trancheLevel);
+      }
     }
     onDone();
   };
@@ -96,6 +164,16 @@ function AddTxnForm2({ ticker, maxSell, onDone }) {
             value={disciplineYes === null ? null : (disciplineYes ? 'yes' : 'no')}
             onChange={(v) => setDisciplineYes(v === 'yes')} />
         </Field2>
+      )}
+      {showRotCard && (
+        <RotationProposalCard2
+          candidates={rotCandidates}
+          checked={rotChecked}
+          onToggle={toggleRot}
+          buyTotalCost={buyTotalCost}
+          onDismiss={() => setRotDismissed(true)}
+          t={t}
+        />
       )}
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
         <TextBtn2 onClick={onDone}>Cancel</TextBtn2>

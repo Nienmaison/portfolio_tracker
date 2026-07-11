@@ -176,6 +176,32 @@ function f2ComputeIdleCash(cashSeed, poolEvents, allHoldingsTxns) {
   return cash;
 }
 
+/* Rotation-candidate finder (C2-D102). Unlinked sells across ALL holdings dated within
+   `windowDays` before `buyDate`, sorted closest-to-`buyTotalCost` first. A sell carrying
+   any non-empty rotation_links is permanently excluded — locked decision: once linked it
+   is never re-offered, even if only part of its proceeds was attributed (the remainder
+   stays as ordinary untracked idle cash by design). Proceeds fall back to qty*price when
+   the materialized `proceeds` field is absent (it is stripped on GET /holdings read-back
+   for un-linked sells; qty*price is the identical gross figure). The finder returns the
+   FULL windowed list; the TRIGGER (whether to surface a proposal at all) is a separate
+   caller check — candidates[0] within `tolerance` of buyTotalCost. */
+function f2FindRotationCandidates(holdings, buyDate, buyTotalCost, windowDays = 14, tolerance = 0.10) {
+  if (!buyDate || !(buyTotalCost > 0)) return [];
+  const bd = new Date(buyDate + 'T00:00:00');
+  if (isNaN(bd.getTime())) return [];
+  const windowStart = new Date(bd.getTime() - windowDays * 86400000).toISOString().slice(0, 10);
+  const candidates = [];
+  (holdings || []).forEach((h) => (h.txns || []).forEach((t) => {
+    if (t.kind !== 'sell') return;
+    if (t.rotation_links && t.rotation_links.length > 0) return;   // already linked → permanently excluded
+    if (!t.date || t.date < windowStart || t.date > buyDate) return;
+    const proceeds = (t.proceeds != null) ? t.proceeds : t.qty * t.price;
+    candidates.push({ ticker: h.ticker, txnId: t.id, date: t.date, proceeds: proceeds });
+  }));
+  candidates.sort((a, b) => Math.abs(a.proceeds - buyTotalCost) - Math.abs(b.proceeds - buyTotalCost));
+  return candidates;
+}
+
 /* ── Derivation: a holding's live numbers come only from its txns ─────── */
 function f2DeriveHolding(h) {
   const txns = (h.txns || []).slice().sort((a, b) => (a.date < b.date ? -1 : 1));
@@ -347,6 +373,10 @@ function f2HoldingsFromApi(data) {
                               // from qty/price, and the idle-cash walk reads it directly.
                               // (undefined when absent; JSON omits it.) proceeds/realized_gain
                               // are intentionally NOT preserved here — both recompute losslessly.
+          rotation_links: t.rotation_links, // C2-D102 — MUST survive hydration: a linked sell
+          rotated_from: t.rotated_from,     // must stay permanently excluded from candidate
+                              // pools across reloads, and the link record is not recomputable.
+                              // (undefined when absent; JSON omits.)
         }))
       : [{ id: f2uid(), kind: 'buy', date: '2024-01-01', qty: +hp.quantity, price: +hp.avg_buy_price }];
     return {
@@ -711,6 +741,40 @@ function FincrProvider({ children }) {
       }));
     },
 
+    // linkRotation (C2-D102): write BOTH sides of a rotation link between a partial-sell
+    // txn and a buy txn in ONE atomic update — rotation_links on the sell (many-to-many
+    // capable; idempotent by target) and the mirrored rotated_from on the buy (same shape
+    // + idempotency as addRotatedFromToTxn; source_closed_at carries the sell's date).
+    // Called once per checked candidate on commit. Handles the sell==buy same-ticker case
+    // (both maps apply to the one holding's txns; sellTxnId != buyTxnId). This is the
+    // open-holding sibling of the closed-position rotation flow — that path is untouched.
+    linkRotation: (sellTicker, sellTxnId, buyTicker, buyTxnId, portionEur) => {
+      const srcH = holdings.find((h) => h.ticker === sellTicker);
+      const srcTx = srcH && (srcH.txns || []).find((t) => t.id === sellTxnId);
+      const sellDate = srcTx ? srcTx.date : null;
+      setHoldings((hs) => hs.map((h) => {
+        if (h.ticker !== sellTicker && h.ticker !== buyTicker) return h;
+        let txns = h.txns || [];
+        if (h.ticker === sellTicker) {
+          txns = txns.map((tx) => {
+            if (tx.id !== sellTxnId) return tx;
+            const ex = Array.isArray(tx.rotation_links) ? tx.rotation_links : [];
+            const kept = ex.filter((l) => !(l.target_ticker === buyTicker && l.target_txn_id === buyTxnId));
+            return { ...tx, rotation_links: [...kept, { target_ticker: buyTicker, target_txn_id: buyTxnId, portion_eur: portionEur }] };
+          });
+        }
+        if (h.ticker === buyTicker) {
+          txns = txns.map((tx) => {
+            if (tx.id !== buyTxnId) return tx;
+            const ex = Array.isArray(tx.rotated_from) ? tx.rotated_from : [];
+            const kept = ex.filter((r) => !(r.source_ticker === sellTicker && r.source_closed_at === sellDate));
+            return { ...tx, rotated_from: [...kept, { source_ticker: sellTicker, source_closed_at: sellDate, portion_eur: portionEur }] };
+          });
+        }
+        return { ...h, txns };
+      }));
+    },
+
     // editHoldingTrancheExecution (C2-S9): append a tranche level to a holding's
     // tranches_executed array. Idempotent — won't double-add the same level. Called
     // by the partial-sell form when a sell is marked a discipline trim. setHoldings
@@ -901,4 +965,4 @@ function FincrProvider({ children }) {
   return React.createElement(FincrStoreCtx.Provider, { value: ctx }, children);
 }
 
-Object.assign(window, { FincrStoreCtx, useStore2, FincrProvider, fincrDeriveHolding: f2DeriveHolding });
+Object.assign(window, { FincrStoreCtx, useStore2, FincrProvider, fincrDeriveHolding: f2DeriveHolding, f2uid, f2FindRotationCandidates });
