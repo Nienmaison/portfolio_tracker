@@ -44,7 +44,9 @@ function PoolLedger2() {
   return (
     <section>
       <SecHead n="03">Capital ledger</SecHead>
-      <Card2 pad="16px 18px 14px">
+      {/* marginTop:6 matches the SecHead→content gap every other Settings section uses
+          (settings2.jsx §01/§02). Card2 spreads `style`, so no new spacing value. */}
+      <Card2 pad="16px 18px 14px" style={{ marginTop: 6 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
           <Seg2
             options={[{ value: 'in', label: 'Deposit', tone: 'buy' }, { value: 'out', label: 'Withdrawal', tone: 'sell' }]}

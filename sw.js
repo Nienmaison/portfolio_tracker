@@ -8,7 +8,7 @@
 // Bump CACHE_VERSION after any significant frontend change to force a full
 // cache flush on all clients.
 
-const CACHE_VERSION = 'fincr-v29'; // C2-D100 pool ledger UI + POST /pool/event (poolledger2 + store2 + thesis-adapter + settings2 + index)
+const CACHE_VERSION = 'fincr-v30'; // Capital Ledger header→card spacing fix (poolledger2 marginTop:6)
 
 const SHELL_ASSETS = [
   './index.html',
