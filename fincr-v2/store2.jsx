@@ -83,23 +83,65 @@ function f2Sync(path, body) {
 
 function useStore2() { return React.useContext(FincrStoreCtx); }
 
-/* ── Derivation: a holding's live numbers come only from its txns ─────── */
-function f2DeriveHolding(h) {
-  const txns = (h.txns || []).slice().sort((a, b) => (a.date < b.date ? -1 : 1));
-  let boughtQty = 0, soldQty = 0, realized = 0;
-  let runQty = 0, runAvg = 0; // running weighted-average cost; sells realize against it
-  txns.forEach((tx) => {
+/* ── Ledger fold: the SINGLE source of truth for a holding's running quantity,
+   weighted-average cost, and realized gain. f2DeriveHolding (read path) and
+   f2AvgCostBefore (materialize-at-write path, C2-D97) BOTH fold through this, so
+   the averaging + realization math can never drift between them. Sorts by date
+   exactly as f2DeriveHolding always has. `stopBefore`, when passed, halts the fold
+   the instant that exact txn object is reached — used to read avg cost "as of" a
+   new sell being written. Realized prefers a sell's materialized `realized_gain`
+   and falls back to computing it for legacy (pre-C2-D97) txns, so existing
+   h.realized / realizedTotal numbers never move. */
+function f2FoldTxns(txnList, stopBefore) {
+  const sorted = (txnList || []).slice().sort((a, b) => (a.date < b.date ? -1 : 1));
+  let runQty = 0, runAvg = 0, boughtQty = 0, soldQty = 0, realized = 0;
+  for (let i = 0; i < sorted.length; i++) {
+    const tx = sorted[i];
+    if (stopBefore && tx === stopBefore) break;
     if (tx.kind === 'buy') {
       const newQty = runQty + tx.qty;
       runAvg = newQty ? (runQty * runAvg + tx.qty * tx.price) / newQty : 0;
       runQty = newQty;
       boughtQty += tx.qty;
     } else {
-      realized += tx.qty * (tx.price - runAvg);
+      realized += (tx.realized_gain != null) ? tx.realized_gain : tx.qty * (tx.price - runAvg);
       runQty = Math.max(0, runQty - tx.qty);
       soldQty += tx.qty;
     }
-  });
+  }
+  return { runQty, runAvg, boughtQty, soldQty, realized };
+}
+
+/* Running weighted-average cost of `holding` immediately BEFORE `txn` (a not-yet-
+   committed new sell). Folds the existing ledger + the new txn and stops at it, so
+   a materialized realized_gain equals — to the cent — what f2DeriveHolding would
+   derive for the same sell. Both fold via f2FoldTxns; no duplicated math. (C2-D97) */
+function f2AvgCostBefore(holding, txn) {
+  return f2FoldTxns([...(holding.txns || []), txn], txn).runAvg;
+}
+
+/* C2-D97 cache-invalidation: strip a sell's materialized proceeds/realized_gain so
+   f2DeriveHolding falls back to recomputing it. Called after any editTxn/removeTxn —
+   those can change the cost basis a materialized value was captured against (an
+   earlier buy edited) or the sell's own qty/price, which would otherwise leave a
+   stale realized_gain that the prefer-stored derivation would trust. Recompute is
+   exactly the pre-C2-D97 behaviour, so h.realized stays correct after any edit.
+   Buys and already-bare sells pass through untouched. */
+function f2StripMaterializedSell(tx) {
+  if (tx.kind !== 'sell' || (tx.proceeds == null && tx.realized_gain == null)) return tx;
+  const rest = Object.assign({}, tx);
+  delete rest.proceeds;
+  delete rest.realized_gain;
+  return rest;
+}
+
+/* ── Derivation: a holding's live numbers come only from its txns ─────── */
+function f2DeriveHolding(h) {
+  const txns = (h.txns || []).slice().sort((a, b) => (a.date < b.date ? -1 : 1));
+  // Numbers come from the shared ledger fold (C2-D97) so the avg-cost/realized math
+  // lives in exactly one place; `realized` honours a sell's materialized
+  // realized_gain and falls back to computing for legacy sells (h.realized unchanged).
+  const { boughtQty, soldQty, runAvg, realized } = f2FoldTxns(h.txns);
   const qty = +(boughtQty - soldQty).toFixed(8);
   const avgCost = runAvg;
   const value = qty * h.price;
@@ -467,14 +509,31 @@ function FincrProvider({ children }) {
       return { added: merged.added, replaced: merged.replaced, skipped: merged.skipped };
     },
 
-    addTxn: (ticker, tx) => setHoldings((hs) => hs.map((h) => h.ticker === ticker
-      ? { ...h, txns: [...h.txns, { id: f2uid(), ...tx, qty: +tx.qty, price: +tx.price }] } : h)),
+    // C2-D97: for a SELL, materialize gross proceeds + realized gain ON the txn at
+    // write time so the ledger is self-describing (the foundation Spec 2b's cash walk
+    // reads). avg cost is taken as-of this sell via the shared fold (f2AvgCostBefore),
+    // so f2DeriveHolding — which now prefers the stored value — derives an identical
+    // h.realized. Buys are unchanged. proceeds = gross euros back; realized_gain = gain
+    // vs cost basis (matches f2DeriveHolding's math exactly).
+    addTxn: (ticker, tx) => setHoldings((hs) => hs.map((h) => {
+      if (h.ticker !== ticker) return h;
+      const t = { id: f2uid(), ...tx, qty: +tx.qty, price: +tx.price };
+      if (t.kind === 'sell') {
+        const avg = f2AvgCostBefore(h, t);
+        t.proceeds = t.qty * t.price;
+        t.realized_gain = t.qty * (t.price - avg);
+      }
+      return { ...h, txns: [...h.txns, t] };
+    })),
 
+    // C2-D97: after the edit, strip materialized values on this holding's sells — the
+    // edited txn may have changed the cost basis they were captured against (or its
+    // own qty/price), so f2DeriveHolding recomputes them (pre-C2-D97 behaviour).
     editTxn: (ticker, txId, patch) => setHoldings((hs) => hs.map((h) => h.ticker === ticker
-      ? { ...h, txns: h.txns.map((tx) => tx.id === txId ? { ...tx, ...patch, qty: +(patch.qty ?? tx.qty), price: +(patch.price ?? tx.price) } : tx) } : h)),
+      ? { ...h, txns: h.txns.map((tx) => tx.id === txId ? { ...tx, ...patch, qty: +(patch.qty ?? tx.qty), price: +(patch.price ?? tx.price) } : tx).map(f2StripMaterializedSell) } : h)),
 
     removeTxn: (ticker, txId) => setHoldings((hs) => hs.map((h) => h.ticker === ticker
-      ? { ...h, txns: h.txns.filter((tx) => tx.id !== txId) } : h)),
+      ? { ...h, txns: h.txns.filter((tx) => tx.id !== txId).map(f2StripMaterializedSell) } : h)),
 
     closePosition: (ticker, { sellPrice, date, note }) => {
       const src = holdings.find((h) => h.ticker === ticker);

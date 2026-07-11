@@ -22,7 +22,16 @@ function ClosedPositions2() {
   const realizedTotal = closed.reduce((s, c) => s + c.realized, 0);
   const wins = closed.filter((c) => c.realized >= 0).length;
 
-  if (!closed.length) {
+  // C2-D97: realized gain booked on still-OPEN holdings via partial sells — the half
+  // History historically omitted (it showed only fully-closed positions). Sourced from
+  // F.holdings' derived `realized` (0 for holdings never partially sold). Additive:
+  // does not touch the closed-positions display above/below.
+  const openRealized = (F.holdings || [])
+    .filter((h) => Math.abs(h.realized || 0) > 1e-9)
+    .map((h) => ({ ticker: h.ticker, realized: h.realized, color: h.color }));
+  const openRealizedTotal = openRealized.reduce((s, h) => s + h.realized, 0);
+
+  if (!closed.length && !openRealized.length) {
     return (
       <section>
         <SecHead n="04">Closed positions</SecHead>
@@ -36,7 +45,8 @@ function ClosedPositions2() {
   const cols = '1.5fr 0.9fr 0.9fr 0.8fr 1fr';
   return (
     <section>
-      <SecHead n="04" right={<MonoTxt size={10.5} color={t.faint}>{closed.length} CLOSED · {wins}/{closed.length} GREEN</MonoTxt>}>Closed positions</SecHead>
+      <SecHead n="04" right={closed.length > 0 ? <MonoTxt size={10.5} color={t.faint}>{closed.length} CLOSED · {wins}/{closed.length} GREEN</MonoTxt> : null}>Closed positions</SecHead>
+      {closed.length > 0 && (
       <div style={{ marginTop: 8 }}>
         <div style={{ display: 'grid', gridTemplateColumns: cols, gap: 14, padding: '10px 8px' }}>
           {['Asset', 'Avg cost', 'Sold at', 'Held', 'Realized'].map((c, i) => (
@@ -72,6 +82,35 @@ function ClosedPositions2() {
           <Money size={13} weight={700} color={realizedTotal >= 0 ? t.green : t.red} style={{ textAlign: 'right' }}>{F.signed(realizedTotal)}</Money>
         </div>
       </div>
+      )}
+      {/* C2-D97 — realized on still-OPEN positions (partial sells). Additive block,
+          same visual grammar as the closed table, clearly labelled + distinct. */}
+      {openRealized.length > 0 && (
+      <div style={{ marginTop: closed.length ? 22 : 8 }}>
+        <div style={{ padding: '2px 8px 8px' }}>
+          <MonoTxt size={9.5} color={t.faint} style={{ letterSpacing: '0.14em' }}>REALIZED ON OPEN POSITIONS</MonoTxt>
+        </div>
+        {openRealized.map((h, idx) => {
+          const up = h.realized >= 0;
+          return (
+            <div key={h.ticker + idx} className="f2-row" style={{ display: 'grid', gridTemplateColumns: cols, gap: 14, padding: `${t.rowPadY}px 8px`, alignItems: 'center', borderTop: `1px solid ${t.hair}`, borderRadius: 6 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                <span style={{ width: 3, height: 26, borderRadius: 2, background: h.color, flexShrink: 0, opacity: 0.65 }}></span>
+                <div style={{ fontSize: 13, fontWeight: 700, color: t.ink, lineHeight: 1.2 }}>{h.ticker}</div>
+              </div>
+              <span></span><span></span>
+              <MonoTxt size={10.5} color={t.faint} style={{ textAlign: 'right' }}>partial sell</MonoTxt>
+              <Money size={12.5} weight={600} color={up ? t.green : t.red} style={{ textAlign: 'right' }}>{F.signed(h.realized)}</Money>
+            </div>
+          );
+        })}
+        <div style={{ display: 'grid', gridTemplateColumns: cols, gap: 14, padding: '12px 8px', alignItems: 'baseline', borderTop: `1px solid ${t.hairStrong}` }}>
+          <MonoTxt size={10} color={t.faint} style={{ letterSpacing: '0.14em' }}>REALIZED (OPEN)</MonoTxt>
+          <span></span><span></span><span></span>
+          <Money size={13} weight={700} color={openRealizedTotal >= 0 ? t.green : t.red} style={{ textAlign: 'right' }}>{F.signed(openRealizedTotal)}</Money>
+        </div>
+      </div>
+      )}
     </section>
   );
 }

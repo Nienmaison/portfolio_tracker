@@ -8,7 +8,7 @@
 // Bump CACHE_VERSION after any significant frontend change to force a full
 // cache flush on all clients.
 
-const CACHE_VERSION = 'fincr-v26'; // C2-D96 pool-boundary True Return (store2 + thesis-adapter + overview)
+const CACHE_VERSION = 'fincr-v27'; // C2-D97 partial-sell proceeds materialized (store2 + history2)
 
 const SHELL_ASSETS = [
   './index.html',
