@@ -29,6 +29,20 @@
     return s.charAt(0).toUpperCase() + s.slice(1);
   }
 
+  // Pool-boundary Net Capital Deposited (C2-D96). Sums pool.events across the
+  // investing-pool boundary: +amount for direction 'in' (deposit/seed), -amount
+  // for 'out' (withdrawal). Derived, never stored — the same "computed, not a
+  // plug" principle that motivated moving off the manual `liquidity` field.
+  // Returns null when there are no events (pre-seed / no-key) so callers can show
+  // an honest "pool not seeded" state rather than a misleading 0.
+  function f2ComputePoolNetCapital(events) {
+    if (!Array.isArray(events) || events.length === 0) return null;
+    return events.reduce(function (sum, e) {
+      var amt = Number(e && e.amount_eur) || 0;
+      return sum + (e && e.direction === 'out' ? -amt : amt);
+    }, 0);
+  }
+
   // Fetch and transform thesis data from the backend.
   // Sets window.FINCR.thesis, dispatches 'fincr:thesis-update' so the shell
   // re-renders, and returns the transformed array. Returns [] on no-key / auth
@@ -109,6 +123,14 @@
     // so decision_rules must be exposed separately here.
     F.decisionRules = (data && data.thesis && data.thesis.decision_rules) || null;
 
+    // F.pool + F.poolNetCapitalDeposited (C2-D96): the raw pool-boundary ledger and
+    // its derived Net Capital Deposited. store2.jsx's True Return uses
+    // poolNetCapitalDeposited as totalInvested (the pool's real funding base), not
+    // the old derived remainder. null when the key is absent (pre-seed / no-key) —
+    // True Return then shows the honest "pool not seeded" placeholder.
+    F.pool = (data && data.thesis && data.thesis.pool) || null;
+    F.poolNetCapitalDeposited = f2ComputePoolNetCapital(F.pool && F.pool.events);
+
     // 5. Publish + notify. Mirrors the fxRate pattern: set window.FINCR, then
     //    dispatch so the shell's forceRerender listener repaints Positions + drawer.
     F.thesis = transformed;
@@ -147,4 +169,7 @@
   // Expose as globals for the text/babel store + drawer to call (Step 2 / C2-S3).
   window.loadThesis = loadThesis;
   window.saveThesis = saveThesis;
+  // Exposed for reuse/testing (parity with window.f2ParseTranches); store2.jsx reads
+  // the already-computed F.poolNetCapitalDeposited, not this function directly.
+  window.f2ComputePoolNetCapital = f2ComputePoolNetCapital;
 })();

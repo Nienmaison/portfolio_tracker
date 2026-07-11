@@ -141,21 +141,23 @@ function OverviewTab2({ go }) {
                       {F.eur(F.totalValue - F.totalInvested)} on {F.eur(F.totalInvested)} invested
                     </MonoTxt>
                   </div>
-                  {/* Some closes are untagged — they're excluded, so the number is
-                      partial (not wrong). The owner tags them via Closed positions. */}
+                  {/* True Return no longer depends on close tags (C2-D96: it's derived
+                      from pool capital, not sell_type). Untagged closes are now just a
+                      nudge to tag rotations for the linking workflow — informational. */}
                   {F.untaggedClosedCount > 0 && (
-                    <div style={{ color: t.amber, fontSize: 9, marginTop: 2 }}>
-                      ⚠ {F.untaggedClosedCount} closed position{F.untaggedClosedCount > 1 ? 's' : ''} untagged — true return is partial
+                    <div style={{ color: t.dim, fontSize: 9, marginTop: 2 }}>
+                      {F.untaggedClosedCount} closed position{F.untaggedClosedCount > 1 ? 's' : ''} untagged — tag in Closed positions
                     </div>
                   )}
                 </div>
               ) : (
-                // All closed positions untagged: show the feature exists and needs
-                // input rather than hiding it (so it doesn't read as broken/missing).
+                // trueReturnPct is null only when the pool isn't seeded (no key /
+                // pre-migration): show the feature exists and needs input rather than
+                // hiding it (so it doesn't read as broken/missing).
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8 }}>
                   <MonoTxt size={10.5} color={t.faint}>TRUE RETURN</MonoTxt>
                   <span style={{ width: 1, height: 10, background: t.hair }}></span>
-                  <MonoTxt size={10.5} color={t.dim}>— untagged closes pending</MonoTxt>
+                  <MonoTxt size={10.5} color={t.dim}>— pool not seeded</MonoTxt>
                 </div>
               )}
             </div>

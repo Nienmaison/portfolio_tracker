@@ -8,7 +8,7 @@
 // Bump CACHE_VERSION after any significant frontend change to force a full
 // cache flush on all clients.
 
-const CACHE_VERSION = 'fincr-v25'; // API key entry UI in Settings (fixes circular setup dead-end)
+const CACHE_VERSION = 'fincr-v26'; // C2-D96 pool-boundary True Return (store2 + thesis-adapter + overview)
 
 const SHELL_ASSETS = [
   './index.html',

@@ -380,39 +380,34 @@ function FincrProvider({ children }) {
     const stocksValue = derived.filter((h) => h.type === 'stock').reduce((s, h) => s + h.value, 0);
     const cryptoValue = derived.filter((h) => h.type === 'crypto').reduce((s, h) => s + h.value, 0);
     const dayChange = derived.reduce((s, h) => s + h.value * ((h.dayPct || 0) / 100), 0);
-    // CORRECTED true return formula (C2-S7, C2-D69).
-    // Previous formula (C2-S6b) treated ALL closed positions as realised exits —
-    // wrong for a portfolio where most closes are rotations (capital stays deployed,
-    // just changes form). Corrected logic:
-    //   - Only EXIT-tagged closes contribute to realised P&L.
-    //   - ROTATE-tagged closes are pass-throughs (their P&L is embedded in the next
-    //     position), so they are NOT counted as extracted capital.
-    //   - Untagged closes are EXCLUDED entirely (neither exit nor rotate assumed);
-    //     untaggedClosedCount drives a UI warning so the number is honest, not wrong.
-    //   - totalInvested = what is currently at risk from salary/savings, derived as
-    //     totalValue − totalPnl (exact for this owner's EUR-only workflow).
-    const totalUnrealisedPnl = derived.reduce((s, h) => s + (h.pnl ?? 0), 0);
-    const exitRealisedPnl = closed
-      .filter((c) => c.sell_type === 'exit')
-      .reduce((s, c) => s + (c.realized ?? 0), 0);
+    // TRUE RETURN — pool-boundary model (C2-D96). Reverses C2-D68's derived-remainder
+    // approach (totalInvested = totalValue − allPnl), which counted only EXIT-tagged
+    // closes as realised and silently dropped partial-sell proceeds (they landed in
+    // an orphaned realizedTotal nothing read — the C2-D69 blind spot). Now:
+    //   totalInvested = Net Capital Deposited (pool.events, derived in thesis-adapter.js
+    //   as window.FINCR.poolNetCapitalDeposited) — the pool's real funding base, i.e.
+    //   the capital the owner actually pushed across the investing-pool boundary.
+    //   trueReturn = (current pool value − capital deposited) / capital deposited.
+    // Partial-sell proceeds already sit inside totalValue (as reinvested holdings or as
+    // liquidity), so this captures them automatically — no sell_type tagging required.
+    // NOTE: read window.FINCR directly, NOT the `F` alias — `const F = window.FINCR`
+    // is declared below this useMemo, so `F` is in the temporal dead zone here.
+    const totalInvested = (window.FINCR && typeof window.FINCR.poolNetCapitalDeposited === 'number')
+      ? window.FINCR.poolNetCapitalDeposited : null;
+    // untaggedClosedCount stays computed but is now purely INFORMATIONAL (a
+    // Closed-positions nudge to tag rotations) — it no longer gates True Return.
     const untaggedClosedCount = closed.filter((c) => !c.sell_type).length;
-    // C2-S8: rotations that are tagged but not yet linked to a specific buy txn —
-    // counted as "tagged" for the formula (sell_type is set) but flagged for the UI
-    // so the owner can complete the chain. Drives the closed-positions warning.
+    // C2-S8: rotations tagged but not yet linked to a specific buy txn — flagged for
+    // the UI so the owner can complete the chain. Drives the closed-positions warning.
     const unlinkedRotationCount = closed.filter((c) =>
       c.sell_type === 'rotate' &&
       (c.rotation_links && c.rotation_links.length > 0) &&
       c.rotation_links.some((l) => l.target_txn_id == null)
     ).length;
-    const allPnl = totalUnrealisedPnl + exitRealisedPnl;
-    const totalInvested = totalValue - allPnl;
-    // trueReturnPct is null when every closed position is untagged (can't compute
-    // yet — UI shows a "— untagged closes pending" placeholder). A live-only book
-    // (no closes) is always calculable. Guard divide-by-zero with totalInvested > 0.
-    const trueReturnPct = (
-      totalInvested > 0 &&
-      (closed.length === 0 || untaggedClosedCount < closed.length)
-    ) ? (allPnl / totalInvested) * 100 : null;
+    // null (not 0) when the pool is unseeded / no-key — UI shows an honest placeholder
+    // instead of a misleading 0%. Guard divide-by-zero with totalInvested > 0.
+    const trueReturnPct = (totalInvested != null && totalInvested > 0)
+      ? ((totalValue - totalInvested) / totalInvested) * 100 : null;
 
     return {
       totalValue, totalCost, totalPnl,
