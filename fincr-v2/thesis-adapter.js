@@ -131,6 +131,12 @@
     F.pool = (data && data.thesis && data.thesis.pool) || null;
     F.poolNetCapitalDeposited = f2ComputePoolNetCapital(F.pool && F.pool.events);
 
+    // F.poolCashSeed (C2-D98): the raw idle-cash anchor { seed_amount_eur, seed_date }.
+    // store2.jsx's f2ComputeIdleCash starts from this and walks forward-dated events/
+    // txns to derive F.liquidityEur — retiring the manual liquidity.total_eur plug.
+    // null when absent (pre-migration / no-key) → the Liquidity card shows a gap.
+    F.poolCashSeed = (F.pool && F.pool.cash) || null;
+
     // 5. Publish + notify. Mirrors the fxRate pattern: set window.FINCR, then
     //    dispatch so the shell's forceRerender listener repaints Positions + drawer.
     F.thesis = transformed;

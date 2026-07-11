@@ -8,7 +8,7 @@
 // Bump CACHE_VERSION after any significant frontend change to force a full
 // cache flush on all clients.
 
-const CACHE_VERSION = 'fincr-v27'; // C2-D97 partial-sell proceeds materialized (store2 + history2)
+const CACHE_VERSION = 'fincr-v28'; // C2-D98 derived idle cash + manual Liquidity retired (store2 + liquidity2 + drawer2 + thesis-adapter)
 
 const SHELL_ASSETS = [
   './index.html',

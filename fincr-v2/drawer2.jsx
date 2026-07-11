@@ -56,7 +56,7 @@ function AddTxnForm2({ ticker, maxSell, onDone }) {
   const t = useTheme2();
   const store = useStore2();
   const [kind, setKind] = React.useState('buy');
-  const [d, setD] = React.useState({ date: new Date().toISOString().slice(0, 10), qty: '', price: '' });
+  const [d, setD] = React.useState({ date: new Date().toISOString().slice(0, 10), qty: '', price: '', fee: '' });
   const qtyN = parseFloat(d.qty), priceN = parseFloat(d.price);
   const overSell = kind === 'sell' && qtyN > maxSell + 1e-9;
   const valid = qtyN > 0 && priceN > 0 && !overSell;
@@ -72,7 +72,7 @@ function AddTxnForm2({ ticker, maxSell, onDone }) {
     ? f2TrancheInRegion(hForTranche, trancheRule, qtyN) : null;
   const save = () => {
     if (!valid) return;
-    store.actions.addTxn(ticker, { kind, date: d.date, qty: qtyN, price: priceN });
+    store.actions.addTxn(ticker, { kind, date: d.date, qty: qtyN, price: priceN, fee_eur: parseFloat(d.fee) || 0 });
     // Mark the tranche executed only if the owner confirmed it was a discipline trim.
     if (kind === 'sell' && trancheLevel != null && disciplineYes === true) {
       store.actions.editHoldingTrancheExecution(ticker, trancheLevel);
@@ -87,6 +87,8 @@ function AddTxnForm2({ ticker, maxSell, onDone }) {
         <NumberField2 value={d.qty} onChange={(v) => setD((s) => ({ ...s, qty: v }))} placeholder="qty" autoFocus />
         <NumberField2 value={d.price} onChange={(v) => setD((s) => ({ ...s, price: v }))} prefix="€" onEnter={save} />
       </div>
+      {/* C2-D98: optional broker fee — adjusts derived idle cash (buy: −fee, sell: −fee). Blank = 0. */}
+      <NumberField2 value={d.fee} onChange={(v) => setD((s) => ({ ...s, fee: v }))} prefix="€" placeholder="fee (optional)" onEnter={save} />
       {overSell && <MonoTxt size={10.5} color={t.red}>Can't sell more than {maxSell} units held.</MonoTxt>}
       {kind === 'sell' && trancheLevel != null && (
         <Field2 label={'Discipline trim at +' + trancheLevel + '% level?'} hint="optional">

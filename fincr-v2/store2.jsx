@@ -135,6 +135,44 @@ function f2StripMaterializedSell(tx) {
   return rest;
 }
 
+/* Derived idle cash (C2-D98) — replaces the retired manual `liquidity.total_eur` plug.
+   Seed-and-forward, same discipline as C2-D96's net-capital seed: a full flow-walk is
+   impossible (the crypto-side buy history predates the tracker and is incomplete —
+   verified to produce a nonsense €3,162 artifact), so we anchor to an owner-attested
+   point-in-time truth (`pool.cash.seed_amount_eur` @ `seed_date`) and adjust it forward.
+
+   cash = seed_amount + (post-seed deposits/withdrawals) − (post-seed buy costs+fees)
+                      + (post-seed sell proceeds−fees)
+
+   Two boundaries, deliberately asymmetric:
+   • EVENTS contribute only when dated STRICTLY AFTER seed_date, and never for
+     type:'seed'. The seed baseline is itself composed of two on-seed_date events —
+     the C2-D96 net-capital 'seed' (€16,655.75, a lifetime anchor, never idle cash)
+     and this spec's point-in-time cash deposit (€1,000, already inside seed_amount).
+     Both are already embedded in the seed, so neither may be re-added.
+   • TXNS contribute when dated ON OR AFTER seed_date — a buy/sell recorded today
+     (== seed_date) is genuine post-snapshot activity. (Verified: 0 existing txns are
+     dated ≥ seed_date, so idle cash == seed_amount immediately after migration.)
+   Returns null when unseeded (no-key / pre-migration) so the card shows an honest gap. */
+function f2ComputeIdleCash(cashSeed, poolEvents, allHoldingsTxns) {
+  if (!cashSeed || cashSeed.seed_amount_eur == null) return null;
+  const seedDate = cashSeed.seed_date;
+  let cash = +cashSeed.seed_amount_eur || 0;
+  (poolEvents || []).forEach((e) => {
+    if (!e || e.type === 'seed') return;              // net-capital anchor, never idle-cash flow
+    if (!e.date || e.date <= seedDate) return;        // on/before the snapshot = baseline (excludes the €1,000 seed deposit)
+    cash += (e.direction === 'out') ? -(+e.amount_eur || 0) : (+e.amount_eur || 0);
+  });
+  (allHoldingsTxns || []).forEach((entry) => {
+    const txn = entry && entry.txn;
+    if (!txn || !txn.date || txn.date < seedDate) return;   // pre-seed history is opaque (already in the seed)
+    const gross = (+txn.qty || 0) * (+txn.price || 0);
+    const fee = +txn.fee_eur || 0;                    // fee_eur is preserved through hydration (C2-D98 whitelist widen)
+    cash += (txn.kind === 'buy') ? -(gross + fee) : (gross - fee);
+  });
+  return cash;
+}
+
 /* ── Derivation: a holding's live numbers come only from its txns ─────── */
 function f2DeriveHolding(h) {
   const txns = (h.txns || []).slice().sort((a, b) => (a.date < b.date ? -1 : 1));
@@ -302,6 +340,10 @@ function f2HoldingsFromApi(data) {
           qty: +t.qty,
           price: +t.price,
           source: t.source, // C2-D85 — preserve txn provenance
+          fee_eur: t.fee_eur, // C2-D98 — MUST survive hydration: fee is NOT recomputable
+                              // from qty/price, and the idle-cash walk reads it directly.
+                              // (undefined when absent; JSON omits it.) proceeds/realized_gain
+                              // are intentionally NOT preserved here — both recompute losslessly.
         }))
       : [{ id: f2uid(), kind: 'buy', date: '2024-01-01', qty: +hp.quantity, price: +hp.avg_buy_price }];
     return {
@@ -396,15 +438,24 @@ function FincrProvider({ children }) {
   // fetch and we stay on the Phase-1 localStorage render). Non-blocking: display
   // components may read F.loading for a subtle indicator.
   const [loading, setLoading] = React.useState(() => !!f2ApiKey());
+  // liquidityEur is now DERIVED idle cash (C2-D98), not the retired manual plug.
+  // Recomputes on (a) holdings changes — a new buy/sell moves cash — and (b) thesis
+  // load, when pool.cash + pool.events arrive via the adapter's fincr:thesis-update.
+  // Reads window.FINCR fresh so it always sees the latest seed. Uses RAW `holdings`
+  // (not `derived`) so a holding sold down to 0 still contributes its sell proceeds.
   const [liquidityEur, setLiquidityEur] = React.useState(0);
   React.useEffect(function() {
-    const handler = function() {
-      const liq = window.FINCR && window.FINCR.liquidity;
-      setLiquidityEur(liq ? (Number(liq.total_eur) || 0) : 0);
+    const recompute = function() {
+      const FF = window.FINCR || {};
+      const flat = [];
+      holdings.forEach(function(h) { (h.txns || []).forEach(function(txn) { flat.push({ txn: txn }); }); });
+      const cash = f2ComputeIdleCash(FF.poolCashSeed, (FF.pool && FF.pool.events) || [], flat);
+      setLiquidityEur(cash != null ? cash : 0);
     };
-    window.addEventListener('fincr:thesis-update', handler);
-    return function() { window.removeEventListener('fincr:thesis-update', handler); };
-  }, []);
+    recompute();
+    window.addEventListener('fincr:thesis-update', recompute);
+    return function() { window.removeEventListener('fincr:thesis-update', recompute); };
+  }, [holdings]);
 
   React.useEffect(() => {
     try { localStorage.setItem(F2_LS_KEY, JSON.stringify({ holdings, closed, targets })); }
@@ -457,6 +508,7 @@ function FincrProvider({ children }) {
       stocksValue, cryptoValue, realizedTotal,
       dayChange, dayChangePct: totalValue > 0 ? (dayChange / totalValue) * 100 : 0,
       totalInvested, trueReturnPct, untaggedClosedCount, unlinkedRotationCount,
+      liquidityEur, // C2-D98 — derived idle cash, exposed as F.liquidityEur for the (now read-only) Liquidity card
     };
   }, [derived, closed, holdings, liquidityEur]);
 
@@ -518,6 +570,10 @@ function FincrProvider({ children }) {
     addTxn: (ticker, tx) => setHoldings((hs) => hs.map((h) => {
       if (h.ticker !== ticker) return h;
       const t = { id: f2uid(), ...tx, qty: +tx.qty, price: +tx.price };
+      // C2-D98: optional per-txn broker fee, stored only when non-zero (legacy txns
+      // stay bare; the idle-cash walk treats a missing fee as 0). Cash-only — fees do
+      // NOT enter realized_gain / P&L (documented simplification).
+      if (+t.fee_eur > 0) t.fee_eur = +t.fee_eur; else delete t.fee_eur;
       if (t.kind === 'sell') {
         const avg = f2AvgCostBefore(h, t);
         t.proceeds = t.qty * t.price;
