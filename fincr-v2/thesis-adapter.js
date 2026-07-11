@@ -172,9 +172,63 @@
     }
   }
 
+  // POST /pool/event ([C2-D100]) — append a deposit/withdrawal to the lifetime pool
+  // ledger. Optimistic: append a provisional event to F.pool.events, recompute
+  // F.poolNetCapitalDeposited, and dispatch fincr:thesis-update so BOTH derived figures
+  // (net capital via f2ComputePoolNetCapital, idle cash via f2ComputeIdleCash in
+  // store2.jsx) move instantly with no new derivation logic. Then POST and reconcile
+  // with the server's canonical event (real id) via loadThesis. On failure, roll the
+  // optimistic append back. Returns true on 200, false otherwise (never throws).
+  async function addPoolEvent(amount_eur, direction, date, note) {
+    const key = localStorage.getItem('fincr-api-key') || '';
+    if (!key) { console.warn('[pool] addPoolEvent: no api key — skipped'); return false; }
+    const F = (window.FINCR = window.FINCR || {});
+    const provisional = {
+      id: 'pending_' + Date.now(),
+      date: date,
+      type: direction === 'in' ? 'deposit' : 'withdrawal',
+      direction: direction,
+      amount_eur: +amount_eur,
+      note: note || '',
+      _pending: true,
+    };
+    const hadPool = !!(F.pool && Array.isArray(F.pool.events));
+    function rollback() {
+      if (!hadPool) return;
+      F.pool.events = F.pool.events.filter(function (ev) { return ev.id !== provisional.id; });
+      F.poolNetCapitalDeposited = f2ComputePoolNetCapital(F.pool.events);
+      window.dispatchEvent(new CustomEvent('fincr:thesis-update'));
+    }
+    if (hadPool) {
+      F.pool.events = F.pool.events.concat([provisional]);
+      F.poolNetCapitalDeposited = f2ComputePoolNetCapital(F.pool.events);
+      window.dispatchEvent(new CustomEvent('fincr:thesis-update')); // both figures update now
+    }
+    try {
+      const r = await fetch(THESIS_API_BASE + '/pool/event', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-API-Key': key },
+        body: JSON.stringify({ amount_eur: +amount_eur, direction: direction, date: date, note: note || '' }),
+      });
+      if (!r.ok) {
+        const txt = await r.text();
+        console.warn('[pool] POST /pool/event HTTP ' + r.status + ':', txt.slice(0, 200));
+        rollback();
+        return false;
+      }
+      if (window.loadThesis) await window.loadThesis(); // canonical: provisional -> real event id
+      return true;
+    } catch (e) {
+      console.warn('[pool] POST /pool/event failed:', e.message);
+      rollback();
+      return false;
+    }
+  }
+
   // Expose as globals for the text/babel store + drawer to call (Step 2 / C2-S3).
   window.loadThesis = loadThesis;
   window.saveThesis = saveThesis;
+  window.addPoolEvent = addPoolEvent;
   // Exposed for reuse/testing (parity with window.f2ParseTranches); store2.jsx reads
   // the already-computed F.poolNetCapitalDeposited, not this function directly.
   window.f2ComputePoolNetCapital = f2ComputePoolNetCapital;

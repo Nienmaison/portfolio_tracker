@@ -8,7 +8,7 @@
 // Bump CACHE_VERSION after any significant frontend change to force a full
 // cache flush on all clients.
 
-const CACHE_VERSION = 'fincr-v28'; // C2-D98 derived idle cash + manual Liquidity retired (store2 + liquidity2 + drawer2 + thesis-adapter)
+const CACHE_VERSION = 'fincr-v29'; // C2-D100 pool ledger UI + POST /pool/event (poolledger2 + store2 + thesis-adapter + settings2 + index)
 
 const SHELL_ASSETS = [
   './index.html',

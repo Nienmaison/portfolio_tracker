@@ -143,6 +143,10 @@ function SettingsTab2({ mode, setMode, density, setDensity, discrete, setDiscret
           <div style={{ borderTop: `1px solid ${t.hair}` }}></div>
         </div>
       </section>
+
+      {/* C2-D100 — lifetime capital-flow ledger (deposits/withdrawals). Renders its
+          own section (SecHead n="03"). Distinct from the Overview Liquidity card. */}
+      <PoolLedger2 />
     </div>
   );
 }

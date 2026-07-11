@@ -144,23 +144,26 @@ function f2StripMaterializedSell(tx) {
    cash = seed_amount + (post-seed deposits/withdrawals) − (post-seed buy costs+fees)
                       + (post-seed sell proceeds−fees)
 
-   Two boundaries, deliberately asymmetric:
-   • EVENTS contribute only when dated STRICTLY AFTER seed_date, and never for
-     type:'seed'. The seed baseline is itself composed of two on-seed_date events —
-     the C2-D96 net-capital 'seed' (€16,655.75, a lifetime anchor, never idle cash)
-     and this spec's point-in-time cash deposit (€1,000, already inside seed_amount).
-     Both are already embedded in the seed, so neither may be re-added.
+   Boundaries:
+   • EVENTS contribute when dated ON OR AFTER seed_date, EXCEPT the two seed-anchor
+     events (already inside seed_amount), excluded by IDENTITY not date: the C2-D96
+     net-capital 'seed' (type:'seed', €16,655.75, a lifetime anchor never idle cash)
+     and this seed's OWN cash deposit (cashSeed.seed_event_id, €1,000). Excluding by
+     identity — rather than "strictly after seed_date" — lets a GENUINE deposit dated
+     ON seed_date (e.g. one you log today via POST /pool/event) count, while never
+     double-counting the anchors. (C2-D100 refinement; was strictly-after, which
+     wrongly swallowed same-day deposits when today == seed_date.)
    • TXNS contribute when dated ON OR AFTER seed_date — a buy/sell recorded today
-     (== seed_date) is genuine post-snapshot activity. (Verified: 0 existing txns are
-     dated ≥ seed_date, so idle cash == seed_amount immediately after migration.)
+     (== seed_date) is genuine post-snapshot activity.
    Returns null when unseeded (no-key / pre-migration) so the card shows an honest gap. */
 function f2ComputeIdleCash(cashSeed, poolEvents, allHoldingsTxns) {
   if (!cashSeed || cashSeed.seed_amount_eur == null) return null;
   const seedDate = cashSeed.seed_date;
   let cash = +cashSeed.seed_amount_eur || 0;
   (poolEvents || []).forEach((e) => {
-    if (!e || e.type === 'seed') return;              // net-capital anchor, never idle-cash flow
-    if (!e.date || e.date <= seedDate) return;        // on/before the snapshot = baseline (excludes the €1,000 seed deposit)
+    if (!e || e.type === 'seed') return;                                    // C2-D96 net-capital anchor
+    if (cashSeed.seed_event_id && e.id === cashSeed.seed_event_id) return;  // this seed's OWN deposit (== seed_amount)
+    if (!e.date || e.date < seedDate) return;                               // pre-seed history is opaque
     cash += (e.direction === 'out') ? -(+e.amount_eur || 0) : (+e.amount_eur || 0);
   });
   (allHoldingsTxns || []).forEach((entry) => {
