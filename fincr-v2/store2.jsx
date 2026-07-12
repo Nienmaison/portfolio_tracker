@@ -424,6 +424,9 @@ function f2HoldingsFromApi(data) {
                               // (undefined when absent; JSON omits.)
           dismissed_candidates: t.dismissed_candidates, // C2-D104 — MUST survive hydration:
                               // else a dismissed AUTO·PENDING suggestion resurfaces on reload.
+          original_currency: t.original_currency, // C2-D105 — FX audit trail (source currency,
+          original_price: t.original_price,        // original foreign amount, rate applied);
+          fx_rate: t.fx_rate,                      // preserved so the correction stays traceable.
         }))
       : [{ id: f2uid(), kind: 'buy', date: '2024-01-01', qty: +hp.quantity, price: +hp.avg_buy_price }];
     return {
@@ -612,11 +615,13 @@ function FincrProvider({ children }) {
     openAdd: () => setAddOpen(true),
     closeAdd: () => setAddOpen(false),
 
-    addPosition: ({ ticker, name, type, price, color, qty, buyPrice, date }) => {
+    addPosition: ({ ticker, name, type, price, color, qty, buyPrice, date, audit }) => {
       ticker = ticker.toUpperCase().trim();
       setHoldings((hs) => {
         const existing = hs.find((h) => h.ticker === ticker);
-        const tx = { id: f2uid(), kind: 'buy', date: date || new Date().toISOString().slice(0, 10), qty: +qty, price: +buyPrice };
+        // C2-D105 — optional FX audit ({original_currency, fx_rate}) merged onto the buy
+        // txn when the CSV price was converted from a foreign currency; absent otherwise.
+        const tx = Object.assign({ id: f2uid(), kind: 'buy', date: date || new Date().toISOString().slice(0, 10), qty: +qty, price: +buyPrice }, audit || {});
         if (existing) return hs.map((h) => h.ticker === ticker ? { ...h, txns: [...h.txns, tx] } : h);
         return [...hs, {
           ticker, name: name || ticker, type: type || 'stock', price: +price || +buyPrice,

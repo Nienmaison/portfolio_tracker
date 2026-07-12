@@ -196,8 +196,12 @@ function AddTxnForm2({ ticker, maxSell, onDone }) {
   const t = useTheme2();
   const store = useStore2();
   const [kind, setKind] = React.useState('buy');
+  const [curr, setCurr] = React.useState('EUR'); // C2-D105 — trade currency; non-EUR converts at save
+  const [saveErr, setSaveErr] = React.useState(null);
+  const [saving, setSaving] = React.useState(false);
   const [d, setD] = React.useState({ date: new Date().toISOString().slice(0, 10), qty: '', price: '', fee: '' });
   const qtyN = parseFloat(d.qty), priceN = parseFloat(d.price);
+  const curSym = curr === 'USD' ? '$' : curr === 'GBP' ? '£' : '€';
   const overSell = kind === 'sell' && qtyN > maxSell + 1e-9;
   const valid = qtyN > 0 && priceN > 0 && !overSell;
   // Discipline-trim detection (C2-S9): when a PARTIAL sell lands in a tranche region,
@@ -218,7 +222,7 @@ function AddTxnForm2({ ticker, maxSell, onDone }) {
   const feeN = parseFloat(d.fee) || 0;
   const [rotChecked, setRotChecked] = React.useState({});     // { sellTxnId: true }
   const [rotDismissed, setRotDismissed] = React.useState(false);
-  const buyTotalCost = (kind === 'buy' && qtyN > 0 && priceN > 0) ? (qtyN * priceN + feeN) : 0;
+  const buyTotalCost = (kind === 'buy' && curr === 'EUR' && qtyN > 0 && priceN > 0) ? (qtyN * priceN + feeN) : 0;
   const rotCandidates = (kind === 'buy' && buyTotalCost > 0 && typeof window.f2FindRotationCandidates === 'function')
     ? window.f2FindRotationCandidates(store.holdings, d.date, buyTotalCost) : [];
   const rotTriggered = rotCandidates.length > 0
@@ -234,18 +238,42 @@ function AddTxnForm2({ ticker, maxSell, onDone }) {
   }, [rotSig]);
   const toggleRot = (txnId) => setRotChecked((prev) => ({ ...prev, [txnId]: !prev[txnId] }));
 
-  const save = () => {
-    if (!valid) return;
+  const save = async () => {
+    if (!valid || saving) return;
+    setSaveErr(null);
+    // C2-D105 — a non-EUR entered price is converted to EUR at save time using the
+    // historical FX rate for the txn date. /fx-rate returns foreign-per-EUR, so
+    // price_EUR = price_foreign / rate. On any failure we ABORT rather than store a
+    // raw foreign price in the EUR field (that was the original currency-mismatch bug).
+    // Audit fields (original_price/currency/fx_rate) travel through addTxn's ...tx spread.
+    let priceEur = priceN, audit = null;
+    if (curr !== 'EUR') {
+      setSaving(true);
+      try {
+        const res = await fetch('https://fincr.duckdns.org/fx-rate?pair=EUR' + curr + '&date=' + d.date);
+        const j = await res.json();
+        const rate = j && (j.rate || j.fx_rate);
+        if (!(rate > 0.1 && rate < 50)) throw new Error('bad rate');
+        priceEur = priceN / rate;
+        audit = { original_price: priceN, original_currency: curr, fx_rate: rate };
+      } catch (e) {
+        setSaving(false);
+        setSaveErr('Could not fetch ' + curr + '→EUR rate for ' + d.date + '. Try again, or enter the price in EUR.');
+        return;
+      }
+      setSaving(false);
+    }
     if (kind === 'buy' && showRotCard) {
       // Record the buy with a known id, then link each CHECKED candidate sell to it
       // (many-to-many → one linkRotation per checked sell). Unchecked/none → plain buy.
+      // showRotCard implies curr==='EUR' (rotation gate), so audit is null here.
       const buyId = (typeof window.f2uid === 'function') ? window.f2uid() : ('tx_' + Math.random().toString(36).slice(2, 9));
-      store.actions.addTxn(ticker, { kind: 'buy', date: d.date, qty: qtyN, price: priceN, fee_eur: feeN, id: buyId });
+      store.actions.addTxn(ticker, Object.assign({ kind: 'buy', date: d.date, qty: qtyN, price: priceEur, fee_eur: feeN, id: buyId }, audit || {}));
       rotCandidates.filter((c) => rotChecked[c.txnId]).forEach((c) => {
         store.actions.linkRotation(c.ticker, c.txnId, ticker, buyId, c.proceeds);
       });
     } else {
-      store.actions.addTxn(ticker, { kind, date: d.date, qty: qtyN, price: priceN, fee_eur: feeN });
+      store.actions.addTxn(ticker, Object.assign({ kind, date: d.date, qty: qtyN, price: priceEur, fee_eur: feeN }, audit || {}));
       // Mark the tranche executed only if the owner confirmed it was a discipline trim.
       if (kind === 'sell' && trancheLevel != null && disciplineYes === true) {
         store.actions.editHoldingTrancheExecution(ticker, trancheLevel);
@@ -259,10 +287,20 @@ function AddTxnForm2({ ticker, maxSell, onDone }) {
       <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 0.8fr 1fr', gap: 8 }}>
         <TextField2 value={d.date} onChange={(v) => setD((s) => ({ ...s, date: v }))} mono />
         <NumberField2 value={d.qty} onChange={(v) => setD((s) => ({ ...s, qty: v }))} placeholder="qty" autoFocus />
-        <NumberField2 value={d.price} onChange={(v) => setD((s) => ({ ...s, price: v }))} prefix="€" onEnter={save} />
+        <NumberField2 value={d.price} onChange={(v) => setD((s) => ({ ...s, price: v }))} prefix={curSym} onEnter={save} />
       </div>
+      {/* C2-D105 — trade currency. Non-EUR is converted to EUR at save using the historical
+          FX rate for the txn date; the raw amount + rate are kept as an audit trail. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <MonoTxt size={10.5} color={t.faint}>Currency</MonoTxt>
+        <div style={{ flex: 1 }}>
+          <Seg2 options={[{ value: 'EUR', label: '€ EUR' }, { value: 'USD', label: '$ USD' }, { value: 'GBP', label: '£ GBP' }]} value={curr} onChange={setCurr} />
+        </div>
+      </div>
+      {curr !== 'EUR' && <MonoTxt size={10.5} color={t.dim}>Entered in {curr} — converts to € at the {d.date} rate on save.</MonoTxt>}
+      {saveErr && <MonoTxt size={10.5} color={t.red}>{saveErr}</MonoTxt>}
       {/* C2-D98: optional broker fee — adjusts derived idle cash (buy: −fee, sell: −fee). Blank = 0. */}
-      <NumberField2 value={d.fee} onChange={(v) => setD((s) => ({ ...s, fee: v }))} prefix="€" placeholder="fee (optional)" onEnter={save} />
+      <NumberField2 value={d.fee} onChange={(v) => setD((s) => ({ ...s, fee: v }))} prefix="€" placeholder="fee (optional, €)" onEnter={save} />
       {overSell && <MonoTxt size={10.5} color={t.red}>Can't sell more than {maxSell} units held.</MonoTxt>}
       {kind === 'sell' && trancheLevel != null && (
         <Field2 label={'Discipline trim at +' + trancheLevel + '% level?'} hint="optional">
@@ -283,7 +321,7 @@ function AddTxnForm2({ ticker, maxSell, onDone }) {
       )}
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
         <TextBtn2 onClick={onDone}>Cancel</TextBtn2>
-        <Btn2 primary onClick={save} style={{ opacity: valid ? 1 : 0.4, pointerEvents: valid ? 'auto' : 'none', padding: '6px 12px' }}>Record {kind}</Btn2>
+        <Btn2 primary onClick={save} style={{ opacity: (valid && !saving) ? 1 : 0.4, pointerEvents: (valid && !saving) ? 'auto' : 'none', padding: '6px 12px' }}>{saving ? 'Converting…' : 'Record ' + kind}</Btn2>
       </div>
     </div>
   );

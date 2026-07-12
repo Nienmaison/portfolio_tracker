@@ -161,6 +161,8 @@ const F2_BROKER_PROFILES = [
     price: (h) => h.findIndex((c) => c.toLowerCase().includes('price per share')),
     type: (h) => h.findIndex((c) => c.toLowerCase() === 'type'),
     date: (h) => h.findIndex((c) => c.toLowerCase() === 'date'),
+    currency: (h) => h.findIndex((c) => c.toLowerCase() === 'currency'), // C2-D105
+    fxRate: (h) => h.findIndex((c) => { const l = c.toLowerCase(); return l.includes('fx rate') || l === 'fx' || l.includes('exchange rate'); }), // C2-D105
     buyVal: 'buy', sellVal: 'sell', stakeVal: '',
     skipTypes: [], skipTickers: [], statusOk: [],
   },
@@ -215,6 +217,8 @@ function f2ExtractTransactions(headers, rows, cfg) {
   const iTy = f2ColIdx(cfg, 'type', headers);
   const iDate = f2ColIdx(cfg, 'date', headers);
   const iStatus = f2ColIdx(cfg, 'status', headers);
+  const iCur = f2ColIdx(cfg, 'currency', headers); // C2-D105 — per-row trade currency
+  const iFx = f2ColIdx(cfg, 'fxRate', headers);     // C2-D105 — per-row FX rate (foreign per EUR)
   const hasTypeCol = iTy >= 0;
 
   const skipTypes = new Set((cfg.skipTypes || []).map((s) => String(s).toLowerCase()));
@@ -242,7 +246,24 @@ function f2ExtractTransactions(headers, rows, cfg) {
 
     const rawPrice = iP >= 0 ? f2ToNumber(row[iP]) : 0;
     const total = iTot >= 0 ? Math.abs(f2ToNumber(row[iTot])) : 0;
-    const unitPrice = rawPrice > 0 ? rawPrice : (total > 0 ? total / absQty : 0);
+    let unitPrice = rawPrice > 0 ? rawPrice : (total > 0 ? total / absQty : 0);
+
+    // C2-D105 — FX conversion for foreign-currency trade rows (e.g. Revolut USD).
+    // Read the file's OWN Currency + FX Rate columns (more precise than a
+    // reconstructed lookup). Revolut's FX Rate is foreign units per 1 EUR (e.g.
+    // ~1.19 USD/EUR), so EUR price = price / fxRate. Only convert with a present,
+    // sane rate; EUR rows (or no rate) pass through unchanged — no regression for
+    // DEGIRO/already-EUR imports. Audit (origCurrency + fxRate) rides the row.
+    let origCurrency = null, fxRate = null;
+    if (iCur >= 0) {
+      const cur = String(row[iCur] || '').trim().toUpperCase();
+      const fx = iFx >= 0 ? f2ToNumber(row[iFx]) : 0;
+      if (cur && cur !== 'EUR' && fx > 0.1 && fx < 50) {
+        unitPrice = unitPrice / fx;
+        origCurrency = cur;
+        fxRate = fx;
+      }
+    }
 
     const kind = f2InferKind(typeRaw, qty, cfg, hasTypeCol);
     if (!kind) continue;
@@ -258,6 +279,8 @@ function f2ExtractTransactions(headers, rows, cfg) {
       kind,
       assetType,
       date,
+      origCurrency,
+      fxRate,
     });
   }
   return txs;
@@ -281,6 +304,9 @@ function f2NetPositions(txns, todayStr) {
     else if (tx.kind === 'sell') { g.soldQty += tx.qty; g.sellCount += 1; }
     else if (tx.kind === 'staking') g.stakingQty += tx.qty;
     if (tx.date) g.dates.push(tx.date);
+    // C2-D105 — carry the FX audit (source currency + rate) onto the group; first
+    // converted row wins (single-buy Revolut re-imports carry the exact rate).
+    if (tx.origCurrency && !g.origCurrency) { g.origCurrency = tx.origCurrency; g.fxRate = tx.fxRate; }
   }
 
   const positions = [], dropped = [];
@@ -298,6 +324,7 @@ function f2NetPositions(txns, todayStr) {
       netQty: +netQty.toFixed(8), avgBuy: avgBuy,
       buyCount: g.buys.length, sellCount: g.sellCount, stakingQty: g.stakingQty,
       valid: f2ValidTicker(g.ticker, g.type), date: date,
+      origCurrency: g.origCurrency || null, fxRate: g.fxRate || null, // C2-D105 audit
     });
   });
   positions.sort((a, b) => (b.netQty * b.avgBuy) - (a.netQty * a.avgBuy));
@@ -500,8 +527,11 @@ function ImportTab2({ go }) {
     const today = f2Today();
     rows.forEach((r) => {
       try {
+        // C2-D105 — carry the FX audit onto the imported buy when the price was
+        // converted from a foreign currency (undefined otherwise → JSON omits).
+        const audit = r.origCurrency ? { original_currency: r.origCurrency, fx_rate: r.fxRate } : undefined;
         if (existing.has(keyOf(r))) {
-          store.actions.addTxn(r.ticker, { kind: 'buy', date: r.date || today, qty: r.netQty, price: r.avgBuy });
+          store.actions.addTxn(r.ticker, Object.assign({ kind: 'buy', date: r.date || today, qty: r.netQty, price: r.avgBuy }, audit || {}));
         } else {
           const live = priceByKey[keyOf(r)];
           if (live == null) estimated.push(r.ticker);
@@ -509,6 +539,7 @@ function ImportTab2({ go }) {
             ticker: r.ticker, name: r.ticker, type: r.type,
             qty: r.netQty, buyPrice: r.avgBuy,
             price: live != null ? live : r.avgBuy, date: r.date || today,
+            audit: audit,
           });
         }
       } catch (e) {
