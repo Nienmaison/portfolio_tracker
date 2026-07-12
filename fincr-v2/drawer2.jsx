@@ -7,11 +7,83 @@
 // has no authored thesis yet. Em-dash, not a hyphen. (C2-S3)
 const THESIS_SENTINEL = "Position opened via dashboard \u2014 thesis details pending.";
 
+/* SellRotationModal2 (C2-D103) — manual rotation-link editor for a partial-sell txn.
+   The sell is the SOURCE; the reused, source-agnostic RotationLinkPicker2 (closedpositions2.jsx)
+   picks the target buy(s) — it already offers a proximity default + "Show all buys" unbounded
+   search, so this is NOT limited to the C2-D102 14-day/10% gates. Hosted in a Modal2 (not
+   inline) so the ledger row stays compact when the picker expands. Save reconciles the target
+   side via the shared reconcileRotatedFrom (removes stale reverse-links, adds new) AND writes
+   the sell's own rotation_links via editTxn (f2StripMaterializedSell leaves rotation_links
+   untouched — C2-D97). "Clear link" unlinks entirely (empty rotation_links + reverse removed). */
+function SellRotationModal2({ open, tx, ticker, onClose }) {
+  const t = useTheme2();
+  const store = useStore2();
+  const initialLinks = (tx && tx.rotation_links) || [];
+  const [rotatedInto, setRotatedInto] = React.useState('');
+  const [links, setLinks] = React.useState(initialLinks);
+  const [valid, setValid] = React.useState(true);
+  React.useEffect(() => {
+    if (!open) return;
+    const il = (tx && tx.rotation_links) || [];
+    setRotatedInto((il[0] && il[0].target_ticker) || '');
+    setLinks(il);
+    setValid(true);
+  }, [open, tx && tx.id]);
+  if (!open || !tx) return null;
+  const F = window.FINCR;
+  const targetTicker = rotatedInto.trim().toUpperCase();
+  const proceeds = (tx.proceeds != null) ? tx.proceeds : tx.qty * tx.price;
+  const source = { source_ticker: ticker, source_closed_at: tx.date };
+  const hadLink = initialLinks.length > 0;
+  const commit = (finalLinks) => {
+    store.actions.reconcileRotatedFrom(tx.rotation_links || [], finalLinks, source);
+    store.actions.editTxn(ticker, tx.id, { rotation_links: finalLinks });
+    onClose();
+  };
+  return (
+    <Modal2
+      open={open}
+      onClose={onClose}
+      width={480}
+      title="Rotation link"
+      sub={'Which buy(s) did this ' + ticker + ' sell fund? Not limited to 14 days — use "Show all buys" for older targets.'}
+      footer={
+        <>
+          {hadLink && <Btn2 onClick={() => commit([])} style={{ borderColor: t.red, color: t.red, marginRight: 'auto' }}>Clear link</Btn2>}
+          <Btn2 onClick={onClose}>Cancel</Btn2>
+          <Btn2 primary onClick={() => commit(links)} style={{ opacity: valid ? 1 : 0.4, pointerEvents: valid ? 'auto' : 'none' }}>Save</Btn2>
+        </>
+      }
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 13 }}>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'baseline' }}>
+          <MonoTxt size={9.5} color={t.faint} style={{ letterSpacing: '0.12em' }}>SOLD</MonoTxt>
+          <MonoTxt size={11} color={t.dim}>{tx.date} · {tx.qty} @ {F.eur(tx.price, 2)} · proceeds {F.eur(proceeds)}</MonoTxt>
+        </div>
+        <Field2 label="Rotated into" hint="ticker">
+          <TextField2 value={rotatedInto} onChange={(v) => setRotatedInto(v.toUpperCase())} placeholder="TICKER" />
+        </Field2>
+        {targetTicker && (
+          <RotationLinkPicker2
+            key={targetTicker}
+            targetTicker={targetTicker}
+            closedAt={tx.date}
+            grossProceeds={proceeds}
+            initialLinks={initialLinks}
+            onChange={(l, v) => { setLinks(l); setValid(v); }}
+          />
+        )}
+      </div>
+    </Modal2>
+  );
+}
+
 function TxnRow2({ ticker, tx, avgCost }) {
   const t = useTheme2();
   const F = window.FINCR;
   const store = useStore2();
   const [edit, setEdit] = React.useState(false);
+  const [rotOpen, setRotOpen] = React.useState(false); // C2-D103 — rotation-link editor modal
   const [d, setD] = React.useState({ date: tx.date, qty: String(tx.qty), price: String(tx.price) });
   React.useEffect(() => { setD({ date: tx.date, qty: String(tx.qty), price: String(tx.price) }); }, [tx.id, tx.qty, tx.price, tx.date]);
   const buy = tx.kind === 'buy';
@@ -21,21 +93,35 @@ function TxnRow2({ ticker, tx, avgCost }) {
   };
 
   if (edit) {
+    const rotLinks = (tx.rotation_links || []);
     return (
-      <div style={{ borderTop: `1px solid ${t.hair}`, padding: '11px 0', display: 'flex', flexDirection: 'column', gap: 9 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 0.8fr 1fr', gap: 8 }}>
-          <TextField2 value={d.date} onChange={(v) => setD((s) => ({ ...s, date: v }))} mono />
-          <NumberField2 value={d.qty} onChange={(v) => setD((s) => ({ ...s, qty: v }))} placeholder="qty" />
-          <NumberField2 value={d.price} onChange={(v) => setD((s) => ({ ...s, price: v }))} prefix="€" onEnter={save} />
+      <React.Fragment>
+        <div style={{ borderTop: `1px solid ${t.hair}`, padding: '11px 0', display: 'flex', flexDirection: 'column', gap: 9 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 0.8fr 1fr', gap: 8 }}>
+            <TextField2 value={d.date} onChange={(v) => setD((s) => ({ ...s, date: v }))} mono />
+            <NumberField2 value={d.qty} onChange={(v) => setD((s) => ({ ...s, qty: v }))} placeholder="qty" />
+            <NumberField2 value={d.price} onChange={(v) => setD((s) => ({ ...s, price: v }))} prefix="€" onEnter={save} />
+          </div>
+          {/* C2-D103 — rotation link editor, sell rows only (a sell is a rotation SOURCE;
+              a buy is a target, never gets this). Opens the shared modal editor. */}
+          {tx.kind === 'sell' && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '1px 2px' }}>
+              <MonoTxt size={10.5} color={rotLinks.length ? t.dim : t.faint}>
+                {rotLinks.length ? 'Rotated into ' + rotLinks.map((l) => l.target_ticker).join(', ') : 'No rotation link'}
+              </MonoTxt>
+              <TextBtn2 tone="accent" onClick={() => setRotOpen(true)}>{rotLinks.length ? 'Edit link' : 'Link rotation'}</TextBtn2>
+            </div>
+          )}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <TextBtn2 tone="danger" onClick={() => store.actions.removeTxn(ticker, tx.id)}>Remove</TextBtn2>
+            <span style={{ display: 'flex', gap: 6 }}>
+              <TextBtn2 onClick={() => setEdit(false)}>Cancel</TextBtn2>
+              <Btn2 primary onClick={save} style={{ padding: '6px 12px' }}>Save</Btn2>
+            </span>
+          </div>
         </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <TextBtn2 tone="danger" onClick={() => store.actions.removeTxn(ticker, tx.id)}>Remove</TextBtn2>
-          <span style={{ display: 'flex', gap: 6 }}>
-            <TextBtn2 onClick={() => setEdit(false)}>Cancel</TextBtn2>
-            <Btn2 primary onClick={save} style={{ padding: '6px 12px' }}>Save</Btn2>
-          </span>
-        </div>
-      </div>
+        <SellRotationModal2 open={rotOpen} tx={tx} ticker={ticker} onClose={() => setRotOpen(false)} />
+      </React.Fragment>
     );
   }
   return (

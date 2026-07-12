@@ -775,6 +775,46 @@ function FincrProvider({ children }) {
       }));
     },
 
+    // reconcileRotatedFrom (C2-D103): the shared THREE-WAY relink/unlink primitive.
+    // Given a source's OLD and NEW rotation_links (target buys) plus the source's own
+    // identity, it reconciles the TARGET side only: removes this source's rotated_from
+    // entry from buys dropped from the set, adds/refreshes it on buys added to the set.
+    // The caller writes newLinks onto its own source object separately (a sell txn's
+    // rotation_links via editTxn, or a closed entry's via editClosedPosition) — those
+    // two go through different state paths. `source` = { source_ticker, source_closed_at }
+    // (for a partial sell: holding ticker + the sell's date; for a closed position: the
+    // entry's ticker + closedAt) — the key by which a rotated_from entry is matched, so
+    // a buy funded by multiple sources keeps the others intact. A link's target_txn_id
+    // must be set (null-target unlinked entries carry no reverse side). This fixes the
+    // pre-existing closed-flow orphan bug (relink/clear used to leave a stale rotated_from).
+    reconcileRotatedFrom: (oldLinks, newLinks, source) => {
+      if (!source) return;
+      const key = (l) => l.target_ticker + ':' + l.target_txn_id;
+      const oldKeys = new Set((oldLinks || []).filter((l) => l && l.target_txn_id).map(key));
+      const newByKey = new Map((newLinks || []).filter((l) => l && l.target_txn_id).map((l) => [key(l), l]));
+      const matchesSource = (r) => r.source_ticker === source.source_ticker && r.source_closed_at === source.source_closed_at;
+      setHoldings((hs) => hs.map((h) => {
+        let touched = false;
+        const txns = (h.txns || []).map((tx) => {
+          const k = h.ticker + ':' + tx.id;
+          const inNew = newByKey.has(k);
+          const inOld = oldKeys.has(k);
+          if (!inNew && !inOld) return tx;
+          const existing = Array.isArray(tx.rotated_from) ? tx.rotated_from : [];
+          const kept = existing.filter((r) => !matchesSource(r));           // drop this source's entry
+          if (inNew) {                                                        // add/refresh (idempotent by source)
+            const nl = newByKey.get(k);
+            touched = true;
+            return { ...tx, rotated_from: [...kept, { source_ticker: source.source_ticker, source_closed_at: source.source_closed_at, portion_eur: nl.portion_eur }] };
+          }
+          // inOld && !inNew → removal only
+          if (kept.length !== existing.length) { touched = true; return { ...tx, rotated_from: kept }; }
+          return tx;
+        });
+        return touched ? { ...h, txns } : h;
+      }));
+    },
+
     // editHoldingTrancheExecution (C2-S9): append a tranche level to a holding's
     // tranches_executed array. Idempotent — won't double-add the same level. Called
     // by the partial-sell form when a sell is marked a discipline trim. setHoldings

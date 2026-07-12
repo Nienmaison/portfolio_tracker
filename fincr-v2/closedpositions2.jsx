@@ -189,19 +189,19 @@ function ClosedReviewModal2({ entry, onClose }) {
       if (rotationLinks.length > 0) finalLinks = rotationLinks;
       else if (rotatedIntoVal) finalLinks = [{ target_ticker: rotatedIntoVal, target_txn_id: null, portion_eur: grossProceeds }];
     }
+    // Reconcile the TARGET side via the shared three-way primitive (C2-D103): removes
+    // rotated_from from buys DROPPED since the last save and adds/refreshes the new ones.
+    // Replaces the old add-only forEach, which left a stale rotated_from orphan on relink
+    // or clear (the pre-existing bug found while researching C2-D103). The source object
+    // still gets its own rotation_links written via editClosedPosition below.
+    store.actions.reconcileRotatedFrom(entry.rotation_links || [], finalLinks, {
+      source_ticker: entry.ticker, source_closed_at: entry.closedAt,
+    });
     store.actions.editClosedPosition(entry.ticker, {
       sell_type: sellType,
       conviction_retained: convRetained,
       rotated_into: rotatedIntoVal,
       rotation_links: finalLinks,
-    });
-    // Forward link: tag each linked buy txn as funded by this rotation.
-    finalLinks.forEach((l) => {
-      if (l.target_txn_id) {
-        store.actions.addRotatedFromToTxn(l.target_ticker, l.target_txn_id, {
-          source_ticker: entry.ticker, source_closed_at: entry.closedAt, portion_eur: l.portion_eur,
-        });
-      }
     });
     onClose();
   };
