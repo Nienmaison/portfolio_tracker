@@ -202,6 +202,51 @@ function f2FindRotationCandidates(holdings, buyDate, buyTotalCost, windowDays = 
   return candidates;
 }
 
+/* Portfolio-wide rotation status for every open-holding SELL (C2-D104, the Rotations page).
+   Computed fresh on every call — the "computed, not a plug" principle — EXCEPT that a
+   sell's `dismissed_candidates` (a persisted marker of pairs the owner rejected) suppresses
+   the corresponding AUTO·PENDING suggestion so it never resurfaces. Reuses the C2-D102 buy-
+   centric `f2FindRotationCandidates` (same 14-day/10% params, not reinvented): iterate every
+   buy, find the sells it could have been funded by (within tolerance), and invert to a
+   per-sell suggestion (closest buy wins). Then classify each sell:
+     rotation_links non-empty        → 'linked'   (+ target tickers)
+     else a live suggestion, not dismissed → 'pending'  (+ suggested {buyTicker, buyTxnId})
+     else                            → 'unlinked'
+   Returns [{ sellTicker, sellTxnId, status, targets?, suggested? }] in ledger order.
+   Fully-closed positions are NOT included (v1 scope — explicit follow-up). */
+function f2ComputeRotationStatuses(holdings) {
+  const hs = holdings || [];
+  const buys = [];
+  hs.forEach((h) => (h.txns || []).forEach((t) => {
+    if (t.kind === 'buy') buys.push({ ticker: h.ticker, id: t.id, date: t.date, cost: (+t.qty || 0) * (+t.price || 0) + (+t.fee_eur || 0) });
+  }));
+  // sellTxnId -> closest suggested buy within the 10% trigger tolerance.
+  const suggest = {};
+  buys.forEach((b) => {
+    if (!(b.cost > 0)) return;
+    f2FindRotationCandidates(hs, b.date, b.cost).forEach((c) => {   // unlinked sells in [b.date-14d, b.date]
+      const dist = Math.abs(c.proceeds - b.cost) / b.cost;
+      if (dist > 0.10) return;                                       // same trigger gate as C2-D102
+      const cur = suggest[c.txnId];
+      if (!cur || dist < cur.dist) suggest[c.txnId] = { buyTicker: b.ticker, buyTxnId: b.id, buyCost: b.cost, dist: dist };
+    });
+  });
+  const out = [];
+  hs.forEach((h) => (h.txns || []).forEach((t) => {
+    if (t.kind !== 'sell') return;
+    const links = t.rotation_links || [];
+    if (links.length > 0) {
+      out.push({ sellTicker: h.ticker, sellTxnId: t.id, status: 'linked', targets: links.map((l) => l.target_ticker) });
+      return;
+    }
+    const sg = suggest[t.id];
+    const dismissed = sg && (t.dismissed_candidates || []).some((d) => d.target_ticker === sg.buyTicker && d.target_txn_id === sg.buyTxnId);
+    if (sg && !dismissed) out.push({ sellTicker: h.ticker, sellTxnId: t.id, status: 'pending', suggested: sg });
+    else out.push({ sellTicker: h.ticker, sellTxnId: t.id, status: 'unlinked' });
+  }));
+  return out;
+}
+
 /* ── Derivation: a holding's live numbers come only from its txns ─────── */
 function f2DeriveHolding(h) {
   const txns = (h.txns || []).slice().sort((a, b) => (a.date < b.date ? -1 : 1));
@@ -377,6 +422,8 @@ function f2HoldingsFromApi(data) {
           rotated_from: t.rotated_from,     // must stay permanently excluded from candidate
                               // pools across reloads, and the link record is not recomputable.
                               // (undefined when absent; JSON omits.)
+          dismissed_candidates: t.dismissed_candidates, // C2-D104 — MUST survive hydration:
+                              // else a dismissed AUTO·PENDING suggestion resurfaces on reload.
         }))
       : [{ id: f2uid(), kind: 'buy', date: '2024-01-01', qty: +hp.quantity, price: +hp.avg_buy_price }];
     return {
@@ -815,6 +862,23 @@ function FincrProvider({ children }) {
       }));
     },
 
+    // dismissRotationCandidate (C2-D104): persist that the owner rejected a specific
+    // sell↔buy AUTO·PENDING pair, so the Rotations page's status recompute never re-offers
+    // it (the one deliberate exception to "computed, not stored" — a rejection is a fact,
+    // not a derived value). Idempotent. Survives hydration via the f2HoldingsFromApi
+    // whitelist. Does not touch the sell's rotation_links — the sell stays manually linkable.
+    dismissRotationCandidate: (sellTicker, sellTxnId, targetTicker, targetTxnId) => {
+      setHoldings((hs) => hs.map((h) => {
+        if (h.ticker !== sellTicker) return h;
+        return { ...h, txns: (h.txns || []).map((tx) => {
+          if (tx.id !== sellTxnId) return tx;
+          const ex = Array.isArray(tx.dismissed_candidates) ? tx.dismissed_candidates : [];
+          if (ex.some((d) => d.target_ticker === targetTicker && d.target_txn_id === targetTxnId)) return tx;
+          return { ...tx, dismissed_candidates: [...ex, { target_ticker: targetTicker, target_txn_id: targetTxnId }] };
+        }) };
+      }));
+    },
+
     // editHoldingTrancheExecution (C2-S9): append a tranche level to a holding's
     // tranches_executed array. Idempotent — won't double-add the same level. Called
     // by the partial-sell form when a sell is marked a discipline trim. setHoldings
@@ -1005,4 +1069,4 @@ function FincrProvider({ children }) {
   return React.createElement(FincrStoreCtx.Provider, { value: ctx }, children);
 }
 
-Object.assign(window, { FincrStoreCtx, useStore2, FincrProvider, fincrDeriveHolding: f2DeriveHolding, f2uid, f2FindRotationCandidates });
+Object.assign(window, { FincrStoreCtx, useStore2, FincrProvider, fincrDeriveHolding: f2DeriveHolding, f2uid, f2FindRotationCandidates, f2ComputeRotationStatuses });

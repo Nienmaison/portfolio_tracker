@@ -15,29 +15,46 @@ const THESIS_SENTINEL = "Position opened via dashboard \u2014 thesis details pen
    side via the shared reconcileRotatedFrom (removes stale reverse-links, adds new) AND writes
    the sell's own rotation_links via editTxn (f2StripMaterializedSell leaves rotation_links
    untouched — C2-D97). "Clear link" unlinks entirely (empty rotation_links + reverse removed). */
-function SellRotationModal2({ open, tx, ticker, onClose }) {
+function SellRotationModal2({ open, tx, ticker, onClose, suggested }) {
   const t = useTheme2();
   const store = useStore2();
   const initialLinks = (tx && tx.rotation_links) || [];
+  const hadLink = initialLinks.length > 0;
+  const proceeds = tx ? ((tx.proceeds != null) ? tx.proceeds : tx.qty * tx.price) : 0;
+  // C2-D104: in the page's "Review" flow, `suggested` = { buyTicker, buyTxnId } pre-fills
+  // the picker with the auto-match so the owner can confirm/adjust/dismiss. Only applies
+  // when the sell has no confirmed link yet.
+  const reviewing = !!(suggested && !hadLink);
   const [rotatedInto, setRotatedInto] = React.useState('');
   const [links, setLinks] = React.useState(initialLinks);
   const [valid, setValid] = React.useState(true);
   React.useEffect(() => {
     if (!open) return;
     const il = (tx && tx.rotation_links) || [];
-    setRotatedInto((il[0] && il[0].target_ticker) || '');
-    setLinks(il);
+    if (suggested && il.length === 0) {
+      const p = (tx.proceeds != null) ? tx.proceeds : tx.qty * tx.price;
+      setRotatedInto(suggested.buyTicker || '');
+      setLinks([{ target_ticker: suggested.buyTicker, target_txn_id: suggested.buyTxnId, portion_eur: p }]);
+    } else {
+      setRotatedInto((il[0] && il[0].target_ticker) || '');
+      setLinks(il);
+    }
     setValid(true);
-  }, [open, tx && tx.id]);
+  }, [open, tx && tx.id, suggested && suggested.buyTxnId]);
   if (!open || !tx) return null;
   const F = window.FINCR;
   const targetTicker = rotatedInto.trim().toUpperCase();
-  const proceeds = (tx.proceeds != null) ? tx.proceeds : tx.qty * tx.price;
   const source = { source_ticker: ticker, source_closed_at: tx.date };
-  const hadLink = initialLinks.length > 0;
+  const pickerInitial = reviewing
+    ? [{ target_ticker: suggested.buyTicker, target_txn_id: suggested.buyTxnId, portion_eur: proceeds }]
+    : initialLinks;
   const commit = (finalLinks) => {
     store.actions.reconcileRotatedFrom(tx.rotation_links || [], finalLinks, source);
     store.actions.editTxn(ticker, tx.id, { rotation_links: finalLinks });
+    onClose();
+  };
+  const dismiss = () => {
+    store.actions.dismissRotationCandidate(ticker, tx.id, suggested.buyTicker, suggested.buyTxnId);
     onClose();
   };
   return (
@@ -46,10 +63,13 @@ function SellRotationModal2({ open, tx, ticker, onClose }) {
       onClose={onClose}
       width={480}
       title="Rotation link"
-      sub={'Which buy(s) did this ' + ticker + ' sell fund? Not limited to 14 days — use "Show all buys" for older targets.'}
+      sub={reviewing
+        ? 'Fincr suggests this ' + ticker + ' sell funded ' + suggested.buyTicker + ' — confirm, adjust the buy(s), or dismiss.'
+        : 'Which buy(s) did this ' + ticker + ' sell fund? Not limited to 14 days — use "Show all buys" for older targets.'}
       footer={
         <>
           {hadLink && <Btn2 onClick={() => commit([])} style={{ borderColor: t.red, color: t.red, marginRight: 'auto' }}>Clear link</Btn2>}
+          {reviewing && <Btn2 onClick={dismiss} style={{ marginRight: 'auto' }}>Dismiss</Btn2>}
           <Btn2 onClick={onClose}>Cancel</Btn2>
           <Btn2 primary onClick={() => commit(links)} style={{ opacity: valid ? 1 : 0.4, pointerEvents: valid ? 'auto' : 'none' }}>Save</Btn2>
         </>
@@ -69,7 +89,7 @@ function SellRotationModal2({ open, tx, ticker, onClose }) {
             targetTicker={targetTicker}
             closedAt={tx.date}
             grossProceeds={proceeds}
-            initialLinks={initialLinks}
+            initialLinks={pickerInitial}
             onChange={(l, v) => { setLinks(l); setValid(v); }}
           />
         )}

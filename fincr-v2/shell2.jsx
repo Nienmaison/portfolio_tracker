@@ -5,6 +5,8 @@
 const NAV2 = [
 { id: 'overview', label: 'Overview', d: 'M3 9.5L10 4l7 5.5V17a1 1 0 01-1 1h-3v-5H7v5H4a1 1 0 01-1-1z' },
 { id: 'positions', label: 'Positions', d: 'M4 5h12v4H4zM4 11h12v4H4z' },
+// C2-D104 — sell-gated: rendered only once the user has made ≥1 sell ever (see hasSells).
+{ id: 'rotations', label: 'Rotations', d: 'M16 10a6 6 0 11-1.8-4.3M16 5v3h-3', sellGated: true },
 { id: 'agent', label: 'Agent', d: 'M10 3a4 4 0 014 4v1a4 4 0 01-8 0V7a4 4 0 014-4zM4 17a6 6 0 0112 0' },
 { id: 'import', label: 'Add assets', d: 'M10 3v9M6 8l4 4 4-4M4 16h12' }];
 
@@ -112,9 +114,17 @@ function Shell2() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
+  // C2-D104 — "Rotations" nav + page are gated on the user having made ≥1 sell EVER,
+  // across open-holding sell txns and closed_positions (a full exit is a sale). Buy-and-hold
+  // users never see it. Recomputed each render from window.FINCR (Shell2 repaints on
+  // fincr:sync-status-change / thesis-update, both of which fire after a sell lands).
+  const hasSells = ((F.holdings || []).some((h) => (h.txns || []).some((x) => x.kind === 'sell')))
+    || ((F.closed || []).length > 0);
+
   let content;
   if (tab === 'overview') content = <OverviewTab2 go={setTab} />;else
   if (tab === 'positions') content = <PositionsTab2 highlight={highlight} />;else
+  if (tab === 'rotations') content = hasSells ? <RotationsTab2 /> : <OverviewTab2 go={setTab} />;else
   if (tab === 'agent') content = <AgentTab2 />;else
   if (tab === 'import') content = <ImportTab2 go={setTab} />;else
   content = <SettingsTab2 mode={mode} setMode={setMode} density={density} setDensity={setDensity} discrete={discrete} setDiscrete={setDiscrete} />;
@@ -176,7 +186,7 @@ function Shell2() {
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: railOpen ? 'flex-start' : 'center', padding: railOpen ? '2px 8px 22px' : '2px 0 22px' }}>
             <FincrWordmark height={26} color={t.railInk} accent="#9FBDF5" compact={!railOpen} />
           </div>
-          {NAV2.map((n) => railItem(n.id, n.label, n.d))}
+          {NAV2.filter((n) => !n.sellGated || hasSells).map((n) => railItem(n.id, n.label, n.d))}
           <div style={{ flex: 1 }}></div>
           {railItem('settings', 'Settings', 'M3 6h14M3 14h14M3 6h14', '018875887f-path-103-203')}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: railOpen ? 'flex-start' : 'center', gap: 11, padding: railOpen ? '13px 10px 4px' : '13px 0 4px', borderTop: `1px solid ${t.railBorder}`, marginTop: 9 }}>

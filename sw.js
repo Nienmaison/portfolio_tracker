@@ -8,7 +8,7 @@
 // Bump CACHE_VERSION after any significant frontend change to force a full
 // cache flush on all clients.
 
-const CACHE_VERSION = 'fincr-v32'; // C2-D103 manual rotation editor + reconcileRotatedFrom (store2 + drawer2 + closedpositions2)
+const CACHE_VERSION = 'fincr-v33'; // C2-D104 Rotations overview page (rotations2 + store2 + drawer2 + shell2 + index)
 
 const SHELL_ASSETS = [
   './index.html',
