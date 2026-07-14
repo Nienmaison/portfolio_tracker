@@ -8,7 +8,7 @@
 // Bump CACHE_VERSION after any significant frontend change to force a full
 // cache flush on all clients.
 
-const CACHE_VERSION = 'fincr-v34'; // C2-D105 USD/EUR entry-path FX conversion (import2 + store2 + drawer2)
+const CACHE_VERSION = 'fincr-v35'; // C2-D107 close-capture on sell-to-zero (store2 commitSell + f2BuildClosedEntry, drawer2)
 
 const SHELL_ASSETS = [
   './index.html',

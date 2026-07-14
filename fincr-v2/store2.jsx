@@ -275,6 +275,36 @@ function f2DeriveHolding(h) {
   return { ...h, txns, qty, avgCost, value, costNow, pnl, pnlPct, realized, soldQty, tranches_executed: h.tranches_executed || [], tranches_skipped: tranches_skipped };
 }
 
+/* C2-D107 — single source of truth for building a closed_positions entry. PURE: no
+   state, no side effects. Backs closePosition, closePositionWithThesis, AND the
+   auto-close on sell-to-zero (commitSell), so the three paths can never drift.
+   `live` = f2DeriveHolding(holding) with the final sell already applied — so `realized`
+   folds the residual term to ~0 at qty≈0 (auto-close) and to the full liquidation of the
+   remaining qty at an explicit close, via the IDENTICAL formula either way (this is why
+   the after-append hook needs no special-casing). `thesisPatch` (explicit thesis-close
+   only) appends the sell-intent tags; omitting it yields the exact base shape
+   closePosition has always produced — no tag keys — so the untagged-close nudge fires
+   naturally on the absent sell_type. Field order matches the pre-C2-D107 inline objects. */
+function f2BuildClosedEntry(holding, live, sellPrice, date, note, thesisPatch) {
+  const sp = +sellPrice;
+  const priorOpen = (holding.txns || []).find((t) => t.kind === 'buy');
+  const entry = {
+    ticker: live.ticker, name: live.name, type: live.type, color: live.color,
+    openedAt: priorOpen ? priorOpen.date : '—',
+    closedAt: date || new Date().toISOString().slice(0, 10),
+    qty: live.qty, avgCost: live.avgCost, sellPrice: sp,
+    realized: (live.realized || 0) + live.qty * (sp - live.avgCost),
+    note: note || '',
+  };
+  if (thesisPatch) {
+    entry.sell_type = thesisPatch.sell_type || null;
+    entry.conviction_retained = (thesisPatch.conviction_retained != null) ? thesisPatch.conviction_retained : null;
+    entry.rotated_into = thesisPatch.rotated_into || null;
+    entry.rotation_links = Array.isArray(thesisPatch.rotation_links) ? thesisPatch.rotation_links : [];
+  }
+  return entry;
+}
+
 /* Rotation migration (C2-S8): convert the flat rotated_into string (C2-S7) into a
    rotation_links array. Idempotent — skips entries that already have rotation_links.
    The flat rotated_into field is kept one release as a fallback display value. */
@@ -676,19 +706,48 @@ function FincrProvider({ children }) {
     removeTxn: (ticker, txId) => setHoldings((hs) => hs.map((h) => h.ticker === ticker
       ? { ...h, txns: h.txns.filter((tx) => tx.id !== txId).map(f2StripMaterializedSell) } : h)),
 
+    // C2-D107 — close-aware sell for INTERACTIVE (drawer) sells. Appends the sell with the
+    // SAME materialized proceeds/realized_gain math as addTxn's sell branch (:665 — mirrored,
+    // not forked), then folds the result: if the position is still open (qty > 1e-7) it
+    // behaves exactly like addTxn (holding stays, reduced qty); if it has folded to ~0
+    // (≤ 1e-7, the derived-filter threshold at :548) it materializes a closed_positions
+    // entry via the shared f2BuildClosedEntry (last sell price as sellPrice) and removes the
+    // holding — so a sell-to-zero can never vanish untraced. setClosed + setHoldings batch
+    // into ONE render → the [holdings, closed] sync effect POSTs once with the holding gone
+    // and the entry present; the entry carries realized + sellPrice + closedAt, so the
+    // backend's existing thesis-archive enrichment fires unchanged (no api.py edit).
+    // Buys / CSV import / programmatic adds still use addTxn — only the drawer sell reroutes.
+    commitSell: (ticker, tx) => {
+      const src = holdings.find((h) => h.ticker === ticker);
+      if (!src) return;
+      // Build the sell txn exactly as addTxn's sell branch does (same fold, same fields).
+      const t = { id: f2uid(), ...tx, qty: +tx.qty, price: +tx.price };
+      if (+t.fee_eur > 0) t.fee_eur = +t.fee_eur; else delete t.fee_eur;
+      const avg = f2AvgCostBefore(src, t);
+      t.proceeds = t.qty * t.price;
+      t.realized_gain = t.qty * (t.price - avg);
+      const withSell = { ...src, txns: [...src.txns, t] };
+      const live = f2DeriveHolding(withSell);
+      if (live.qty > 1e-7) {
+        // Still open — identical outcome to addTxn (holding stays with reduced qty).
+        setHoldings((hs) => hs.map((h) => (h.ticker === ticker ? withSell : h)));
+        return;
+      }
+      // Sold to ~zero → materialize the closed entry and remove the holding.
+      const entry = f2BuildClosedEntry(withSell, live, t.price, t.date, '');
+      // Idempotency guard (belt-and-suspenders; atomic holding-removal already prevents a
+      // same-holding re-fire): never prepend a duplicate for the same ticker + closedAt.
+      setClosed((cs) => (cs.some((c) => c.ticker === entry.ticker && c.closedAt === entry.closedAt) ? cs : [entry, ...cs]));
+      setHoldings((hs) => hs.filter((h) => h.ticker !== ticker));
+    },
+
     closePosition: (ticker, { sellPrice, date, note }) => {
       const src = holdings.find((h) => h.ticker === ticker);
       const live = f2DeriveHolding(src);
-      const realizedThisSale = live.qty * (+sellPrice - live.avgCost);
-      const priorOpen = src.txns.find((t) => t.kind === 'buy');
-      setClosed((cs) => [{
-        ticker: live.ticker, name: live.name, type: live.type, color: live.color,
-        openedAt: priorOpen ? priorOpen.date : '—',
-        closedAt: date || new Date().toISOString().slice(0, 10),
-        qty: live.qty, avgCost: live.avgCost, sellPrice: +sellPrice,
-        realized: (live.realized || 0) + realizedThisSale,
-        note: note || '',
-      }, ...cs]);
+      // C2-D107: entry now built by the shared f2BuildClosedEntry (no thesisPatch → base
+      // shape, field-for-field identical to the prior inline object). Removal + effect-
+      // driven sync unchanged.
+      setClosed((cs) => [f2BuildClosedEntry(src, live, sellPrice, date, note), ...cs]);
       setHoldings((hs) => hs.filter((h) => h.ticker !== ticker));
       setDrawerTicker(null);
     },
@@ -702,24 +761,11 @@ function FincrProvider({ children }) {
       const src = holdings.find((h) => h.ticker === ticker);
       if (!src) return { closeOk: false, thesisOk: false };
       const live = f2DeriveHolding(src);
-      const realizedThisSale = live.qty * (+sellPrice - live.avgCost);
-      const priorOpen = src.txns.find((tx) => tx.kind === 'buy');
-      const closedEntry = {
-        ticker: live.ticker, name: live.name, type: live.type, color: live.color,
-        openedAt: priorOpen ? priorOpen.date : '—',
-        closedAt: date || new Date().toISOString().slice(0, 10),
-        qty: live.qty, avgCost: live.avgCost, sellPrice: +sellPrice,
-        realized: (live.realized || 0) + realizedThisSale, note: note || '',
-        // C2-S7: persist the sell-intent tags on the local closed entry so the
-        // true-return formula (which reads closed[].sell_type) sees new closes as
-        // tagged. thesisPatch carries { sell_type, conviction_retained, rotated_into? }.
-        sell_type: (thesisPatch && thesisPatch.sell_type) || null,
-        conviction_retained: (thesisPatch && thesisPatch.conviction_retained != null) ? thesisPatch.conviction_retained : null,
-        rotated_into: (thesisPatch && thesisPatch.rotated_into) || null,
-        // C2-S8: rotation links captured at close (usually empty here — the target
-        // buy may not exist yet; the owner links later via the review modal).
-        rotation_links: (thesisPatch && Array.isArray(thesisPatch.rotation_links)) ? thesisPatch.rotation_links : [],
-      };
+      // C2-D107: entry built by the shared f2BuildClosedEntry (thesisPatch present → base
+      // + tag fields, field-for-field identical to the prior inline object). The
+      // orchestration below (controlled POST + echo-suppression + thesis update) is
+      // unchanged — the helper builds the entry only.
+      const closedEntry = f2BuildClosedEntry(src, live, sellPrice, date, note, thesisPatch);
       const nextHoldings = holdings.filter((h) => h.ticker !== ticker);
       const nextClosed = [closedEntry, ...closed];
       // Commit locally; suppress the holdings-sync effect's echo POST (we POST below).

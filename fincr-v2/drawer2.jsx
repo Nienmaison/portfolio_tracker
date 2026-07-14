@@ -272,12 +272,18 @@ function AddTxnForm2({ ticker, maxSell, onDone }) {
       rotCandidates.filter((c) => rotChecked[c.txnId]).forEach((c) => {
         store.actions.linkRotation(c.ticker, c.txnId, ticker, buyId, c.proceeds);
       });
-    } else {
-      store.actions.addTxn(ticker, Object.assign({ kind, date: d.date, qty: qtyN, price: priceEur, fee_eur: feeN }, audit || {}));
+    } else if (kind === 'sell') {
+      // C2-D107 — sells route through the close-aware commitSell (auto-materializes a
+      // closed_positions entry if this sell folds the position to ~0; identical to addTxn
+      // otherwise). Buys still use addTxn (below). The overSell/maxSell guard (:205) still
+      // caps a sell at the held qty, so live.qty lands at ~0, never negative.
+      store.actions.commitSell(ticker, Object.assign({ kind, date: d.date, qty: qtyN, price: priceEur, fee_eur: feeN }, audit || {}));
       // Mark the tranche executed only if the owner confirmed it was a discipline trim.
-      if (kind === 'sell' && trancheLevel != null && disciplineYes === true) {
+      if (trancheLevel != null && disciplineYes === true) {
         store.actions.editHoldingTrancheExecution(ticker, trancheLevel);
       }
+    } else {
+      store.actions.addTxn(ticker, Object.assign({ kind, date: d.date, qty: qtyN, price: priceEur, fee_eur: feeN }, audit || {}));
     }
     onDone();
   };
