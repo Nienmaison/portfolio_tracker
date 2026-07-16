@@ -215,6 +215,14 @@ function ClosedReviewModal2({ entry, onClose }) {
       width={480}
       footer={
         <>
+          {/* C2-D108 — Delete this closed record. Bottom-left (marginRight:auto) against
+              Modal2's flex-end footer; native confirm() mirrors the open-position delete. */}
+          <TextBtn2 tone="danger" style={{ marginRight: 'auto' }} onClick={() => {
+            if (confirm('Delete this closed ' + entry.ticker + ' record?\n\nThis removes its realized P&L from your since-inception total. It does not affect True Return, total value, or idle cash.\n\nThis cannot be undone.')) {
+              store.actions.deleteClosedPosition(entry.ticker, entry.closedAt);
+              onClose();
+            }
+          }}>Delete</TextBtn2>
           <Btn2 onClick={onClose}>Cancel</Btn2>
           <Btn2 primary onClick={save} style={{ opacity: valid ? 1 : 0.4, pointerEvents: valid ? 'auto' : 'none' }}>Save</Btn2>
         </>

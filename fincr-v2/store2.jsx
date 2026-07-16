@@ -820,6 +820,66 @@ function FincrProvider({ children }) {
       }));
     },
 
+    // deleteClosedPosition (C2-D108) — remove ONE closed_positions entry (fixes the
+    // create-only asymmetry: users could make closed entries but never remove one). Targets
+    // by ticker + closedAt (commitSell's idempotency key — NOT editClosedPosition's unsafe
+    // ticker-only match, which would hit a same-ticker double-close).
+    //
+    // Adversarial-review hardening (post-first-draft):
+    //  - AMBIGUITY GUARD: ticker+closedAt is not a guaranteed-unique id (two distinct closes
+    //    of the same ticker on the same day would collide — none exist in the live data
+    //    today, but the original find()-vs-filter() mismatch reconciled only the FIRST match's
+    //    rotation_links while removing EVERY match, silently orphaning a sibling's rotated_from
+    //    mirror with zero signal). Refuse rather than risk that. A stable id on closed entries
+    //    would remove this restriction entirely — logged as a follow-up, not built here.
+    //  - SEQUENCED WRITES: this action and the general [holdings,closed] sync effect both do
+    //    read-modify-write on thesis.json (the effect's POST /holdings → sync_thesis_with_holdings;
+    //    this action's own /thesis/delete-archived). Firing both from one click let them race —
+    //    a stale in-flight write could silently resurrect what the other just changed. Now does
+    //    a CONTROLLED POST /holdings (suppressing the general effect's echo, mirroring
+    //    closePositionWithThesis) and awaits it before the prune, so there is only ever one
+    //    thesis.json writer in flight at a time for this action.
+    //  - SIBLING GUARD: archived is keyed by ticker only. If another closed entry for this
+    //    ticker remains after the delete, its archive stub is still needed — AND the just-
+    //    awaited /holdings POST already re-enriched it correctly from that sibling via the
+    //    backend's own sync_thesis_with_holdings — so skip the prune.
+    //  - Prune only fires if the holdings write actually succeeded (mirrors
+    //    closePositionWithThesis's `if (closeRes.ok && ...)` gate) — an unlanded holdings write
+    //    must never be followed by pruning the archive stub out from under a still-live record.
+    // rotation_links: closed entries are only rotation SOURCES (never targets), so there is no
+    // forward-link-into-us case to reconcile on the target side.
+    deleteClosedPosition: (ticker, closedAt) => {
+      const matches = closed.filter((c) => c.ticker === ticker && c.closedAt === closedAt);
+      if (matches.length === 0) return;
+      if (matches.length > 1) {
+        console.warn('[deleteClosedPosition] ambiguous match for ' + ticker + '/' + closedAt + ' (' + matches.length + ' entries) — refusing to delete (needs a stable id to disambiguate)');
+        window.dispatchEvent(new CustomEvent('fincr:toast', { detail: { message: 'Could not delete — more than one closed record matches this ticker and date.' } }));
+        return;
+      }
+      const entry = matches[0];
+      if (entry.rotation_links && entry.rotation_links.length) {
+        actions.reconcileRotatedFrom(entry.rotation_links, [], { source_ticker: ticker, source_closed_at: closedAt });
+      }
+      const nextClosed = closed.filter((c) => !(c.ticker === ticker && c.closedAt === closedAt));
+      f2SuppressHoldingsSync.current = true;
+      setClosed(nextClosed);
+      (async () => {
+        const derivedNext = holdings.map(f2DeriveHolding).filter((h) => h.qty > 1e-7);
+        const res = await f2Sync('/holdings', f2BuildHoldingsPayload(derivedNext, nextClosed));
+        window.FINCR = window.FINCR || {};
+        if (res.ok) { window.FINCR.lastSyncMs = Date.now(); window.FINCR.lastSyncStatus = 'ok'; }
+        else if (res.reason !== 'no-key') { window.FINCR.lastSyncStatus = 'failed'; window.FINCR.lastSyncReason = res.reason; }
+        window.dispatchEvent(new CustomEvent('fincr:sync-status-change'));
+        const hasSibling = nextClosed.some((c) => c.ticker === ticker);
+        if (res.ok && !hasSibling) {
+          const pruneRes = await f2Sync('/thesis/delete-archived', { ticker: ticker });
+          if (!pruneRes.ok && pruneRes.reason !== 'no-key') {
+            console.warn('[deleteClosedPosition] archive-prune failed for ' + ticker + ': ' + pruneRes.reason);
+          }
+        }
+      })();
+    },
+
     // addRotatedFromToTxn (C2-S8): tag a buy transaction as funded by a rotation.
     // The reverse link (closed position -> buy txn) lives in rotation_links; this is
     // the forward link (buy txn -> source closed position). Both directions are kept
