@@ -8,7 +8,7 @@
 // Bump CACHE_VERSION after any significant frontend change to force a full
 // cache flush on all clients.
 
-const CACHE_VERSION = 'fincr-v41'; // C2-D115: rotation-link roll-up on close (f2BuildClosedEntry, deleteClosedPosition date-fix) + multi-target rotation splitting (RotationDestinationBlocks2 across all three editors)
+const CACHE_VERSION = 'fincr-v42'; // C2-D115 fix: cross-block rotation-link validity was stale across sibling-block changes (RotationDestinationBlocks2 now recomputes combined valid from live per-block sums, not cached child flags)
 
 const SHELL_ASSETS = [
   './index.html',

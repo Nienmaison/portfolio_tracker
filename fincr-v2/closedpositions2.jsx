@@ -209,7 +209,20 @@ function RotationDestinationBlocks2({ initialLinks, closedAt, totalProceeds, usi
       const remaining = totalProceeds != null ? Math.max(0, totalProceeds - otherSum) : null;
       return [{ target_ticker: targetTicker, target_txn_id: null, portion_eur: remaining }];
     });
-    const valid = bs.every((b) => b.valid);
+    // Combined validity is recomputed HERE, fresh, from every block's current `sum` --
+    // NOT from `bs.every((b) => b.valid)`. A block's own RotationLinkPicker2 only
+    // recalculates and re-reports its `valid` flag when ITS OWN selection changes, not when
+    // a SIBLING block's allocation shrinks the remaining budget it was validated against --
+    // trusting a per-block cached flag here would let a stale valid/invalid result survive a
+    // sibling's change until that block happens to be touched again (found via direct testing
+    // against the real deployed component, not assumed). A single combined-sum check against
+    // `totalProceeds` sidesteps this: each block's own `sum` DOES stay live (it only changes
+    // when that block's own picker changes), and an unlinked placeholder's portion is always
+    // exactly "whatever's left" by construction (Math.max(0, ...) above), so it can never
+    // itself cause an overflow -- only blocks with real picked/entered portions can, and
+    // those are exactly what `sum` reflects.
+    const totalSum = bs.reduce((s, b) => s + (b.sum || 0), 0);
+    const valid = totalProceeds == null || totalSum <= totalProceeds + 0.5;
     onChange(links, valid);
   };
 
