@@ -291,12 +291,27 @@ function f2DeriveHolding(h) {
 function f2BuildClosedEntry(holding, live, sellPrice, date, note, thesisPatch) {
   const sp = +sellPrice;
   const priorOpen = (holding.txns || []).find((t) => t.kind === 'buy');
+  // C2-D114: real aggregate proceeds, not qty*sellPrice -- that formula reads €0 on any
+  // position closed to a clean zero (the CORRECT outcome of a full exit), breaking rotation-
+  // link validation for good. commitSell/commitReplayClose append the closing sell as the
+  // ledger's own last txn with C2-D97's materialized `.proceeds` already on it -- reuse that
+  // (fallback to qty*price only if somehow missing, mirroring f2FoldTxns's own
+  // prefer-materialized-else-recompute pattern). closePosition/closePositionWithThesis never
+  // append a txn for the close itself (sellPrice applies to the full still-open qty), so
+  // sp*live.qty is correct there and stays unchanged.
+  const txns = holding.txns || [];
+  const lastTxn = txns[txns.length - 1];
+  const isFreshClosingSell = !!lastTxn && lastTxn.kind === 'sell' && live.qty <= 1e-7;
+  const proceeds = isFreshClosingSell
+    ? (lastTxn.proceeds != null ? lastTxn.proceeds : lastTxn.qty * lastTxn.price)
+    : sp * live.qty;
   const entry = {
     id: f2closedId(),
     ticker: live.ticker, name: live.name, type: live.type, color: live.color,
     openedAt: priorOpen ? priorOpen.date : '—',
     closedAt: date || new Date().toISOString().slice(0, 10),
     qty: live.qty, avgCost: live.avgCost, sellPrice: sp,
+    proceeds,
     realized: (live.realized || 0) + live.qty * (sp - live.avgCost),
     note: note || '',
   };

@@ -8,7 +8,7 @@
 // Bump CACHE_VERSION after any significant frontend change to force a full
 // cache flush on all clients.
 
-const CACHE_VERSION = 'fincr-v39'; // C2-D113: stable id on closed_positions entries (f2BuildClosedEntry), edit/delete match by id with legacy ticker fallback
+const CACHE_VERSION = 'fincr-v40'; // C2-D114: real proceeds field on closed entries (f2BuildClosedEntry), rotation-link validation reads entry.proceeds with legacy qty*sellPrice fallback
 
 const SHELL_ASSETS = [
   './index.html',

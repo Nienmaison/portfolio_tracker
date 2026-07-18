@@ -29,7 +29,7 @@ function sellTypeLabel(st) {
 // live as .txns arrays on each holding. We read the target ticker's buys from
 // useStore2().holdings. If the target is not currently held, the list is empty
 // and the owner saves "without link" (resolves later).
-function RotationLinkPicker2({ targetTicker, closedAt, grossProceeds, initialLinks, onChange }) {
+function RotationLinkPicker2({ targetTicker, closedAt, grossProceeds, usingLegacyProceeds, initialLinks, onChange }) {
   const t = useTheme2();
   const F = window.FINCR;
   const store = useStore2();
@@ -139,6 +139,15 @@ function RotationLinkPicker2({ targetTicker, closedAt, grossProceeds, initialLin
           Linked portions ({F.eur(currentSum)}) exceed rotation proceeds ({F.eur(grossProceeds)}).
         </MonoTxt>
       )}
+      {usingLegacyProceeds && (
+        // C2-D114: this entry predates the real `proceeds` field -- validating against the
+        // qty*sellPrice fallback instead (qty is the CLOSED position's residual, not the
+        // amount sold, so this number can be wrong for an old auto-closed entry). Surfaced
+        // so a future "why won't this save" isn't a repeat mystery.
+        <MonoTxt size={10.5} color={t.faint} style={{ display: 'block', marginTop: 8 }}>
+          This close predates real proceeds tracking — validating against an approximate figure ({F.eur(grossProceeds)}).
+        </MonoTxt>
+      )}
     </div>
   );
 }
@@ -175,7 +184,14 @@ function ClosedReviewModal2({ entry, onClose }) {
 
   const realized = Number(entry.realized) || 0;
   const up = realized >= 0;
-  const grossProceeds = (entry.sellPrice != null && entry.qty != null) ? entry.sellPrice * entry.qty : null;
+  // C2-D114: entry.proceeds (real aggregate, materialized at close time) is the source of
+  // truth. Older entries (closed before this fix) have no proceeds field -- fall back to the
+  // old qty*sellPrice formula, same as today's behavior for them, and flag the fallback in
+  // the UI so it's never a silent surprise.
+  const usingLegacyProceeds = entry.proceeds == null;
+  const grossProceeds = entry.proceeds != null
+    ? entry.proceeds
+    : (entry.sellPrice != null && entry.qty != null) ? entry.sellPrice * entry.qty : null;
   const isRotate = sellType === 'rotate';
   const targetTicker = rotatedInto.trim().toUpperCase();
   const valid = !!sellType && convRetained !== null && (!isRotate || rotationValid) && !busy;
@@ -270,6 +286,7 @@ function ClosedReviewModal2({ entry, onClose }) {
             targetTicker={targetTicker}
             closedAt={entry.closedAt}
             grossProceeds={grossProceeds}
+            usingLegacyProceeds={usingLegacyProceeds}
             initialLinks={entry.rotation_links}
             onChange={(links, v) => { setRotationLinks(links); setRotationValid(v); }}
           />
