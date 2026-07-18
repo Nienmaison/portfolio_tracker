@@ -19,8 +19,14 @@ function Modal2({ open, onClose, title, sub, width = 460, children, footer }) {
   return ReactDOM.createPortal(
     <div onMouseDown={(e) => {if (e.target === e.currentTarget) onClose();}}
     style={{ position: 'fixed', inset: 0, zIndex: 95, background: t.dark ? 'rgba(4,5,7,0.62)' : 'rgba(23,25,30,0.28)', backdropFilter: 'blur(2px)', display: 'flex', justifyContent: 'center', alignItems: 'flex-start', paddingTop: '11vh' }}>
-      <div style={{ width, maxWidth: 'calc(100vw - 32px)', background: t.raise, border: `1px solid ${t.hairStrong}`, borderRadius: 16, overflow: 'hidden', boxShadow: t.dark ? '0 40px 100px -24px rgba(0,0,0,0.92)' : '0 40px 100px -34px rgba(23,25,30,0.5)', animation: 'fincrSlide 0.18s ease' }}>
-        <div style={{ padding: '20px 24px 16px', borderBottom: `1px solid ${t.hair}` }}>
+      {/* C2-D116: maxHeight (not height) caps the card without forcing short content to grow
+          to fill it; display:flex + the content area's flex:1/minHeight:0/overflowY:auto is
+          what actually makes ONLY the middle scroll -- minHeight:0 is load-bearing here (a
+          flex child otherwise refuses to shrink below its content's natural height, so the
+          scrollbar would never kick in without it). Header and footer get flexShrink:0 so
+          they stay pinned in view regardless of how tall the content gets. */}
+      <div style={{ width, maxWidth: 'calc(100vw - 32px)', maxHeight: 'calc(100vh - 22vh)', display: 'flex', flexDirection: 'column', background: t.raise, border: `1px solid ${t.hairStrong}`, borderRadius: 16, overflow: 'hidden', boxShadow: t.dark ? '0 40px 100px -24px rgba(0,0,0,0.92)' : '0 40px 100px -34px rgba(23,25,30,0.5)', animation: 'fincrSlide 0.18s ease' }}>
+        <div style={{ padding: '20px 24px 16px', borderBottom: `1px solid ${t.hair}`, flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 17, fontWeight: 700, color: t.ink, letterSpacing: '-0.01em' }}>{title}</div>
@@ -31,8 +37,8 @@ function Modal2({ open, onClose, title, sub, width = 460, children, footer }) {
             </button>
           </div>
         </div>
-        <div style={{ padding: '20px 24px' }}>{children}</div>
-        {footer && <div style={{ padding: '14px 24px', borderTop: `1px solid ${t.hair}`, display: 'flex', justifyContent: 'flex-end', gap: 10, background: t.dark ? 'rgba(255,255,255,0.015)' : 'rgba(23,25,30,0.015)' }}>{footer}</div>}
+        <div style={{ padding: '20px 24px', overflowY: 'auto', flex: '1 1 auto', minHeight: 0 }}>{children}</div>
+        {footer && <div style={{ padding: '14px 24px', borderTop: `1px solid ${t.hair}`, display: 'flex', justifyContent: 'flex-end', gap: 10, background: t.dark ? 'rgba(255,255,255,0.015)' : 'rgba(23,25,30,0.015)', flexShrink: 0 }}>{footer}</div>}
       </div>
     </div>, document.body);
 

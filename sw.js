@@ -8,7 +8,7 @@
 // Bump CACHE_VERSION after any significant frontend change to force a full
 // cache flush on all clients.
 
-const CACHE_VERSION = 'fincr-v42'; // C2-D115 fix: cross-block rotation-link validity was stale across sibling-block changes (RotationDestinationBlocks2 now recomputes combined valid from live per-block sums, not cached child flags)
+const CACHE_VERSION = 'fincr-v43'; // C2-D116: Modal2 caps card height (maxHeight, not height) and scrolls only the middle content area -- header/footer stay pinned
 
 const SHELL_ASSETS = [
   './index.html',
