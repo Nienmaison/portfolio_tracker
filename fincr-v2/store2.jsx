@@ -305,6 +305,35 @@ function f2BuildClosedEntry(holding, live, sellPrice, date, note, thesisPatch) {
   const proceeds = isFreshClosingSell
     ? (lastTxn.proceeds != null ? lastTxn.proceeds : lastTxn.qty * lastTxn.price)
     : sp * live.qty;
+  // C2-D115 Part A: roll up this position's OWN sells' rotation_links (linked while still
+  // open, via linkRotation/SellRotationModal2 -- e.g. the real SEI->NEAR link) onto the
+  // closed entry. Deferred at C2-D107 ship for lack of this stable helper; proven stable
+  // since by C2-D108/110/113/114. Group by target_ticker+target_txn_id, summing portion_eur
+  // across sells to the same target (a position can be trimmed in tranches, each rotated
+  // into the same destination). Each grouped entry keeps the ORIGINAL sell(s)' own date(s)
+  // as `source_dates` (an array, not this entry's own closedAt) -- linkRotation stamps a
+  // target buy's reverse rotated_from with the SELL's own date (see linkRotation:
+  // `source_closed_at: sellDate`), not the eventual close date, and a position can be
+  // trimmed on several different dates before finally closing. deleteClosedPosition must
+  // reconcile using those exact original dates or a reverse tag can never be found again --
+  // the precise orphan class C2-D108 was built to prevent, reintroduced via a date mismatch
+  // if this were done wrong. `source_dates` is always an array (even a single contributing
+  // sell gets a 1-element array) for a uniform shape regardless of how many sells fed a
+  // given target.
+  const rollupGroups = new Map();
+  txns.forEach((t) => {
+    if (t.kind !== 'sell' || !Array.isArray(t.rotation_links)) return;
+    t.rotation_links.forEach((l) => {
+      if (!l || !l.target_txn_id) return;
+      const k = l.target_ticker + ':' + l.target_txn_id;
+      const g = rollupGroups.get(k) || { target_ticker: l.target_ticker, target_txn_id: l.target_txn_id, portion_eur: 0, source_dates: [] };
+      g.portion_eur += (+l.portion_eur || 0);
+      if (t.date && g.source_dates.indexOf(t.date) === -1) g.source_dates.push(t.date);
+      rollupGroups.set(k, g);
+    });
+  });
+  const rolledUpLinks = Array.from(rollupGroups.values());
+
   const entry = {
     id: f2closedId(),
     ticker: live.ticker, name: live.name, type: live.type, color: live.color,
@@ -319,8 +348,27 @@ function f2BuildClosedEntry(holding, live, sellPrice, date, note, thesisPatch) {
     entry.sell_type = thesisPatch.sell_type || null;
     entry.conviction_retained = (thesisPatch.conviction_retained != null) ? thesisPatch.conviction_retained : null;
     entry.rotated_into = thesisPatch.rotated_into || null;
-    entry.rotation_links = Array.isArray(thesisPatch.rotation_links) ? thesisPatch.rotation_links : [];
+    // C2-D115 Part A: merge dialog-supplied links with the rolled-up ones -- dialog wins on
+    // overlap (same target_ticker+target_txn_id), non-overlapping keys from both sides
+    // included. Dialog links carry no source_dates: their reverse tag was stamped with THIS
+    // close's own date (CloseForm2's own addRotatedFromToTxn call uses the close's date), so
+    // deleteClosedPosition's fallback to entry.closedAt for date-less links is exactly
+    // correct for them -- no mismatch to fix on that side.
+    const dialogLinks = Array.isArray(thesisPatch.rotation_links) ? thesisPatch.rotation_links : [];
+    const merged = new Map(rolledUpLinks.map((l) => [l.target_ticker + ':' + l.target_txn_id, l]));
+    dialogLinks.forEach((l) => {
+      if (!l || !l.target_txn_id) return;
+      merged.set(l.target_ticker + ':' + l.target_txn_id, l);
+    });
+    entry.rotation_links = Array.from(merged.values());
+  } else {
+    // No thesisPatch (closePosition/commitSell/commitReplayClose) -- roll-up is the sole
+    // source. Always set the field (even []) rather than omitting it -- every consumer
+    // already reads it via `entry.rotation_links || []`, so this is a safe, uniform shape.
+    entry.rotation_links = rolledUpLinks;
   }
+  // sell_type is NOT implied by a rolled-up or dialog rotation_links -- stays independent,
+  // untouched here, exactly as before this fix.
   return entry;
 }
 
@@ -903,7 +951,22 @@ function FincrProvider({ children }) {
       }
       const entry = matches[0];
       if (entry.rotation_links && entry.rotation_links.length) {
-        actions.reconcileRotatedFrom(entry.rotation_links, [], { source_ticker: ticker, source_closed_at: closedAt });
+        // C2-D115 Part A: a rolled-up link's reverse rotated_from tag may have been stamped
+        // with the ORIGINAL sell's own date (`source_dates`), not this entry's `closedAt` --
+        // reconcile once per distinct date actually found, not once assuming closedAt fits
+        // every link. Getting this wrong would silently leave a rolled-up link's reverse tag
+        // orphaned -- the exact class of bug C2-D108 was built to prevent. Links with no
+        // `source_dates` (dialog-supplied at close time, or legacy pre-C2-D115 entries) fall
+        // back to `closedAt`, matching their own reverse tag's actual stamp -- identical
+        // behavior to before this fix for every entry that predates it.
+        const sourceDates = new Set();
+        entry.rotation_links.forEach((l) => {
+          const ds = (Array.isArray(l.source_dates) && l.source_dates.length) ? l.source_dates : [closedAt];
+          ds.forEach((d) => sourceDates.add(d));
+        });
+        sourceDates.forEach((d) => {
+          actions.reconcileRotatedFrom(entry.rotation_links, [], { source_ticker: ticker, source_closed_at: d });
+        });
       }
       const nextClosed = closed.filter((c) => !isMatch(c));
       f2SuppressHoldingsSync.current = true;

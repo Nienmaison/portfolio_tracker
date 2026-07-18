@@ -25,7 +25,8 @@ function SellRotationModal2({ open, tx, ticker, onClose, suggested }) {
   // the picker with the auto-match so the owner can confirm/adjust/dismiss. Only applies
   // when the sell has no confirmed link yet.
   const reviewing = !!(suggested && !hadLink);
-  const [rotatedInto, setRotatedInto] = React.useState('');
+  // C2-D115 Part B: rotatedInto (single string) is gone -- RotationDestinationBlocks2 now
+  // owns per-destination ticker state internally.
   const [links, setLinks] = React.useState(initialLinks);
   const [valid, setValid] = React.useState(true);
   React.useEffect(() => {
@@ -33,17 +34,14 @@ function SellRotationModal2({ open, tx, ticker, onClose, suggested }) {
     const il = (tx && tx.rotation_links) || [];
     if (suggested && il.length === 0) {
       const p = (tx.proceeds != null) ? tx.proceeds : tx.qty * tx.price;
-      setRotatedInto(suggested.buyTicker || '');
       setLinks([{ target_ticker: suggested.buyTicker, target_txn_id: suggested.buyTxnId, portion_eur: p }]);
     } else {
-      setRotatedInto((il[0] && il[0].target_ticker) || '');
       setLinks(il);
     }
     setValid(true);
   }, [open, tx && tx.id, suggested && suggested.buyTxnId]);
   if (!open || !tx) return null;
   const F = window.FINCR;
-  const targetTicker = rotatedInto.trim().toUpperCase();
   const source = { source_ticker: ticker, source_closed_at: tx.date };
   const pickerInitial = reviewing
     ? [{ target_ticker: suggested.buyTicker, target_txn_id: suggested.buyTxnId, portion_eur: proceeds }]
@@ -80,19 +78,15 @@ function SellRotationModal2({ open, tx, ticker, onClose, suggested }) {
           <MonoTxt size={9.5} color={t.faint} style={{ letterSpacing: '0.12em' }}>SOLD</MonoTxt>
           <MonoTxt size={11} color={t.dim}>{tx.date} · {tx.qty} @ {F.eur(tx.price, 2)} · proceeds {F.eur(proceeds)}</MonoTxt>
         </div>
-        <Field2 label="Rotated into" hint="ticker">
-          <TextField2 value={rotatedInto} onChange={(v) => setRotatedInto(v.toUpperCase())} placeholder="TICKER" />
-        </Field2>
-        {targetTicker && (
-          <RotationLinkPicker2
-            key={targetTicker}
-            targetTicker={targetTicker}
-            closedAt={tx.date}
-            grossProceeds={proceeds}
+        <Field2 label="Rotated into" hint="one or more destinations">
+          <RotationDestinationBlocks2
+            key={tx.id}
             initialLinks={pickerInitial}
+            closedAt={tx.date}
+            totalProceeds={proceeds}
             onChange={(l, v) => { setLinks(l); setValid(v); }}
           />
-        )}
+        </Field2>
       </div>
     </Modal2>
   );
@@ -347,14 +341,14 @@ function CloseForm2({ h, onCancel }) {
   const [note, setNote] = React.useState('');
   const [sellType, setSellType] = React.useState(null);          // 'rotate' | 'exit' — required
   const [convRetained, setConvRetained] = React.useState(null);  // true | false — required
-  const [rotatedInto, setRotatedInto] = React.useState('');      // ticker, rotate only
-  const [rotationLinks, setRotationLinks] = React.useState([]);   // C2-S8 picker output
+  // C2-D115 Part B: rotatedInto (single string) is gone -- RotationDestinationBlocks2 now
+  // owns per-destination ticker state internally.
+  const [rotationLinks, setRotationLinks] = React.useState([]);   // C2-S8 picker output, now multi-block
   const [rotationValid, setRotationValid] = React.useState(true);
   const [busy, setBusy] = React.useState(false);
   const sellN = parseFloat(sell);
   const priceValid = sellN > 0;
   const isRotate = sellType === "rotate";
-  const targetTicker = rotatedInto.trim().toUpperCase();
   const grossProceeds = priceValid ? sellN * h.qty : null;
   // Both sell-intent fields required; for a rotation the linked portions must be valid (C2-S8).
   const valid = priceValid && !!sellType && convRetained !== null && (!isRotate || rotationValid) && !busy;
@@ -364,13 +358,13 @@ function CloseForm2({ h, onCancel }) {
     if (!valid) return;
     setBusy(true);
     // Build rotation links from the picker, or a single unlinked entry if none picked (C2-S8).
-    let finalLinks = [];
-    if (isRotate) {
-      if (rotationLinks.length > 0) finalLinks = rotationLinks;
-      else if (targetTicker) finalLinks = [{ target_ticker: targetTicker, target_txn_id: null, portion_eur: grossProceeds }];
-    }
+    // C2-D115 Part B: finalLinks now comes from ALL destination blocks combined (built and
+    // maintained by RotationDestinationBlocks2's own onChange, including its own per-block
+    // unlinked-placeholder handling) -- not just one ticker's selections.
+    const finalLinks = isRotate ? rotationLinks : [];
+    const rotatedIntoVal = (finalLinks[0] && finalLinks[0].target_ticker) || null;
     const patch = { sell_type: sellType, conviction_retained: convRetained };
-    if (isRotate && targetTicker) patch.rotated_into = targetTicker;
+    if (isRotate && rotatedIntoVal) patch.rotated_into = rotatedIntoVal;
     if (isRotate) patch.rotation_links = finalLinks;
     // Close first; the thesis patch fires after the archive sync succeeds (store).
     // The drawer closes itself once the holding leaves the store.
@@ -402,12 +396,9 @@ function CloseForm2({ h, onCancel }) {
           onChange={(v) => setConvRetained(v === "keep")} />
       </Field2>
       {isRotate && (
-        <Field2 label="Rotating into" hint="ticker">
-          <TextField2 value={rotatedInto} onChange={(v) => setRotatedInto(v.toUpperCase())} placeholder="TICKER" />
+        <Field2 label="Rotating into" hint="one or more destinations">
+          <RotationDestinationBlocks2 initialLinks={[]} closedAt={date} totalProceeds={grossProceeds} onChange={(links, v) => { setRotationLinks(links); setRotationValid(v); }} />
         </Field2>
-      )}
-      {isRotate && targetTicker && (
-        <RotationLinkPicker2 key={targetTicker} targetTicker={targetTicker} closedAt={date} grossProceeds={grossProceeds} initialLinks={[]} onChange={(links, v) => { setRotationLinks(links); setRotationValid(v); }} />
       )}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', borderTop: `1px solid ${t.hair}`, paddingTop: 12 }}>
         <MonoTxt size={10.5} color={t.faint} style={{ letterSpacing: '0.12em' }}>REALIZED P&L</MonoTxt>

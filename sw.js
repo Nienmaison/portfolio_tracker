@@ -8,7 +8,7 @@
 // Bump CACHE_VERSION after any significant frontend change to force a full
 // cache flush on all clients.
 
-const CACHE_VERSION = 'fincr-v40'; // C2-D114: real proceeds field on closed entries (f2BuildClosedEntry), rotation-link validation reads entry.proceeds with legacy qty*sellPrice fallback
+const CACHE_VERSION = 'fincr-v41'; // C2-D115: rotation-link roll-up on close (f2BuildClosedEntry, deleteClosedPosition date-fix) + multi-target rotation splitting (RotationDestinationBlocks2 across all three editors)
 
 const SHELL_ASSETS = [
   './index.html',

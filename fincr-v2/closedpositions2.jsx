@@ -152,6 +152,125 @@ function RotationLinkPicker2({ targetTicker, closedAt, grossProceeds, usingLegac
   );
 }
 
+// ── RotationDestinationBlocks2 (C2-D115 Part B) ───────────────────────────────
+// Multi-target wrapper around RotationLinkPicker2. Replaces a single "ROTATED INTO"
+// string with a repeatable list of independent destination blocks -- each with its own
+// ticker + its own RotationLinkPicker2 -- so adding a second destination no longer
+// requires abandoning any other already-linked one. Confirmed via direct code trace
+// (not assumed) that the old single-string binding + key={targetTicker} remount meant
+// changing the ticker and saving replaced the ENTIRE rotation_links array with only the
+// new ticker's selections -- the exact risk that would have silently destroyed MRVL's
+// real, saved CEG link the moment NOK was added the naive way.
+//
+// Seeds one block per distinct target_ticker already present in `initialLinks` (grouped),
+// so a pre-existing single-target link -- or a multi-target one, post this fix -- always
+// reopens with its blocks correctly pre-populated (no data migration needed anywhere:
+// rotation_links was already an array).
+//
+// Cross-block proceeds validation: each block gets a shrinking "remaining budget"
+// (totalProceeds minus every OTHER block's own current sum) as its own RotationLinkPicker2
+// grossProceeds prop -- so each block's EXISTING, UNMODIFIED overLimit/currentSum math
+// (nothing inside RotationLinkPicker2 itself changed) validates against what's actually
+// still available, not the full total every time. A block with a ticker typed but no
+// specific buy(s) picked still gets an unlinked placeholder entry (the same "save to tag
+// without a link, resolve later" behavior a single-target flow has always had), sized to
+// that block's own remaining budget.
+//
+// Emits the combined links array (all blocks concatenated) + combined validity via
+// onChange -- the exact 2-arg shape callers already consumed from a single
+// RotationLinkPicker2 before this change, so no caller-side signature churn.
+function RotationDestinationBlocks2({ initialLinks, closedAt, totalProceeds, usingLegacyProceeds, onChange }) {
+  const t = useTheme2();
+
+  const seed = React.useRef(null);
+  if (seed.current === null) {
+    const byTicker = new Map();
+    (initialLinks || []).forEach((l) => {
+      if (!l || !l.target_ticker) return;
+      const arr = byTicker.get(l.target_ticker) || [];
+      arr.push(l);
+      byTicker.set(l.target_ticker, arr);
+    });
+    const seeded = Array.from(byTicker.entries()).map(([ticker, links], i) => ({
+      key: 'b' + i, ticker, initialLinks: links, links,
+      sum: links.reduce((s, l) => s + (l.portion_eur || 0), 0), valid: true,
+    }));
+    seed.current = seeded.length ? seeded : [{ key: 'b0', ticker: '', initialLinks: [], links: [], sum: 0, valid: true }];
+  }
+  const [blocks, setBlocks] = React.useState(seed.current);
+  const nextKeyIdx = React.useRef(seed.current.length);
+
+  const emit = (bs) => {
+    const links = bs.flatMap((b) => {
+      const targetTicker = b.ticker.trim().toUpperCase();
+      if (!targetTicker) return [];
+      if (b.links.length > 0) return b.links;
+      const otherSum = bs.reduce((s, ob) => s + (ob.key === b.key ? 0 : ob.sum), 0);
+      const remaining = totalProceeds != null ? Math.max(0, totalProceeds - otherSum) : null;
+      return [{ target_ticker: targetTicker, target_txn_id: null, portion_eur: remaining }];
+    });
+    const valid = bs.every((b) => b.valid);
+    onChange(links, valid);
+  };
+
+  // Emit the seeded state once on mount (deps [] — no re-emit loop; matches
+  // RotationLinkPicker2's own equivalent mount-emit convention).
+  React.useEffect(() => { emit(blocks); }, []);
+
+  const updateBlock = (key, patch) => {
+    const next = blocks.map((b) => (b.key === key ? { ...b, ...patch } : b));
+    setBlocks(next);
+    emit(next);
+  };
+
+  const addBlock = () => {
+    const next = [...blocks, { key: 'b' + (nextKeyIdx.current++), ticker: '', initialLinks: [], links: [], sum: 0, valid: true }];
+    setBlocks(next);
+    emit(next);
+  };
+
+  const removeBlock = (key) => {
+    const remaining = blocks.filter((b) => b.key !== key);
+    const next = remaining.length ? remaining : [{ key: 'b' + (nextKeyIdx.current++), ticker: '', initialLinks: [], links: [], sum: 0, valid: true }];
+    setBlocks(next);
+    emit(next);
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {blocks.map((b) => {
+        const targetTicker = b.ticker.trim().toUpperCase();
+        const otherSum = blocks.reduce((s, ob) => s + (ob.key === b.key ? 0 : ob.sum), 0);
+        const remainingBudget = totalProceeds != null ? Math.max(0, totalProceeds - otherSum) : null;
+        return (
+          <div key={b.key} style={{ display: 'flex', flexDirection: 'column', gap: 7, padding: '10px 11px', border: '1px solid ' + t.hair, borderRadius: 9 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ flex: 1 }}>
+                <TextField2 value={b.ticker} onChange={(v) => updateBlock(b.key, { ticker: v.toUpperCase() })} placeholder="TICKER" />
+              </div>
+              {blocks.length > 1 && (
+                <TextBtn2 tone="danger" onClick={() => removeBlock(b.key)}>Remove</TextBtn2>
+              )}
+            </div>
+            {targetTicker && (
+              <RotationLinkPicker2
+                key={targetTicker}
+                targetTicker={targetTicker}
+                closedAt={closedAt}
+                grossProceeds={remainingBudget}
+                usingLegacyProceeds={usingLegacyProceeds}
+                initialLinks={b.initialLinks}
+                onChange={(links, v, sum) => updateBlock(b.key, { links, valid: v, sum })}
+              />
+            )}
+          </div>
+        );
+      })}
+      <TextBtn2 onClick={addBlock}>+ Add another destination</TextBtn2>
+    </div>
+  );
+}
+
 // ── Review modal (C2-S7 tagging + C2-S8 linking) ──────────────────────────────
 // Opened from the closed positions list. Transaction facts are read-only; the
 // intent fields (sell_type / conviction_retained / rotated_into) are editable, and
@@ -164,7 +283,6 @@ function ClosedReviewModal2({ entry, onClose }) {
 
   const [sellType, setSellType] = React.useState(null);
   const [convRetained, setConvRetained] = React.useState(null);
-  const [rotatedInto, setRotatedInto] = React.useState('');
   const [rotationLinks, setRotationLinks] = React.useState([]);
   const [rotationValid, setRotationValid] = React.useState(true);
   const [busy, setBusy] = React.useState(false);
@@ -173,9 +291,10 @@ function ClosedReviewModal2({ entry, onClose }) {
     if (!entry) return;
     setSellType(entry.sell_type || null);
     setConvRetained(entry.conviction_retained == null ? null : !!entry.conviction_retained);
-    const links = entry.rotation_links || [];
-    setRotatedInto((links[0] && links[0].target_ticker) || entry.rotated_into || '');
-    setRotationLinks(links);
+    // C2-D115 Part B: rotatedInto (single string) is gone -- RotationDestinationBlocks2
+    // now owns per-destination ticker state internally, seeded from entry.rotation_links
+    // grouped by target_ticker (one block per distinct existing destination).
+    setRotationLinks(entry.rotation_links || []);
     setRotationValid(true);
     setBusy(false);
   }, [entry]);
@@ -193,19 +312,17 @@ function ClosedReviewModal2({ entry, onClose }) {
     ? entry.proceeds
     : (entry.sellPrice != null && entry.qty != null) ? entry.sellPrice * entry.qty : null;
   const isRotate = sellType === 'rotate';
-  const targetTicker = rotatedInto.trim().toUpperCase();
   const valid = !!sellType && convRetained !== null && (!isRotate || rotationValid) && !busy;
 
   const save = () => {
     if (!valid) return;
     setBusy(true);
-    let finalLinks = [];
-    let rotatedIntoVal = null;
-    if (isRotate) {
-      rotatedIntoVal = targetTicker || null;
-      if (rotationLinks.length > 0) finalLinks = rotationLinks;
-      else if (rotatedIntoVal) finalLinks = [{ target_ticker: rotatedIntoVal, target_txn_id: null, portion_eur: grossProceeds }];
-    }
+    // C2-D115 Part B: finalLinks now comes from ALL destination blocks combined (built and
+    // maintained by RotationDestinationBlocks2's own onChange) -- not just one ticker's
+    // selections, so adding a second destination never requires abandoning the first. The
+    // legacy single `rotated_into` display field is kept, set to the first destination.
+    const finalLinks = isRotate ? rotationLinks : [];
+    const rotatedIntoVal = (finalLinks[0] && finalLinks[0].target_ticker) || null;
     // Reconcile the TARGET side via the shared three-way primitive (C2-D103): removes
     // rotated_from from buys DROPPED since the last save and adds/refreshes the new ones.
     // Replaces the old add-only forEach, which left a stale rotated_from orphan on relink
@@ -276,20 +393,16 @@ function ClosedReviewModal2({ entry, onClose }) {
             onChange={(v) => setConvRetained(v === 'keep')} />
         </Field2>
         {isRotate && (
-          <Field2 label="Rotated into" hint="ticker">
-            <TextField2 value={rotatedInto} onChange={(v) => setRotatedInto(v.toUpperCase())} placeholder="TICKER" />
+          <Field2 label="Rotated into" hint="one or more destinations">
+            <RotationDestinationBlocks2
+              key={entry.id || (entry.ticker + entry.closedAt)}
+              initialLinks={entry.rotation_links}
+              closedAt={entry.closedAt}
+              totalProceeds={grossProceeds}
+              usingLegacyProceeds={usingLegacyProceeds}
+              onChange={(links, v) => { setRotationLinks(links); setRotationValid(v); }}
+            />
           </Field2>
-        )}
-        {isRotate && targetTicker && (
-          <RotationLinkPicker2
-            key={targetTicker}
-            targetTicker={targetTicker}
-            closedAt={entry.closedAt}
-            grossProceeds={grossProceeds}
-            usingLegacyProceeds={usingLegacyProceeds}
-            initialLinks={entry.rotation_links}
-            onChange={(links, v) => { setRotationLinks(links); setRotationValid(v); }}
-          />
         )}
       </div>
     </Modal2>
