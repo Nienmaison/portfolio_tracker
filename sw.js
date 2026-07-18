@@ -8,7 +8,7 @@
 // Bump CACHE_VERSION after any significant frontend change to force a full
 // cache flush on all clients.
 
-const CACHE_VERSION = 'fincr-v36'; // C2-D108 delete closed position (store2 deleteClosedPosition + closedpositions2 Delete button)
+const CACHE_VERSION = 'fincr-v37'; // C2-D110 CSV full-ledger replay (import2 f2NetPositions/f2PlanReplay/doImport, store2 commitReplayClose)
 
 const SHELL_ASSETS = [
   './index.html',

@@ -741,6 +741,24 @@ function FincrProvider({ children }) {
       setHoldings((hs) => hs.filter((h) => h.ticker !== ticker));
     },
 
+    // commitReplayClose (C2-D110) — the ONE addition this decision needed: a minimal,
+    // functional-updater-only commit for an ALREADY-BUILT closed entry. Exists because the
+    // full-ledger-replay importer (import2.jsx) must detect a mid-history zero-crossing and
+    // materialize a real close WITHOUT going through commitSell — commitSell's `holdings.find`
+    // reads THIS render's outer-closure `holdings`, which is stale the instant the import loop
+    // has already applied earlier addTxn/addPosition calls to the SAME ticker earlier in the
+    // SAME synchronous batch (those updates are queued, not yet reflected in the closure).
+    // Calling commitSell there would silently no-op (new ticker) or build a wrong entry from
+    // pre-import data (existing ticker). This action takes no such risk: the caller builds the
+    // entry itself via the pure f2BuildClosedEntry, folding its OWN locally-tracked replay
+    // ledger (never this store's `holdings`), and only the two known-safe functional updaters
+    // below commit it — identical in shape to commitSell's own tail (:736-741), just without
+    // the unsafe lookup. Idempotency guard mirrors commitSell's.
+    commitReplayClose: (ticker, entry) => {
+      setClosed((cs) => (cs.some((c) => c.ticker === entry.ticker && c.closedAt === entry.closedAt) ? cs : [entry, ...cs]));
+      setHoldings((hs) => hs.filter((h) => h.ticker !== ticker));
+    },
+
     closePosition: (ticker, { sellPrice, date, note }) => {
       const src = holdings.find((h) => h.ticker === ticker);
       const live = f2DeriveHolding(src);

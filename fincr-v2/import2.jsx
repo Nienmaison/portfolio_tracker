@@ -1,19 +1,33 @@
-/* Fincr 2.0 — Add assets: multi-broker CSV import (P1 Task 2, [C2-D34]).
-   Net-position snapshot reconciliation: parse CSV file(s) from any broker,
-   extract atomic transactions, net buys/sells/staking per ticker, preview,
-   then import the selected net positions into the store.
+/* Fincr 2.0 — Add assets: multi-broker CSV import (P1 Task 2, [C2-D34]; full-ledger
+   replay [C2-D110]). Parse CSV file(s) from any broker, extract atomic transactions,
+   group by ticker+type, preview a summary, then REPLAY every selected ticker's rows
+   into the store in chronological order — real dates, real per-row FX-converted
+   prices, real realized P&L on any sell — instead of collapsing to one synthetic
+   net-position buy.
 
-   Strategy (decisions.md [C2-D34..D38]):
-   - Net-position snapshot, not full-ledger replay. Each ticker becomes ONE
-     synthetic buy (qty = netQty, price = DCA) via addPosition()/addTxn().
-   - Staking adds quantity at €0, lowering DCA. In net-position mode it is
-     folded into the single net buy — never emitted as a standalone 'staking'
-     txn (f2DeriveHolding treats any non-'buy' kind as a sell). This realises
-     [C2-D35]'s intent: staking adds qty and lowers cost basis, never subtracts.
-   - Fully-sold tickers (netQty <= 1e-6) are dropped ([C2-D36] — realized P&L
-     deferred to Cycle 2).
+   Strategy (decisions.md [C2-D34..D38], superseded by [C2-D110]):
+   - [C2-D110] Full-ledger replay, not a net-position snapshot. Each ticker's rows are
+     sorted chronologically (f2NetPositions) and applied one at a time via
+     addTxn/addPosition (f2PlanReplay + doImport) — no synthetic single-buy collapse.
+     This was originally deferred at [C2-D34]/[C2-D36] for lack of realized-P&L /
+     close-capture machinery; both now exist ([C2-D97], [C2-D107]) for unrelated
+     reasons, so the shortcut is gone. netQty/avgBuy/buyCount/sellCount remain in the
+     preview as SUMMARY figures only — they no longer drive the actual import.
+   - Staking adds quantity at €0, lowering DCA ([C2-D35]'s intent, unchanged). Under
+     full replay each staking row becomes its own {kind:'buy', price:0} entry
+     (f2NetPositions, post-extraction — f2InferKind/f2ExtractTransactions are
+     untouched), replayed in chronological order rather than pre-folded into one
+     aggregate buy — f2FoldTxns' existing buy-fold math dilutes the average correctly
+     with no new fold logic needed.
+   - [C2-D110] A ticker whose replayed rows cross to ~zero mid-history materializes a
+     REAL closed_positions entry (via the shared f2BuildClosedEntry, same as the two
+     Close buttons and C2-D107's auto-close) instead of being dropped; if further rows
+     follow, a fresh position lifecycle opens for them. A ticker that nets to ~zero
+     with no rows AFTER the crossing (netQty <= 1e-6 overall) is still dropped from the
+     import entirely, unchanged from [C2-D36] — that case has no replay to run at all.
    - CSV date used when present, else today; never synthesise fake history
-     ([C2-D37]).
+     ([C2-D37]) — same-day ties fall back to original CSV row order (an assumption,
+     not a guarantee — dates carry no time-of-day).
    - Broker auto-detected by header substring; unknown brokers fall back to a
      manual column mapper ([C2-D38]).
 
@@ -25,8 +39,16 @@
        appends a txn to an EXISTING holding (no-op if the ticker is unknown —
        so we always check store.holdings first and route new tickers to
        addPosition).
+   - actions.commitReplayClose(ticker, entry) — [C2-D110] commits an ALREADY-BUILT
+       closed entry (via f2BuildClosedEntry) without re-deriving it from this store's
+       `holdings` — safe to call mid-replay, unlike commitSell (see f2PlanReplay).
    Live prices: GET /crypto-prices?tickers= (batch) and /stock-price?ticker=
-   are public (no key) and return EUR — same endpoints store2 Phase 3 uses. */
+   are public (no key) and return EUR — same endpoints store2 Phase 3 uses.
+
+   KNOWN LIMITATION [C2-D110]: a replay-materialized closed entry has no `color`
+   (the running holding is tracked purely locally during planning, never assigned a
+   real palette slot) — cosmetic only (a blank/default dot in the closed-positions
+   list), never read by any calculation. */
 
 /* Pure parsing + netting. No React / window / DOM dependency — this block is
    unit-tested directly in V8 (see importcheck.py). */
@@ -286,26 +308,59 @@ function f2ExtractTransactions(headers, rows, cfg) {
   return txs;
 }
 
-/* Net every transaction (across ALL files) by ticker+type. Returns
+/* Group every transaction (across ALL files) by ticker+type. Returns
    { positions, dropped }:
-     positions — kept net positions, sorted by € size desc, each:
-       { ticker, type, netQty, avgBuy, buyCount, sellCount, stakingQty, valid, date }
+     positions — kept positions, sorted by € size desc, each:
+       { ticker, type, netQty, avgBuy, buyCount, sellCount, stakingQty, valid, date,
+         origCurrency, fxRate, txns }
      dropped — tickers netted to <= 1e-6 (fully sold; excluded from import).
-   DCA: avgBuy = Σ(buyQty·buyPrice) / (totalBought + stakingQty). Staking adds
-   qty at €0, lowering DCA ([C2-D35] intent). */
+   netQty/avgBuy/buyCount/sellCount/stakingQty/origCurrency/fxRate remain SUMMARY
+   figures for the preview table only (unchanged math/meaning from the pre-C2-D110
+   net-snapshot version — avgBuy = Σ(buyQty·buyPrice)/(totalBought+stakingQty), the
+   correct weighted-average-cost-of-remaining-shares under WAC convention regardless
+   of which units were sold). [C2-D110] What changed: the ACTUAL import no longer
+   uses these aggregates — `txns` (below) is now the source of truth for doImport,
+   preserving every row's own date/price/FX rather than collapsing to one synthetic
+   buy. This is what makes an imported position's cost basis auditable again (the
+   NOW/Revolut investigation's dead end was exactly this aggregation, previously
+   irreversible once imported).
+   `txns` — the group's atomic rows in chronological order, EXACTLY as they will be
+   replayed: staking rows are converted to {kind:'buy', price:0} here (post-extraction
+   — f2ExtractTransactions/f2InferKind are untouched, so this never re-triggers the
+   existing "suspicious kind:'buy' with price 0" skip there, which only ever inspects
+   rows already tagged kind:'buy' at extraction time). Built by iterating `txns` in
+   their ORIGINAL encounter order (preserving CSV row order) before a single stable
+   sort by date — so a same-day tie keeps its original relative order. Dates carry no
+   time-of-day (f2ParseDate), so for a same-day BUY+SELL pair the true execution order
+   is unrecoverable from this data; original CSV row order is the closest available
+   signal, an assumption, not a guarantee. A missing/unparseable date defaults to
+   `today`, matching the existing convention used everywhere else in this file
+   ([C2-D37]). */
 function f2NetPositions(txns, todayStr) {
   const today = todayStr || f2Today();
   const groups = {};
   for (const tx of txns) {
     const key = tx.ticker + '|' + tx.assetType;
-    if (!groups[key]) groups[key] = { ticker: tx.ticker, type: tx.assetType, buys: [], soldQty: 0, stakingQty: 0, sellCount: 0, dates: [] };
+    if (!groups[key]) groups[key] = { ticker: tx.ticker, type: tx.assetType, buys: [], soldQty: 0, stakingQty: 0, sellCount: 0, dates: [], replay: [] };
     const g = groups[key];
-    if (tx.kind === 'buy') g.buys.push({ qty: tx.qty, price: tx.price });
-    else if (tx.kind === 'sell') { g.soldQty += tx.qty; g.sellCount += 1; }
-    else if (tx.kind === 'staking') g.stakingQty += tx.qty;
+    const rowDate = tx.date || today;
+    const audit = { origCurrency: tx.origCurrency || null, fxRate: tx.fxRate || null };
+    if (tx.kind === 'buy') {
+      g.buys.push({ qty: tx.qty, price: tx.price });
+      g.replay.push(Object.assign({ kind: 'buy', date: rowDate, qty: tx.qty, price: tx.price }, audit));
+    } else if (tx.kind === 'sell') {
+      g.soldQty += tx.qty; g.sellCount += 1;
+      g.replay.push(Object.assign({ kind: 'sell', date: rowDate, qty: tx.qty, price: tx.price }, audit));
+    } else if (tx.kind === 'staking') {
+      g.stakingQty += tx.qty;
+      // [C2-D110] staking -> zero-price buy, HERE, not at extraction (see doc-comment above).
+      g.replay.push({ kind: 'buy', date: rowDate, qty: tx.qty, price: 0, origCurrency: null, fxRate: null });
+    }
     if (tx.date) g.dates.push(tx.date);
-    // C2-D105 — carry the FX audit (source currency + rate) onto the group; first
-    // converted row wins (single-buy Revolut re-imports carry the exact rate).
+    // C2-D105 — carry the FX audit (source currency + rate) onto the group SUMMARY only;
+    // first converted row wins for this DISPLAY figure. The real audit trail per row now
+    // lives on `g.replay` (every row keeps its OWN origCurrency/fxRate) — this aggregate
+    // is no longer what gets persisted (see doc-comment above), only what the preview shows.
     if (tx.origCurrency && !g.origCurrency) { g.origCurrency = tx.origCurrency; g.fxRate = tx.fxRate; }
   }
 
@@ -319,16 +374,104 @@ function f2NetPositions(txns, todayStr) {
     const denom = totalBought + g.stakingQty;
     const avgBuy = denom > 0 ? totalCost / denom : 0;
     const date = g.dates.length ? g.dates.slice().sort().slice(-1)[0] : today;
+    // Stable sort (ES2019+ guarantee) — ties (identical date) keep g.replay's push order,
+    // i.e. original CSV encounter order across this ticker's rows.
+    const replay = g.replay.slice().sort((a, b) => (a.date < b.date ? -1 : (a.date > b.date ? 1 : 0)));
     positions.push({
       ticker: g.ticker, type: g.type,
       netQty: +netQty.toFixed(8), avgBuy: avgBuy,
       buyCount: g.buys.length, sellCount: g.sellCount, stakingQty: g.stakingQty,
       valid: f2ValidTicker(g.ticker, g.type), date: date,
-      origCurrency: g.origCurrency || null, fxRate: g.fxRate || null, // C2-D105 audit
+      origCurrency: g.origCurrency || null, fxRate: g.fxRate || null, // C2-D105 audit (display only)
+      txns: replay, // [C2-D110] chronological replay sequence — the actual import source of truth
     });
   });
   positions.sort((a, b) => (b.netQty * b.avgBuy) - (a.netQty * a.avgBuy));
   return { positions, dropped };
+}
+
+/* [C2-D110] Pure planner: given ONE ticker's chronologically-sorted replay rows
+   (buys/sells; staking already converted to zero-price buys by f2NetPositions above),
+   returns either { ok:true, steps } or { ok:false, reason } — NEVER touches React state,
+   testable in total isolation (see importcheck2.py), same discipline as f2NetPositions/
+   f2ExtractTransactions. Folds a PURELY LOCAL running ledger via the exact same shared
+   primitives addTxn/commitSell already use (f2AvgCostBefore, f2DeriveHolding,
+   f2BuildClosedEntry — all pure, all defined in store2.jsx, loaded before this file) —
+   so the realized-gain math the plan pre-computes is guaranteed identical to what the
+   real store would derive for the same sequence. Each step is one of:
+     { action:'open',    qty, price, date, audit }                      -> addPosition or addTxn(buy) if the ticker already exists before this import (doImport decides which)
+     { action:'addBuy',  qty, price, date, audit }                      -> addTxn (buy)
+     { action:'addSell', qty, price, date, audit, closes:false }        -> addTxn (sell), still open after
+     { action:'addSell', qty, price, date, audit, closes:true, closedEntry }
+                                                                          -> addTxn (sell), THEN commitReplayClose(ticker, closedEntry)
+   A sell with nothing open yet (no prior buy in this ticker's rows — a malformed/
+   incomplete export, e.g. history starting mid-position) is REJECTED ({ok:false}) rather
+   than fabricating a starter buy ([C2-D37] — never synthesise fake history). Rejecting
+   BEFORE any step is executed (doImport validates the whole plan first) means a bad
+   ticker never partially applies — either all of its rows land, or none do.
+
+   `seedTxns` (optional, default []) — ADVERSARIAL-REVIEW FIX: when this ticker already
+   has a real holding before this import, its CURRENT txns must seed the local fold —
+   otherwise the planner sees only the CSV's OWN rows in isolation and can conclude the
+   position "closes" (reaches ~0) when the TRUE combined position (real + CSV) never
+   does, which would make doImport call commitReplayClose and WIPE the real holding and
+   its full history, replacing it with a fabricated closed entry built from a partial
+   view. Seeding fixes this: `open` starts true whenever seedTxns is non-empty, so the
+   ticker's first CSV row correctly becomes 'addBuy'/'addSell' (never a false 'open'),
+   and every avgBefore/live/closedEntry computation folds the REAL prior history too.
+   Guard: if the CSV contains a row dated EARLIER than the seed's latest txn, reject
+   outright (fail-safe, not fail-silent) — this planner processes CSV rows in their own
+   chronological order and folds {seed (as a final snapshot) + rows-so-far} on each step,
+   which is correct when new rows are newer than the seed (the common re-import pattern:
+   a broker export is a growing, mostly-append-only history) but NOT provably correct if
+   the CSV backfills OLDER rows interleaved with the seed's own already-recorded sells —
+   rather than silently risk a wrong zero-crossing in that narrower case, refuse it. */
+function f2PlanReplay(ticker, type, replayTxns, seedTxns) {
+  const seed = (seedTxns || []).slice();
+  if (seed.length) {
+    const seedLatest = seed.reduce((m, t) => (t.date > m ? t.date : m), seed[0].date);
+    for (let i = 0; i < replayTxns.length; i++) {
+      if (replayTxns[i].date < seedLatest) {
+        return { ok: false, reason: 'CSV row (' + replayTxns[i].date + ') is older than existing history (latest ' + seedLatest + ') for ' + ticker + ' — re-import assumes new rows are newer than what is already recorded' };
+      }
+    }
+  }
+  const steps = [];
+  let localTxns = seed;
+  let open = seed.length > 0;
+  for (let i = 0; i < replayTxns.length; i++) {
+    const row = replayTxns[i];
+    const audit = row.origCurrency ? { original_currency: row.origCurrency, fx_rate: row.fxRate } : undefined;
+    if (row.kind === 'buy') {
+      steps.push({ action: open ? 'addBuy' : 'open', qty: row.qty, price: row.price, date: row.date, audit: audit });
+      open = true;
+      localTxns = localTxns.concat([{ kind: 'buy', date: row.date, qty: row.qty, price: row.price }]);
+    } else {
+      if (!open) {
+        return { ok: false, reason: 'sell with no open position (row ' + (i + 1) + ', ' + row.date + ')' };
+      }
+      // ADVERSARIAL-REVIEW FIX: a sell with no resolvable price (0/blank cell) is no
+      // longer harmless under replay — its price now drives real realized-P&L math
+      // (unlike the old net-snapshot collapse, where a sell's price was never read at
+      // all). Reject rather than fabricate a fictitious near-total-loss realized figure.
+      if (!(row.price > 0)) {
+        return { ok: false, reason: 'sell with unresolvable price (row ' + (i + 1) + ', ' + row.date + ')' };
+      }
+      const avgBefore = window.f2AvgCostBefore({ txns: localTxns }, { kind: 'sell', date: row.date, qty: row.qty, price: row.price });
+      const realized_gain = row.qty * (row.price - avgBefore);
+      const proceeds = row.qty * row.price;
+      localTxns = localTxns.concat([{ kind: 'sell', date: row.date, qty: row.qty, price: row.price, realized_gain: realized_gain, proceeds: proceeds }]);
+      const live = window.f2DeriveHolding({ ticker: ticker, name: ticker, type: type, price: row.price, txns: localTxns });
+      if (live.qty <= 1e-7) {
+        const closedEntry = window.f2BuildClosedEntry({ ticker: ticker, name: ticker, type: type, txns: localTxns }, live, row.price, row.date, '');
+        steps.push({ action: 'addSell', qty: row.qty, price: row.price, date: row.date, audit: audit, closes: true, closedEntry: closedEntry });
+        open = false; localTxns = [];
+      } else {
+        steps.push({ action: 'addSell', qty: row.qty, price: row.price, date: row.date, audit: audit, closes: false });
+      }
+    }
+  }
+  return { ok: true, steps: steps };
 }
 
 /* @@PURE_END */
@@ -508,42 +651,79 @@ function ImportTab2({ go }) {
 
     // Snapshot existing positions ONCE, keyed by ticker+type (same key the
     // netting uses, and matching V1) so a same-symbol stock and crypto never
-    // collide: new -> addPosition, existing -> addTxn. (The store actions still
-    // match on ticker alone, so a held stock + imported crypto of the identical
-    // symbol would still merge — a rare, documented limitation; this key at
-    // least stops two same-symbol/different-type import rows colliding.)
+    // collide. (The store actions still match on ticker alone, so a held stock +
+    // imported crypto of the identical symbol would still merge — a rare,
+    // documented limitation; this key at least stops two same-symbol/different-
+    // type import rows colliding.)
     const keyOf = (x) => x.ticker + '|' + x.type;
-    const existing = new Set((store.holdings || []).map(keyOf));
-    const newRows = rows.filter((r) => !existing.has(keyOf(r)));
+    const keyOfHolding = (h) => h.ticker + '|' + h.type;
+    const existingByKey = {};
+    (store.holdings || []).forEach((h) => { existingByKey[keyOfHolding(h)] = h; });
 
-    // Fetch live prices for new positions in parallel (existing ones keep their
-    // own live price; addTxn never sets price). Failures fall back to DCA.
-    const priceByKey = {};
-    await Promise.all(newRows.map(async (r) => { priceByKey[keyOf(r)] = await fetchLivePrice(r.ticker, r.type); }));
-
-    // Apply synchronously so React batches every setHoldings into one render ->
-    // exactly one POST /holdings sync (not one per row).
+    // [C2-D110] Full-ledger replay. PLAN every selected ticker first (pure, via
+    // f2PlanReplay — no store calls yet). ADVERSARIAL-REVIEW FIX: seed each plan with
+    // the REAL pre-existing holding's own txns when one exists — otherwise the planner
+    // would see only the CSV's rows in isolation and could conclude the position
+    // "closes" when the TRUE combined position never does, which would make doImport
+    // wipe a real holding via commitReplayClose. With seeding, every 'open' step in a
+    // plan is UNAMBIGUOUSLY a case with nothing currently in the real store under this
+    // ticker (either truly new, or reopening after a real mid-replay close) — so
+    // execution below no longer needs to guess "did this exist before the import"; the
+    // plan's own step labels are now always correct. A malformed ticker (sell with no
+    // prior open position, unresolvable sell price, or CSV rows older than existing
+    // history) is rejected in full before anything is applied for it — no partial-
+    // ticker state ever reaches the real store.
+    const plans = rows.map((r) => {
+      const existingHolding = existingByKey[keyOf(r)];
+      return { r: r, plan: f2PlanReplay(r.ticker, r.type, r.txns, existingHolding ? existingHolding.txns : []) };
+    });
     const failed = [], estimated = [];
     const today = f2Today();
-    rows.forEach((r) => {
-      try {
-        // C2-D105 — carry the FX audit onto the imported buy when the price was
-        // converted from a foreign currency (undefined otherwise → JSON omits).
-        const audit = r.origCurrency ? { original_currency: r.origCurrency, fx_rate: r.fxRate } : undefined;
-        if (existing.has(keyOf(r))) {
-          store.actions.addTxn(r.ticker, Object.assign({ kind: 'buy', date: r.date || today, qty: r.netQty, price: r.avgBuy }, audit || {}));
-        } else {
-          const live = priceByKey[keyOf(r)];
-          if (live == null) estimated.push(r.ticker);
-          store.actions.addPosition({
-            ticker: r.ticker, name: r.ticker, type: r.type,
-            qty: r.netQty, buyPrice: r.avgBuy,
-            price: live != null ? live : r.avgBuy, date: r.date || today,
-            audit: audit,
-          });
-        }
-      } catch (e) {
+
+    // Fetch a live price for every ticker whose plan contains AT LEAST ONE 'open' step
+    // (a genuinely new holding-entry creation) — not just tickers absent before this
+    // import: a pre-existing ticker whose plan closes then reopens mid-replay also needs
+    // one for its reopen. Existing ones with no 'open' step never need a fetch (addTxn
+    // never sets price). Failures fall back to the step's own price (flagged estimated).
+    const needsPrice = plans.filter(({ plan }) => plan.ok && plan.steps.some((s) => s.action === 'open'));
+    const priceByKey = {};
+    await Promise.all(needsPrice.map(async ({ r }) => { priceByKey[keyOf(r)] = await fetchLivePrice(r.ticker, r.type); }));
+
+    // Apply synchronously (still no `await` between calls) so React still batches every
+    // setHoldings/setClosed into one render -> exactly one POST /holdings, regardless of
+    // row count — the same guarantee the old one-call-per-ticker loop relied on; it holds
+    // identically for many-calls-per-ticker, since addTxn/addPosition/commitReplayClose
+    // are all pure functional-updater setState calls (no side effects of their own).
+    plans.forEach(({ r, plan }) => {
+      if (!plan.ok) {
         failed.push(r.ticker);
+        if (typeof console !== 'undefined') console.warn('[import] full-replay rejected for ' + r.ticker + ': ' + plan.reason);
+        return;
+      }
+      try {
+        const key = keyOf(r);
+        plan.steps.forEach((step) => {
+          if (step.action === 'open') {
+            // Always a fresh real-store lifecycle (seeding above guarantees this — see
+            // the ADVERSARIAL-REVIEW FIX note): brand-new ticker, or reopening after a
+            // real close earlier in this SAME plan. Either way -> addPosition.
+            const live = priceByKey[key];
+            if (live == null && estimated.indexOf(r.ticker) === -1) estimated.push(r.ticker);
+            store.actions.addPosition({
+              ticker: r.ticker, name: r.ticker, type: r.type,
+              qty: step.qty, buyPrice: step.price,
+              price: live != null ? live : step.price, date: step.date || today,
+              audit: step.audit,
+            });
+          } else if (step.action === 'addBuy') {
+            store.actions.addTxn(r.ticker, Object.assign({ kind: 'buy', date: step.date || today, qty: step.qty, price: step.price }, step.audit || {}));
+          } else { // addSell
+            store.actions.addTxn(r.ticker, Object.assign({ kind: 'sell', date: step.date || today, qty: step.qty, price: step.price }, step.audit || {}));
+            if (step.closes) store.actions.commitReplayClose(r.ticker, step.closedEntry);
+          }
+        });
+      } catch (e) {
+        if (failed.indexOf(r.ticker) === -1) failed.push(r.ticker);
         if (typeof console !== 'undefined') console.warn('[import] failed for ' + r.ticker, e);
       }
     });
@@ -734,7 +914,7 @@ function ImportTab2({ go }) {
               {busy ? 'Importing…' : 'Import ' + selectedCount + ' selected'}
             </Btn2>
             <span style={{ fontSize: 12, color: t.faint }}>
-              {selectedCount ? 'New tickers are created; existing ones get a buy at the new average. Live prices fetched on import.' : 'Select positions above to import.'}
+              {selectedCount ? 'New tickers are created; existing ones get every row appended to their real history — a fully-sold-then-rebought ticker closes and reopens correctly. Live prices fetched where needed.' : 'Select positions above to import.'}
             </span>
           </div>
         )}
