@@ -8,7 +8,7 @@
 // Bump CACHE_VERSION after any significant frontend change to force a full
 // cache flush on all clients.
 
-const CACHE_VERSION = 'fincr-v38'; // C2-D110 fix: cross-broker interleaving (merged chronological seed+incoming walk, replaces the positional older-than-seed gate)
+const CACHE_VERSION = 'fincr-v39'; // C2-D113: stable id on closed_positions entries (f2BuildClosedEntry), edit/delete match by id with legacy ticker fallback
 
 const SHELL_ASSETS = [
   './index.html',

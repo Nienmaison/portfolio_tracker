@@ -6,7 +6,8 @@
            on each holding's .txns array — there is NO separate transaction store),
            F.unlinkedRotationCount (set in store2.jsx totals).
    Writes: store.actions.editClosedPosition(ticker, { sell_type, conviction_retained,
-             rotated_into, rotation_links })
+             rotated_into, rotation_links }, entry.id)  — id passed for C2-D113 stable
+             matching (falls back to ticker for legacy entries with no id)
            store.actions.addRotatedFromToTxn(ticker, txnId, { source_ticker,
              source_closed_at, portion_eur })  — forward link on the buy txn. */
 
@@ -202,7 +203,7 @@ function ClosedReviewModal2({ entry, onClose }) {
       conviction_retained: convRetained,
       rotated_into: rotatedIntoVal,
       rotation_links: finalLinks,
-    });
+    }, entry.id);
     onClose();
   };
 
@@ -219,7 +220,7 @@ function ClosedReviewModal2({ entry, onClose }) {
               Modal2's flex-end footer; native confirm() mirrors the open-position delete. */}
           <TextBtn2 tone="danger" style={{ marginRight: 'auto' }} onClick={() => {
             if (confirm('Delete this closed ' + entry.ticker + ' record?\n\nThis removes its realized P&L from your since-inception total. It does not affect True Return, total value, or idle cash.\n\nThis cannot be undone.')) {
-              store.actions.deleteClosedPosition(entry.ticker, entry.closedAt);
+              store.actions.deleteClosedPosition(entry.ticker, entry.closedAt, entry.id);
               onClose();
             }
           }}>Delete</TextBtn2>

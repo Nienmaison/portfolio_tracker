@@ -11,6 +11,9 @@
 
 const F2_LS_KEY = 'fincr2-portfolio-v1';
 const f2uid = () => 'tx_' + Math.random().toString(36).slice(2, 9);
+// C2-D113: stable id for closed_positions entries -- lets edit/delete target one
+// entry unambiguously even on a same-ticker double-close (close, re-buy, close again).
+const f2closedId = () => 'cl_' + Math.random().toString(36).slice(2, 9);
 const F2_PALETTE = ['#5481D4', '#5E7DA8', '#8B9EC9', '#3D6B9E', '#A6B3CC', '#2E5480', '#6E8FD0'];
 const FincrStoreCtx = React.createContext(null);
 
@@ -289,6 +292,7 @@ function f2BuildClosedEntry(holding, live, sellPrice, date, note, thesisPatch) {
   const sp = +sellPrice;
   const priorOpen = (holding.txns || []).find((t) => t.kind === 'buy');
   const entry = {
+    id: f2closedId(),
     ticker: live.ticker, name: live.name, type: live.type, color: live.color,
     openedAt: priorOpen ? priorOpen.date : '—',
     closedAt: date || new Date().toISOString().slice(0, 10),
@@ -824,11 +828,14 @@ function FincrProvider({ children }) {
     // tag historical closes). Partial update: only supplied fields are written.
     // setClosed triggers the holdings-sync effect (deps [holdings, closed]) which
     // fires POST /holdings — same fire-and-forget pattern as the other mutations.
-    // Ticker is the match key (closed entries have no id); assumed unique in the
-    // closed list for this owner. Does NOT recompute P&L — realised is immutable.
-    editClosedPosition: (ticker, { sell_type, conviction_retained, rotated_into, rotation_links }) => {
+    // C2-D113: matches by stable `id` when the caller supplies one (all entries
+    // created from this point forward have one, via f2BuildClosedEntry). Falls back
+    // to the old unsafe ticker-only match for legacy entries with no id — no forced
+    // migration/backfill. Does NOT recompute P&L — realised is immutable.
+    editClosedPosition: (ticker, { sell_type, conviction_retained, rotated_into, rotation_links }, id) => {
       setClosed((cs) => cs.map((c) => {
-        if (c.ticker !== ticker) return c;
+        const isMatch = id ? c.id === id : c.ticker === ticker;
+        if (!isMatch) return c;
         const next = { ...c };
         if (sell_type !== undefined) next.sell_type = sell_type;
         if (conviction_retained !== undefined) next.conviction_retained = conviction_retained;
@@ -866,8 +873,13 @@ function FincrProvider({ children }) {
     //    must never be followed by pruning the archive stub out from under a still-live record.
     // rotation_links: closed entries are only rotation SOURCES (never targets), so there is no
     // forward-link-into-us case to reconcile on the target side.
-    deleteClosedPosition: (ticker, closedAt) => {
-      const matches = closed.filter((c) => c.ticker === ticker && c.closedAt === closedAt);
+    // C2-D113: now matches by stable `id` when the caller supplies one — a real double-close
+    // on the same ticker no longer needs the ambiguity guard below to protect it (ids are
+    // unique by construction). Legacy entries with no id still fall back to the old
+    // ticker+closedAt match, so the guard stays in place for that path.
+    deleteClosedPosition: (ticker, closedAt, id) => {
+      const isMatch = (c) => (id ? c.id === id : (c.ticker === ticker && c.closedAt === closedAt));
+      const matches = closed.filter(isMatch);
       if (matches.length === 0) return;
       if (matches.length > 1) {
         console.warn('[deleteClosedPosition] ambiguous match for ' + ticker + '/' + closedAt + ' (' + matches.length + ' entries) — refusing to delete (needs a stable id to disambiguate)');
@@ -878,7 +890,7 @@ function FincrProvider({ children }) {
       if (entry.rotation_links && entry.rotation_links.length) {
         actions.reconcileRotatedFrom(entry.rotation_links, [], { source_ticker: ticker, source_closed_at: closedAt });
       }
-      const nextClosed = closed.filter((c) => !(c.ticker === ticker && c.closedAt === closedAt));
+      const nextClosed = closed.filter((c) => !isMatch(c));
       f2SuppressHoldingsSync.current = true;
       setClosed(nextClosed);
       (async () => {
