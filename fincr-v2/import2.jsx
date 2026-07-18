@@ -410,51 +410,102 @@ function f2NetPositions(txns, todayStr) {
    BEFORE any step is executed (doImport validates the whole plan first) means a bad
    ticker never partially applies — either all of its rows land, or none do.
 
-   `seedTxns` (optional, default []) — ADVERSARIAL-REVIEW FIX: when this ticker already
-   has a real holding before this import, its CURRENT txns must seed the local fold —
-   otherwise the planner sees only the CSV's OWN rows in isolation and can conclude the
-   position "closes" (reaches ~0) when the TRUE combined position (real + CSV) never
-   does, which would make doImport call commitReplayClose and WIPE the real holding and
-   its full history, replacing it with a fabricated closed entry built from a partial
-   view. Seeding fixes this: `open` starts true whenever seedTxns is non-empty, so the
-   ticker's first CSV row correctly becomes 'addBuy'/'addSell' (never a false 'open'),
-   and every avgBefore/live/closedEntry computation folds the REAL prior history too.
-   Guard: if the CSV contains a row dated EARLIER than the seed's latest txn, reject
-   outright (fail-safe, not fail-silent) — this planner processes CSV rows in their own
-   chronological order and folds {seed (as a final snapshot) + rows-so-far} on each step,
-   which is correct when new rows are newer than the seed (the common re-import pattern:
-   a broker export is a growing, mostly-append-only history) but NOT provably correct if
-   the CSV backfills OLDER rows interleaved with the seed's own already-recorded sells —
-   rather than silently risk a wrong zero-crossing in that narrower case, refuse it. */
+   `seedTxns` (optional, default []) — when this ticker already has a real holding
+   before this import, its CURRENT txns must seed the local fold — otherwise the
+   planner could see only the CSV's OWN rows in isolation and conclude the position
+   "closes" (reaches ~0) when the TRUE combined position (real + CSV) never does, which
+   would make doImport call commitReplayClose and WIPE the real holding and its full
+   history. FIX HISTORY on how the seed is used (both defects found by adversarial
+   review, second one on a follow-up pass — record both so this isn't re-broken later):
+     (1) First cut seeded `localTxns` but walked ONLY the CSV's rows in their own
+         chronological order, treating the seed as a fixed prefix — and rejected any CSV
+         row dated before the seed's latest txn as a blanket safety net. WRONG: this
+         assumes a single append-only linear history, which cross-broker data
+         structurally isn't (two brokers' histories interleave; neither is a prefix of
+         the other) — it rejected NOW's own real case (DEGIRO's buy dated AFTER several
+         of Revolut's). It was also insufficient even where it didn't reject: walking
+         CSV rows in isolation with the seed just sitting in `localTxns` the whole time
+         meant a genuine MID-TIMELINE zero-crossing (seed's buy chronologically AFTER a
+         CSV sell that truly drained the position to 0 before it) could go undetected —
+         the "final" fold (seed included throughout) papers over an intermediate dip.
+     (2) THIS version: merge seed + incoming rows into ONE sequence, sort the WHOLE
+         thing by true date (stable — same-date ties keep seed rows first, then incoming
+         rows in their original relative order), and walk THAT. Only incoming
+         (`isNew`) rows emit a plan step (seed rows already exist in the real store —
+         re-emitting them would duplicate); seed rows still fold into the running
+         ledger so avgBefore/qty/realized are correct at every point, and a zero-
+         crossing is only ever attributed to an incoming row (a seed row crossing zero
+         on its own can't happen — the seed IS the current, still-open real holding, so
+         its own full fold is always > 1e-7). This handles interleaving correctly by
+         construction — no ordering assumption between seed and incoming is needed.
+     Guard against ACCIDENTAL re-import of already-recorded data (the thing (1)'s
+     rejection was actually trying to prevent) is now targeted, not positional: an
+     incoming row that EXACTLY matches a seed row (same kind+date+qty+price) is almost
+     certainly a duplicate (re-uploading the same export twice) — reject the ticker
+     outright rather than silently double-count it. A coincidental exact match between
+     two genuinely distinct trades is vanishingly unlikely and, if it ever happens, the
+     rejection just asks the owner to look — a safe failure mode either way. */
 function f2PlanReplay(ticker, type, replayTxns, seedTxns) {
   const seed = (seedTxns || []).slice();
-  if (seed.length) {
-    const seedLatest = seed.reduce((m, t) => (t.date > m ? t.date : m), seed[0].date);
-    for (let i = 0; i < replayTxns.length; i++) {
-      if (replayTxns[i].date < seedLatest) {
-        return { ok: false, reason: 'CSV row (' + replayTxns[i].date + ') is older than existing history (latest ' + seedLatest + ') for ' + ticker + ' — re-import assumes new rows are newer than what is already recorded' };
-      }
-    }
-  }
-  const steps = [];
-  let localTxns = seed;
-  let open = seed.length > 0;
+
+  // Duplicate-row guard — see FIX HISTORY (2) above.
   for (let i = 0; i < replayTxns.length; i++) {
     const row = replayTxns[i];
+    const dup = seed.some((s) => s.kind === row.kind && s.date === row.date
+      && Math.abs(s.qty - row.qty) < 1e-9 && Math.abs(s.price - row.price) < 1e-9);
+    if (dup) {
+      return { ok: false, reason: 'row (' + row.kind + ' ' + row.date + ' qty=' + row.qty + ' price=' + row.price + ') exactly matches an already-recorded transaction for ' + ticker + ' — likely a duplicate re-import' };
+    }
+  }
+
+  // Merge seed + incoming into ONE true-chronological sequence (stable sort — same-date
+  // ties keep seed rows first, then incoming rows in their original relative order).
+  const merged = seed.map((t) => ({ t: t, isNew: false }))
+    .concat(replayTxns.map((t) => ({ t: t, isNew: true })));
+  merged.sort((a, b) => (a.t.date < b.t.date ? -1 : (a.t.date > b.t.date ? 1 : 0)));
+
+  const steps = [];
+  let localTxns = [];
+  // `open` starts true whenever a seed exists — the ticker genuinely already has an
+  // open real position from the FIRST moment of this replay, regardless of which row
+  // (seed or incoming) happens to sort earliest in the merged walk. This only affects
+  // step LABELING ('open' vs 'addBuy' — i.e. addPosition vs addTxn; both are actually
+  // safe to call on an existing ticker since addPosition itself falls back to
+  // appending when the ticker already exists, but mislabeling would still trigger a
+  // wasted live-price fetch for every such buy). It does NOT affect zero-crossing
+  // detection, which depends only on `localTxns` accumulated so far in the merged
+  // chronological walk, independent of how `open` was initialized (verified: T11's
+  // masked mid-timeline crossing is still correctly detected with this change).
+  let open = seed.length > 0;
+  for (let i = 0; i < merged.length; i++) {
+    const entry = merged[i];
+    const row = entry.t;
     const audit = row.origCurrency ? { original_currency: row.origCurrency, fx_rate: row.fxRate } : undefined;
+
     if (row.kind === 'buy') {
-      steps.push({ action: open ? 'addBuy' : 'open', qty: row.qty, price: row.price, date: row.date, audit: audit });
+      if (entry.isNew) {
+        steps.push({ action: open ? 'addBuy' : 'open', qty: row.qty, price: row.price, date: row.date, audit: audit });
+      }
       open = true;
       localTxns = localTxns.concat([{ kind: 'buy', date: row.date, qty: row.qty, price: row.price }]);
     } else {
+      // sell (seed or incoming)
       if (!open) {
-        return { ok: false, reason: 'sell with no open position (row ' + (i + 1) + ', ' + row.date + ')' };
+        if (entry.isNew) {
+          return { ok: false, reason: 'sell with no open position (row ' + (i + 1) + ', ' + row.date + ')' };
+        }
+        // A seed sell with nothing open shouldn't occur (the seed is the current real
+        // holding's own consistent ledger, always foldable to a positive qty) — but
+        // don't throw on a state that can't be fully ruled out defensively; just track it.
+        open = false;
+        continue;
       }
       // ADVERSARIAL-REVIEW FIX: a sell with no resolvable price (0/blank cell) is no
       // longer harmless under replay — its price now drives real realized-P&L math
       // (unlike the old net-snapshot collapse, where a sell's price was never read at
-      // all). Reject rather than fabricate a fictitious near-total-loss realized figure.
-      if (!(row.price > 0)) {
+      // all). Only validated for INCOMING rows — a seed row was already accepted once
+      // when it was originally applied; re-validating it here would be redundant.
+      if (entry.isNew && !(row.price > 0)) {
         return { ok: false, reason: 'sell with unresolvable price (row ' + (i + 1) + ', ' + row.date + ')' };
       }
       const avgBefore = window.f2AvgCostBefore({ txns: localTxns }, { kind: 'sell', date: row.date, qty: row.qty, price: row.price });
@@ -462,12 +513,18 @@ function f2PlanReplay(ticker, type, replayTxns, seedTxns) {
       const proceeds = row.qty * row.price;
       localTxns = localTxns.concat([{ kind: 'sell', date: row.date, qty: row.qty, price: row.price, realized_gain: realized_gain, proceeds: proceeds }]);
       const live = window.f2DeriveHolding({ ticker: ticker, name: ticker, type: type, price: row.price, txns: localTxns });
-      if (live.qty <= 1e-7) {
+      const crossesZero = live.qty <= 1e-7;
+      if (crossesZero && entry.isNew) {
+        // Only an INCOMING sell can trigger a close — see the doc-comment: a seed sell
+        // crossing zero on its own can't happen (seed is always a currently-nonzero
+        // real holding, by construction of how it's gathered in doImport).
         const closedEntry = window.f2BuildClosedEntry({ ticker: ticker, name: ticker, type: type, txns: localTxns }, live, row.price, row.date, '');
         steps.push({ action: 'addSell', qty: row.qty, price: row.price, date: row.date, audit: audit, closes: true, closedEntry: closedEntry });
         open = false; localTxns = [];
-      } else {
+      } else if (entry.isNew) {
         steps.push({ action: 'addSell', qty: row.qty, price: row.price, date: row.date, audit: audit, closes: false });
+      } else if (crossesZero) {
+        open = false; // defensive mirror of the "seed sell with nothing open" branch above
       }
     }
   }

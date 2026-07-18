@@ -8,7 +8,7 @@
 // Bump CACHE_VERSION after any significant frontend change to force a full
 // cache flush on all clients.
 
-const CACHE_VERSION = 'fincr-v37'; // C2-D110 CSV full-ledger replay (import2 f2NetPositions/f2PlanReplay/doImport, store2 commitReplayClose)
+const CACHE_VERSION = 'fincr-v38'; // C2-D110 fix: cross-broker interleaving (merged chronological seed+incoming walk, replaces the positional older-than-seed gate)
 
 const SHELL_ASSETS = [
   './index.html',
