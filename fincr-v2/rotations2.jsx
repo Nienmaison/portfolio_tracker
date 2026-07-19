@@ -124,46 +124,20 @@ function RotationsTab2() {
     return <Chip2 tone="mute">unlinked</Chip2>;
   };
 
-  // C2-D120 — closed-section status cell. `partially_allocated` deliberately uses the same
-  // neutral "mute" tone as `unlinked`, NOT an amber/warning tone — leftover proceeds are a
-  // legitimate, common outcome (real example: MRVL), not a mistake to flag.
+  // C2-D120 (simplified per direct owner feedback, same day) — closed-section status cell.
+  // Just ticker + status chip, matching the open-positions rows' visual weight — a fast-scan
+  // overview, not a detail view. Target breakdown, leftover-€ figure, and the full legacy/
+  // approximate-proceeds sentence all still live in ClosedReviewModal2 (one click away via
+  // Edit); duplicating them inline here was the exact complaint. Owner chose to drop the
+  // legacy marker entirely rather than keep a wordless trace — clicking through is enough.
+  // `partially_allocated` deliberately uses the same neutral "mute" tone as `unlinked`, NOT
+  // an amber/warning tone — leftover proceeds are a legitimate, common outcome (real example:
+  // MRVL), not a mistake to flag.
   const closedStatusCell = (r) => {
-    const targetLabel = (r.targets && r.targets.length === 1) ? r.targets[0] : ((r.targets || []).length + ' targets');
-    const legacyNote = r.usingLegacyProceeds && (
-      <MonoTxt size={10} color={t.faint} style={{ display: 'block', marginTop: 3 }}>
-        This close predates real proceeds tracking — validating against an approximate figure ({eur(r.proceeds)}).
-      </MonoTxt>
-    );
-    const incompleteNote = r.hasIncompleteLink && (
-      <MonoTxt size={10} color={t.amber} style={{ display: 'block', marginTop: 3 }}>⚠ one link has no buy attached yet</MonoTxt>
-    );
-    if (r.status === 'untagged') {
-      return <div><Chip2 tone="watch">untagged</Chip2>{legacyNote}{incompleteNote}</div>;
-    }
-    if (r.status === 'exit') {
-      return <div><Chip2 tone="mute">exit</Chip2>{legacyNote}</div>;
-    }
-    if (r.status === 'fully_allocated') {
-      return (
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Chip2 tone="accent">fully allocated</Chip2>
-            <MonoTxt size={11} color={t.dim}>→ {targetLabel}</MonoTxt>
-          </div>
-          {legacyNote}{incompleteNote}
-        </div>
-      );
-    }
-    // partially_allocated
-    return (
-      <div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Chip2 tone="mute">partially allocated</Chip2>
-          <MonoTxt size={11} color={t.dim}>→ {targetLabel} · {eur(r.gap)} left</MonoTxt>
-        </div>
-        {legacyNote}{incompleteNote}
-      </div>
-    );
+    if (r.status === 'untagged') return <Chip2 tone="watch">untagged</Chip2>;
+    if (r.status === 'exit') return <Chip2 tone="mute">exit</Chip2>;
+    if (r.status === 'fully_allocated') return <Chip2 tone="accent">fully allocated</Chip2>;
+    return <Chip2 tone="mute">partially allocated</Chip2>; // partially_allocated
   };
 
   return (
@@ -275,9 +249,6 @@ function RotationsTab2() {
                     <Money size={13.5} weight={700}>{r.proceeds != null ? eur(r.proceeds) : '—'}</Money>
                     <MonoTxt size={9.5} color={t.ghost} style={{ letterSpacing: '0.1em' }}>PROCEEDS</MonoTxt>
                   </div>
-                  {r.status !== 'untagged' && r.status !== 'exit' && (
-                    <MonoTxt size={11} color={t.dim} style={{ display: 'block', marginTop: 2 }}>{eur(r.linkedSum)} linked</MonoTxt>
-                  )}
                 </div>
                 <div>{closedStatusCell(r)}</div>
                 <div style={{ display: 'flex', justifyContent: 'flex-end' }}>

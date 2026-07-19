@@ -8,7 +8,7 @@
 // Bump CACHE_VERSION after any significant frontend change to force a full
 // cache flush on all clients.
 
-const CACHE_VERSION = 'fincr-v46'; // C2-D120: Rotations overview gains a closed-positions section (untagged/fully/partially allocated/exit)
+const CACHE_VERSION = 'fincr-v47'; // C2-D120 follow-up: closed-positions row simplified to ticker + status chip only
 
 const SHELL_ASSETS = [
   './index.html',
