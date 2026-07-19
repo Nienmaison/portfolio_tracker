@@ -229,8 +229,15 @@ function f2InferKind(typeRaw, qty, cfg, hasTypeCol) {
 
 /* Extract atomic transactions from one file given a profile or manual cfg.
    Output rows: { ticker, qty (absolute), price (unit, EUR), kind, assetType,
-   date }. Skips transfers, fiat tickers, non-completed Bitvavo rows, zero-qty
-   rows, and price-less buys — mirroring v1. */
+   date, source }. `source` is cfg.key (the detected broker profile's machine
+   id, e.g. 'revolut'/'bitvavo'/'manual' — see F2_BROKER_PROFILES) [C2-D117] —
+   distinguishes a CSV-imported row from a hand-typed drawer entry (which never
+   goes through this function and so stays source:undefined). Skips transfers,
+   fiat tickers, non-completed Bitvavo rows, zero-qty rows, and price-less buys
+   — mirroring v1. Returns { txs, unclassified } — `unclassified` counts rows
+   dropped because f2InferKind couldn't resolve a kind (e.g. a staking row
+   against a profile with no stakeVal configured) [C2-D117], surfaced by the
+   caller alongside the existing net-to-zero `dropped[]` (f2NetPositions). */
 function f2ExtractTransactions(headers, rows, cfg) {
   const iT = f2ColIdx(cfg, 'ticker', headers);
   const iQ = f2ColIdx(cfg, 'qty', headers);
@@ -249,6 +256,7 @@ function f2ExtractTransactions(headers, rows, cfg) {
   const assetType = cfg.assetType || 'crypto';
 
   const txs = [];
+  let unclassified = 0; // C2-D117 — rows dropped for an unrecognised kind (Item C)
   for (const row of rows) {
     const ticker = f2NormalizeTicker(iT >= 0 ? row[iT] : '');
     if (!ticker || skipTickers.has(ticker)) continue;
@@ -288,7 +296,7 @@ function f2ExtractTransactions(headers, rows, cfg) {
     }
 
     const kind = f2InferKind(typeRaw, qty, cfg, hasTypeCol);
-    if (!kind) continue;
+    if (!kind) { unclassified++; continue; } // C2-D117 — unrecognised kind (Item C)
     // Suspicious buy with no resolvable price -> skip (v1 rule). Sells keep a
     // 0 price (price is irrelevant to net-position qty/DCA). Staking is €0.
     if (kind === 'buy' && unitPrice === 0) continue;
@@ -303,9 +311,10 @@ function f2ExtractTransactions(headers, rows, cfg) {
       date,
       origCurrency,
       fxRate,
+      source: cfg.key || null, // C2-D117 — provenance (Item A)
     });
   }
-  return txs;
+  return { txs, unclassified };
 }
 
 /* Group every transaction (across ALL files) by ticker+type. Returns
@@ -344,7 +353,7 @@ function f2NetPositions(txns, todayStr) {
     if (!groups[key]) groups[key] = { ticker: tx.ticker, type: tx.assetType, buys: [], soldQty: 0, stakingQty: 0, sellCount: 0, dates: [], replay: [] };
     const g = groups[key];
     const rowDate = tx.date || today;
-    const audit = { origCurrency: tx.origCurrency || null, fxRate: tx.fxRate || null };
+    const audit = { origCurrency: tx.origCurrency || null, fxRate: tx.fxRate || null, source: tx.source || null }; // source: C2-D117
     if (tx.kind === 'buy') {
       g.buys.push({ qty: tx.qty, price: tx.price });
       g.replay.push(Object.assign({ kind: 'buy', date: rowDate, qty: tx.qty, price: tx.price }, audit));
@@ -354,7 +363,7 @@ function f2NetPositions(txns, todayStr) {
     } else if (tx.kind === 'staking') {
       g.stakingQty += tx.qty;
       // [C2-D110] staking -> zero-price buy, HERE, not at extraction (see doc-comment above).
-      g.replay.push({ kind: 'buy', date: rowDate, qty: tx.qty, price: 0, origCurrency: null, fxRate: null });
+      g.replay.push({ kind: 'buy', date: rowDate, qty: tx.qty, price: 0, origCurrency: null, fxRate: null, source: tx.source || null }); // source: C2-D117
     }
     if (tx.date) g.dates.push(tx.date);
     // C2-D105 — carry the FX audit (source currency + rate) onto the group SUMMARY only;
@@ -480,7 +489,13 @@ function f2PlanReplay(ticker, type, replayTxns, seedTxns) {
   for (let i = 0; i < merged.length; i++) {
     const entry = merged[i];
     const row = entry.t;
-    const audit = row.origCurrency ? { original_currency: row.origCurrency, fx_rate: row.fxRate } : undefined;
+    // C2-D117 — carry `source` through alongside the existing FX audit fields; both
+    // ride the same `audit` object into addPosition/addTxn's existing spread (see
+    // doImport below), so no new plumbing is needed there.
+    const auditFields = {};
+    if (row.origCurrency) { auditFields.original_currency = row.origCurrency; auditFields.fx_rate = row.fxRate; }
+    if (row.source) auditFields.source = row.source;
+    const audit = Object.keys(auditFields).length ? auditFields : undefined;
 
     if (row.kind === 'buy') {
       if (entry.isNew) {
@@ -600,9 +615,9 @@ function ImportTab2({ go }) {
       if (!headers.length || !rows.length) { problems.push('No rows found in ' + file.name); continue; }
       const profile = f2DetectBroker(headers);
       if (profile) {
-        const txns = f2ExtractTransactions(headers, rows, profile);
+        const { txs: txns, unclassified } = f2ExtractTransactions(headers, rows, profile);
         if (!txns.length) { problems.push('No valid transactions in ' + file.name + ' (all rows skipped)'); continue; }
-        accepted.push({ name: file.name, broker: profile.label, rowCount: txns.length, txns: txns, headers: headers, rows: rows, profileKey: profile.key });
+        accepted.push({ name: file.name, broker: profile.label, rowCount: txns.length, txns: txns, headers: headers, rows: rows, profileKey: profile.key, unclassified: unclassified });
       } else {
         // Unknown broker — queue any files still behind this one, then open the
         // mapper. The [pending] effect resumes the queue once it resolves, so
@@ -655,9 +670,9 @@ function ImportTab2({ go }) {
       statusOk: [],
     };
     if (!(cfg.tickerIdx >= 0) || !(cfg.qtyIdx >= 0)) { setErr('Map at least the Ticker and Quantity columns.'); return; }
-    const txns = f2ExtractTransactions(pending.headers, pending.rows, cfg);
+    const { txs: txns, unclassified } = f2ExtractTransactions(pending.headers, pending.rows, cfg);
     if (!txns.length) { setErr('No valid transactions parsed with that mapping — check the columns.'); return; }
-    const added = { name: pending.name, broker: 'Manual map', rowCount: txns.length, txns: txns, headers: pending.headers, rows: pending.rows, profileKey: 'manual' };
+    const added = { name: pending.name, broker: 'Manual map', rowCount: txns.length, txns: txns, headers: pending.headers, rows: pending.rows, profileKey: 'manual', unclassified: unclassified };
     setFiles((fs) => fs.some((f) => f.name === added.name) ? fs : fs.concat([added]));
     setPending(null); setMapDraft(null); setCalc(null); setResult(null); setErr(null);
   };
@@ -668,7 +683,10 @@ function ImportTab2({ go }) {
     const allTxns = files.reduce((acc, f) => acc.concat(f.txns), []);
     if (!allTxns.length) { setErr('Load at least one broker CSV first.'); return; }
     const out = f2NetPositions(allTxns, f2Today());
-    setCalc(out);
+    // C2-D117 (Item C) — sum each file's unrecognised-kind row count alongside the
+    // existing net-to-zero `dropped[]`, so the preview can report both.
+    const unclassified = files.reduce((s, f) => s + (f.unclassified || 0), 0);
+    setCalc(Object.assign({}, out, { unclassified: unclassified }));
     setSel(out.positions.map((p) => p.valid)); // valid pre-checked, invalid off
   };
 
@@ -913,6 +931,7 @@ function ImportTab2({ go }) {
         {calc && positions.length === 0 && (
           <div style={{ fontSize: 12.5, color: t.faint, fontFamily: t.mono, padding: '4px 0 8px' }}>
             No open positions after netting{calc.dropped.length ? ' — ' + calc.dropped.length + ' ticker' + (calc.dropped.length === 1 ? '' : 's') + ' netted to zero (fully sold).' : '.'}
+            {calc.unclassified > 0 && <span style={{ display: 'block', marginTop: 4 }}>{calc.unclassified} row{calc.unclassified === 1 ? '' : 's'} could not be classified and {calc.unclassified === 1 ? 'was' : 'were'} skipped.</span>}
             <span style={{ display: 'block', marginTop: 10 }}><Btn2 onClick={() => setCalc(null)}>Recalculate</Btn2></span>
           </div>
         )}
@@ -950,6 +969,11 @@ function ImportTab2({ go }) {
             {calc.dropped.length > 0 && (
               <div style={{ fontSize: 11.5, color: t.faint, padding: '12px 4px 0' }}>
                 {calc.dropped.length} ticker{calc.dropped.length === 1 ? '' : 's'} netted to zero (fully sold) and {calc.dropped.length === 1 ? 'was' : 'were'} excluded.
+              </div>
+            )}
+            {calc.unclassified > 0 && (
+              <div style={{ fontSize: 11.5, color: t.faint, padding: '6px 4px 0' }}>
+                {calc.unclassified} row{calc.unclassified === 1 ? '' : 's'} could not be classified and {calc.unclassified === 1 ? 'was' : 'were'} skipped.
               </div>
             )}
             {validCount < positions.length && (

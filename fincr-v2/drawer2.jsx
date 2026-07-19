@@ -505,6 +505,10 @@ function PositionDrawer2() {
   const open = !!h;
   const th = h && F.thesis ? F.thesis.find((x) => x.ticker === h.ticker) : null;
   const weight = h ? (h.value / F.totalValue * 100) : 0;
+  // C2-D117 (Item A) — derived, not stored: distinct txn-level `source` values on
+  // this holding, for debugging blended-broker positions (e.g. "snaptrade + revolut").
+  // Untagged (manual/pre-C2-D117) txns contribute nothing here.
+  const sources = h ? Array.from(new Set((h.txns || []).map((tx) => tx.source).filter(Boolean))) : [];
 
   return (
     <Drawer2 open={open} onClose={actions.closeDrawer} width={500}>
@@ -517,6 +521,11 @@ function PositionDrawer2() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
                 <span style={{ fontSize: 20, fontWeight: 700, color: t.ink, letterSpacing: '-0.01em' }}>{h.ticker}</span>
                 <Chip2 tone={h.type === 'crypto' ? 'accent' : 'mute'}>{h.type}</Chip2>
+                {sources.length > 0 && (
+                  <span title="Distinct broker origins found in this holding's transaction ledger — debugging aid" style={{ fontSize: 10, fontFamily: t.mono, color: t.faint, letterSpacing: '0.02em' }}>
+                    {sources.join(' + ')}
+                  </span>
+                )}
               </div>
               <div style={{ fontSize: 12.5, color: t.faint, marginTop: 1 }}>{h.name}</div>
             </div>

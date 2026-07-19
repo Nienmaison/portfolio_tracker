@@ -8,7 +8,7 @@
 // Bump CACHE_VERSION after any significant frontend change to force a full
 // cache flush on all clients.
 
-const CACHE_VERSION = 'fincr-v43'; // C2-D116: Modal2 caps card height (maxHeight, not height) and scrolls only the middle content area -- header/footer stay pinned
+const CACHE_VERSION = 'fincr-v44'; // C2-D117: CSV-import source tagging, derived per-holding sources tag, dropped-unrecognized-row visibility
 
 const SHELL_ASSETS = [
   './index.html',
