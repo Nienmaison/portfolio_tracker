@@ -179,16 +179,45 @@ function f2ComputeIdleCash(cashSeed, poolEvents, allHoldingsTxns) {
   return cash;
 }
 
-/* Rotation-candidate finder (C2-D102). Unlinked sells across ALL holdings dated within
-   `windowDays` before `buyDate`, sorted closest-to-`buyTotalCost` first. A sell carrying
-   any non-empty rotation_links is permanently excluded — locked decision: once linked it
-   is never re-offered, even if only part of its proceeds was attributed (the remainder
-   stays as ordinary untracked idle cash by design). Proceeds fall back to qty*price when
-   the materialized `proceeds` field is absent (it is stripped on GET /holdings read-back
-   for un-linked sells; qty*price is the identical gross figure). The finder returns the
-   FULL windowed list; the TRIGGER (whether to surface a proposal at all) is a separate
-   caller check — candidates[0] within `tolerance` of buyTotalCost. */
-function f2FindRotationCandidates(holdings, buyDate, buyTotalCost, windowDays = 14, tolerance = 0.10) {
+/* C2-D122 — shared "available budget" calc for a closed_positions entry. MUST stay
+   byte-for-byte equivalent to f2ComputeClosedRotationStatuses' own gap logic
+   (rotations2.jsx, C2-D120) — same proceeds fallback, same formula. Duplicated here
+   rather than extracted into one cross-file shared function because rotations2.jsx
+   loads AFTER store2.jsx (index.html order) and C2-D120's own display logic is
+   explicitly out of scope for C2-D122 (no changes there) — if either copy's formula
+   ever changes, update both. */
+function f2ClosedEntryGap(c) {
+  const proceeds = c.proceeds != null ? c.proceeds : (c.sellPrice != null && c.qty != null ? c.sellPrice * c.qty : null);
+  const linkedSum = (c.rotation_links || []).reduce((s, l) => s + (l.portion_eur || 0), 0);
+  const gap = proceeds != null ? proceeds - linkedSum : null;
+  return { proceeds: proceeds, linkedSum: linkedSum, gap: gap };
+}
+
+/* Rotation-candidate finder (C2-D102; extended C2-D122 to also consider closed
+   positions). Unlinked sells across ALL open holdings, PLUS closed_positions entries
+   with remaining unallocated budget, dated within `windowDays` before `buyDate`,
+   sorted closest-to-`buyTotalCost` first.
+   Open-sell side (unchanged): a sell carrying any non-empty rotation_links is
+   permanently excluded — locked decision: once linked it is never re-offered, even if
+   only part of its proceeds was attributed (the remainder stays as ordinary untracked
+   idle cash by design). Proceeds fall back to qty*price when the materialized
+   `proceeds` field is absent (it is stripped on GET /holdings read-back for un-linked
+   sells; qty*price is the identical gross figure).
+   Closed side (C2-D122, new): a closed entry is excluded if its available budget
+   (f2ClosedEntryGap's `gap`) is <= 0.50 (fully allocated already — reuses C2-D120's
+   exact tolerance, not a new one) or if `sell_type === 'exit'` (never meant to fund
+   anything). An UNTAGGED closed entry (no sell_type yet) IS eligible — confirming a
+   suggestion sourced from it also sets sell_type:'rotate' as a side effect
+   (linkRotationToClosedEntry below), an explicit owner action, unlike C2-D115's
+   deliberate choice not to auto-tag a passively rolled-up link. The offered amount is
+   the entry's remaining GAP, never its full original proceeds — offering more than
+   what's actually left would misrepresent what confirming the row does. `closedAt` is
+   the date used for the same window check as an open sell's `date`.
+   Each candidate carries `kind: 'sell' | 'closed'` so the caller knows which write-back
+   path applies. The finder returns the FULL windowed list; the TRIGGER (whether to
+   surface a proposal at all) is a separate caller check — candidates[0] within
+   `tolerance` of buyTotalCost. */
+function f2FindRotationCandidates(holdings, closed, buyDate, buyTotalCost, windowDays = 14, tolerance = 0.10) {
   if (!buyDate || !(buyTotalCost > 0)) return [];
   const bd = new Date(buyDate + 'T00:00:00');
   if (isNaN(bd.getTime())) return [];
@@ -199,8 +228,15 @@ function f2FindRotationCandidates(holdings, buyDate, buyTotalCost, windowDays = 
     if (t.rotation_links && t.rotation_links.length > 0) return;   // already linked → permanently excluded
     if (!t.date || t.date < windowStart || t.date > buyDate) return;
     const proceeds = (t.proceeds != null) ? t.proceeds : t.qty * t.price;
-    candidates.push({ ticker: h.ticker, txnId: t.id, date: t.date, proceeds: proceeds });
+    candidates.push({ kind: 'sell', ticker: h.ticker, txnId: t.id, date: t.date, proceeds: proceeds });
   }));
+  (closed || []).forEach((c) => {
+    if (c.sell_type === 'exit') return;                              // never meant to fund anything
+    if (!c.closedAt || c.closedAt < windowStart || c.closedAt > buyDate) return;
+    const gap = f2ClosedEntryGap(c).gap;
+    if (gap == null || gap <= 0.5) return;                            // fully allocated already (C2-D120 tolerance)
+    candidates.push({ kind: 'closed', ticker: c.ticker, closedId: c.id || { ticker: c.ticker, closedAt: c.closedAt }, closedAt: c.closedAt, proceeds: gap });
+  });
   candidates.sort((a, b) => Math.abs(a.proceeds - buyTotalCost) - Math.abs(b.proceeds - buyTotalCost));
   return candidates;
 }
@@ -227,7 +263,11 @@ function f2ComputeRotationStatuses(holdings) {
   const suggest = {};
   buys.forEach((b) => {
     if (!(b.cost > 0)) return;
-    f2FindRotationCandidates(hs, b.date, b.cost).forEach((c) => {   // unlinked sells in [b.date-14d, b.date]
+    // C2-D122 — pass [] for `closed`: this function's own scope (open-position status
+    // for the Rotations page) is explicitly untouched by the C2-D122 extension — passing
+    // an empty array preserves its exact prior behavior (only open-sell candidates ever
+    // considered here) with no other change needed at this call site.
+    f2FindRotationCandidates(hs, [], b.date, b.cost).forEach((c) => {   // unlinked sells in [b.date-14d, b.date]
       const dist = Math.abs(c.proceeds - b.cost) / b.cost;
       if (dist > 0.10) return;                                       // same trigger gate as C2-D102
       const cur = suggest[c.txnId];
@@ -1039,6 +1079,54 @@ function FincrProvider({ children }) {
         }
         return { ...h, txns };
       }));
+    },
+
+    // linkRotationToClosedEntry (C2-D122) — the closed-position sibling of linkRotation
+    // above. A closed_positions entry has no individual "sell txn" to attach a link to
+    // (it's a summary with one aggregate rotation_links array, C2-D115) and lives in
+    // `closed` state, not `holdings` — linkRotation itself cannot be reused for this case.
+    //
+    // Locates the entry by closedId (id-first, {ticker,closedAt} fallback for legacy
+    // entries — same disambiguation convention as deleteClosedPosition/editClosedPosition).
+    // CRITICAL: a ticker can be BOTH currently open (rebought after a real close) AND have
+    // a historical closed entry under the same ticker (the full-ledger-replay model,
+    // C2-D110, allows this) — matching by ticker alone would silently target the wrong
+    // record. id-first matching (falling back to ticker+closedAt only for entries that
+    // predate the C2-D113 id field) is what prevents that, exactly as it already does for
+    // delete/edit.
+    //
+    // Appends the new destination to the entry's OWN rotation_links, merging idempotently
+    // by target key (same merge linkRotation/RotationDestinationBlocks2 already use — not
+    // reinvented). If the entry was untagged (no sell_type yet), also sets
+    // sell_type:'rotate' in the SAME write — an explicit, active owner confirm action here
+    // (unlike C2-D115's deliberate choice NOT to auto-tag a passively rolled-up link at
+    // close time; this is the owner directly choosing to link a specific suggestion, a
+    // legitimate basis for tagging it that a background roll-up never had).
+    //
+    // Commits via the EXISTING editClosedPosition (id-based matching, reused verbatim — no
+    // new matching/commit mechanics) and reconciles the buy-side reverse link via the
+    // ALREADY source-agnostic reconcileRotatedFrom (confirmed during the C2-D122 scoping
+    // pass: ClosedReviewModal2 already calls it this same way for the closed-position case
+    // today — zero new plumbing on that side). Both are invoked via
+    // window.__fincrStore.actions — the established pattern this file already uses for an
+    // action to call another action from outside the render tree (see the ⌘K comment on
+    // window.__fincrStore near the bottom of this file) — since a plain object-literal
+    // property cannot reference its own sibling properties by name during construction.
+    linkRotationToClosedEntry: (closedId, targetTicker, targetTxnId, portionEur) => {
+      const matchClosed = (c) => (closedId && typeof closedId === 'object'
+        ? (c.ticker === closedId.ticker && c.closedAt === closedId.closedAt)
+        : c.id === closedId);
+      const entry = (closed || []).find(matchClosed);
+      if (!entry) return;
+      const existingLinks = Array.isArray(entry.rotation_links) ? entry.rotation_links : [];
+      const kept = existingLinks.filter((l) => !(l.target_ticker === targetTicker && l.target_txn_id === targetTxnId));
+      const newLinks = [...kept, { target_ticker: targetTicker, target_txn_id: targetTxnId, portion_eur: portionEur }];
+      const patch = { rotation_links: newLinks };
+      if (!entry.sell_type) patch.sell_type = 'rotate';
+      const act = window.__fincrStore && window.__fincrStore.actions;
+      if (!act) return;
+      act.editClosedPosition(entry.ticker, patch, entry.id);
+      act.reconcileRotatedFrom(existingLinks, newLinks, { source_ticker: entry.ticker, source_closed_at: entry.closedAt });
     },
 
     // reconcileRotatedFrom (C2-D103): the shared THREE-WAY relink/unlink primitive.

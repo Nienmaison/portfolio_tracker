@@ -151,31 +151,52 @@ function TxnRow2({ ticker, tx, avgCost }) {
   );
 }
 
-/* RotationProposalCard2 (C2-D102) — dismissible "did a recent sell fund this buy?" prompt
-   shown inside AddTxnForm2 when a buy triggers (a candidate within 10% of buy cost). Mirrors
-   ProposalCard2's amber-card visual grammar (agent2.jsx) WITHOUT coupling to its thesis-
-   proposal data shape (per the Researcher's Q6 finding). Presentational — the form owns the
-   checkbox state and the commit (checked candidates link when the buy is recorded, folding
-   into "Record buy" exactly as the discipline-trim block folds into "Record sell"). Lists the
-   FULL 14-day candidate window (not just the trigger match) so the owner can compose a many-
-   to-many match; shows a running SELECTED vs BUY sum. Dismiss hides it and writes nothing. */
+// C2-D122 — uniform candidate identity regardless of kind. Open-sell candidates key on
+// their txnId; closed-position candidates carry no txnId at all (per f2FindRotationCandidates,
+// store2.jsx) — they key on closedId, a string id or a serialized ticker+closedAt for
+// legacy entries with no id. Used everywhere a candidate needs a stable checkbox/list key.
+function f2RotCandidateKey(c) {
+  if (c.kind === 'closed') {
+    return 'closed:' + (c.closedId && typeof c.closedId === 'object' ? (c.closedId.ticker + '|' + c.closedId.closedAt) : c.closedId);
+  }
+  return 'sell:' + c.txnId;
+}
+
+/* RotationProposalCard2 (C2-D102; extended C2-D122 for closed-position candidates) —
+   dismissible "did a recent sell fund this buy?" prompt shown inside AddTxnForm2 when a
+   buy triggers (a candidate within 10% of buy cost). Mirrors ProposalCard2's amber-card
+   visual grammar (agent2.jsx) WITHOUT coupling to its thesis-proposal data shape (per the
+   Researcher's Q6 finding). Presentational — the form owns the checkbox state and the
+   commit (checked candidates link when the buy is recorded, folding into "Record buy"
+   exactly as the discipline-trim block folds into "Record sell"). Lists the FULL 14-day
+   candidate window (not just the trigger match) so the owner can compose a many-to-many
+   match; shows a running SELECTED vs BUY sum. Dismiss hides it and writes nothing.
+   C2-D122: a candidate sourced from a closed_positions entry gets a small muted "closed"
+   tag — a fully-exited position is a meaningfully different fact than a still-open partial
+   sell, and confirming it triggers a different write-back path (linkRotationToClosedEntry,
+   not linkRotation) that the owner should be able to tell apart at a glance. */
 function RotationProposalCard2({ candidates, checked, onToggle, buyTotalCost, onDismiss, t }) {
   const eur = (n) => '€' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
-  const sum = candidates.reduce((s, c) => s + (checked[c.txnId] ? c.proceeds : 0), 0);
+  const sum = candidates.reduce((s, c) => s + (checked[f2RotCandidateKey(c)] ? c.proceeds : 0), 0);
   return (
     <div style={{ background: t.raise, border: `1px solid ${t.cardBorder}`, borderLeft: `3px solid ${t.amber}`, borderRadius: 8, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div style={{ fontSize: 12, color: t.dim, lineHeight: 1.4 }}>
         Did a recent sell fund this buy? Tag any that did — their proceeds are then tracked as rotated capital, not fresh.
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-        {candidates.map((c) => (
-          <label key={c.txnId} style={{ display: 'flex', alignItems: 'center', gap: 9, cursor: 'pointer' }}>
-            <input type="checkbox" checked={!!checked[c.txnId]} onChange={() => onToggle(c.txnId)} />
-            <span style={{ fontFamily: t.mono, fontSize: 11, fontWeight: 600, color: t.ink, minWidth: 46 }}>{c.ticker}</span>
-            <MonoTxt size={10} color={t.faint}>{c.date}</MonoTxt>
-            <Money size={12} weight={600} style={{ marginLeft: 'auto' }}>{eur(c.proceeds)}</Money>
-          </label>
-        ))}
+        {candidates.map((c) => {
+          const key = f2RotCandidateKey(c);
+          const dateLabel = c.kind === 'closed' ? c.closedAt : c.date;
+          return (
+            <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 9, cursor: 'pointer' }}>
+              <input type="checkbox" checked={!!checked[key]} onChange={() => onToggle(key)} />
+              <span style={{ fontFamily: t.mono, fontSize: 11, fontWeight: 600, color: t.ink, minWidth: 46 }}>{c.ticker}</span>
+              {c.kind === 'closed' && <Chip2 tone="mute">closed</Chip2>}
+              <MonoTxt size={10} color={t.faint}>{dateLabel}</MonoTxt>
+              <Money size={12} weight={600} style={{ marginLeft: 'auto' }}>{eur(c.proceeds)}</Money>
+            </label>
+          );
+        })}
       </div>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8, borderTop: `1px solid ${t.hair}`, paddingTop: 7 }}>
         <MonoTxt size={10} color={t.faint}>SELECTED {eur(sum)} · BUY {eur(buyTotalCost)}</MonoTxt>
@@ -209,28 +230,29 @@ function AddTxnForm2({ ticker, maxSell, onDone }) {
   const trancheLevel = (kind === 'sell' && trancheRule && hForTranche && qtyN > 0)
     ? f2TrancheInRegion(hForTranche, trancheRule, qtyN) : null;
 
-  // Rotation proposal (C2-D102): on a BUY, surface recent unlinked sells that could have
-  // funded it. buyTotalCost mirrors the idle-cash buy impact (qty*price + fee, C2-D98).
+  // Rotation proposal (C2-D102; extended C2-D122 to also consider closed positions): on a
+  // BUY, surface recent unlinked sells (open or fully-closed) that could have funded it.
+  // buyTotalCost mirrors the idle-cash buy impact (qty*price + fee, C2-D98).
   // f2FindRotationCandidates returns the full 14-day windowed list (closest-first); the
   // 10% TRIGGER gate (whether the card appears at all) is checked here on candidates[0].
   const feeN = parseFloat(d.fee) || 0;
-  const [rotChecked, setRotChecked] = React.useState({});     // { sellTxnId: true }
+  const [rotChecked, setRotChecked] = React.useState({});     // { f2RotCandidateKey(c): true }
   const [rotDismissed, setRotDismissed] = React.useState(false);
   const buyTotalCost = (kind === 'buy' && curr === 'EUR' && qtyN > 0 && priceN > 0) ? (qtyN * priceN + feeN) : 0;
   const rotCandidates = (kind === 'buy' && buyTotalCost > 0 && typeof window.f2FindRotationCandidates === 'function')
-    ? window.f2FindRotationCandidates(store.holdings, d.date, buyTotalCost) : [];
+    ? window.f2FindRotationCandidates(store.holdings, store.closed, d.date, buyTotalCost) : [];
   const rotTriggered = rotCandidates.length > 0
     && Math.abs(rotCandidates[0].proceeds - buyTotalCost) / buyTotalCost <= 0.10;
   const showRotCard = rotTriggered && !rotDismissed;
   // Seed the tightest match pre-checked whenever the candidate set (re)appears/changes;
   // clear when the card isn't shown. A checkbox toggle doesn't change rotSig, so it never
   // reseeds/clobbers the user's selection.
-  const rotSig = showRotCard ? rotCandidates.map((c) => c.txnId).join(',') : '';
+  const rotSig = showRotCard ? rotCandidates.map((c) => f2RotCandidateKey(c)).join(',') : '';
   React.useEffect(() => {
-    if (showRotCard && rotCandidates.length) setRotChecked({ [rotCandidates[0].txnId]: true });
+    if (showRotCard && rotCandidates.length) setRotChecked({ [f2RotCandidateKey(rotCandidates[0])]: true });
     else setRotChecked({});
   }, [rotSig]);
-  const toggleRot = (txnId) => setRotChecked((prev) => ({ ...prev, [txnId]: !prev[txnId] }));
+  const toggleRot = (key) => setRotChecked((prev) => ({ ...prev, [key]: !prev[key] }));
 
   const save = async () => {
     if (!valid || saving) return;
@@ -258,13 +280,22 @@ function AddTxnForm2({ ticker, maxSell, onDone }) {
       setSaving(false);
     }
     if (kind === 'buy' && showRotCard) {
-      // Record the buy with a known id, then link each CHECKED candidate sell to it
-      // (many-to-many → one linkRotation per checked sell). Unchecked/none → plain buy.
-      // showRotCard implies curr==='EUR' (rotation gate), so audit is null here.
+      // Record the buy with a known id, then link each CHECKED candidate to it (many-to-many
+      // → one link call per checked candidate). Unchecked/none → plain buy. showRotCard
+      // implies curr==='EUR' (rotation gate), so audit is null here.
+      // C2-D122 — branch per candidate kind: an open-sell candidate links via the existing
+      // linkRotation (onto the sell txn's own rotation_links); a closed-position candidate
+      // links via the new linkRotationToClosedEntry (onto the closed entry's rotation_links,
+      // via editClosedPosition — see store2.jsx for why linkRotation itself can't be reused
+      // for this case).
       const buyId = (typeof window.f2uid === 'function') ? window.f2uid() : ('tx_' + Math.random().toString(36).slice(2, 9));
       store.actions.addTxn(ticker, Object.assign({ kind: 'buy', date: d.date, qty: qtyN, price: priceEur, fee_eur: feeN, id: buyId }, audit || {}));
-      rotCandidates.filter((c) => rotChecked[c.txnId]).forEach((c) => {
-        store.actions.linkRotation(c.ticker, c.txnId, ticker, buyId, c.proceeds);
+      rotCandidates.filter((c) => rotChecked[f2RotCandidateKey(c)]).forEach((c) => {
+        if (c.kind === 'closed') {
+          store.actions.linkRotationToClosedEntry(c.closedId, ticker, buyId, c.proceeds);
+        } else {
+          store.actions.linkRotation(c.ticker, c.txnId, ticker, buyId, c.proceeds);
+        }
       });
     } else if (kind === 'sell') {
       // C2-D107 — sells route through the close-aware commitSell (auto-materializes a
