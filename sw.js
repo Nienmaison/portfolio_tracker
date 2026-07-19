@@ -8,7 +8,7 @@
 // Bump CACHE_VERSION after any significant frontend change to force a full
 // cache flush on all clients.
 
-const CACHE_VERSION = 'fincr-v44'; // C2-D117: CSV-import source tagging, derived per-holding sources tag, dropped-unrecognized-row visibility
+const CACHE_VERSION = 'fincr-v45'; // C2-D118: cross-broker ticker-alias detection at import (curated table, propose/confirm merge)
 
 const SHELL_ASSETS = [
   './index.html',

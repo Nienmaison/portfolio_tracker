@@ -135,6 +135,23 @@ function f2ValidTicker(ticker, type) {
   return /^[A-Z0-9]{1,5}(\.[A-Z]{1,3})?$/.test(ticker);
 }
 
+/* ── Cross-broker ticker aliases [C2-D118] ────────────────────────────────
+   A small, manually curated table — NOT algorithmic company recognition (no
+   cheap way to verify two tickers are the same company without an external
+   reference database). Maps every known variant symbol to one canonical
+   symbol. Extended by hand as new cases are discovered (see decisions.md
+   [C2-D118] for why this stays curated, not fuzzy-matched). When adding an
+   entry, pick the canonical symbol by checking which one actually resolves on
+   the live price feed (/stock-price) — same check used for the original NOK
+   rename (C2-D111) — don't guess. */
+const CROSS_BROKER_ALIASES = {
+  NOK: 'NOK',
+  NOKIA: 'NOK',
+};
+function f2ResolveAlias(ticker) {
+  return CROSS_BROKER_ALIASES[ticker] || ticker;
+}
+
 /* ── Broker auto-detection profiles ───────────────────────────────────────
    ORDER MATTERS: Trading 212 exports also contain an ISIN column, so it must
    be tested before DEGIRO (which detects on 'isin') or a 212 file would be
@@ -563,6 +580,10 @@ function ImportTab2({ go }) {
   // Net positions after Calculate: { positions, dropped } | null
   const [calc, setCalc] = React.useState(null);
   const [sel, setSel] = React.useState([]);        // parallel to calc.positions
+  // C2-D118 — owner's merge/keep-separate choice per cross-broker-alias suggestion,
+  // keyed by ticker+'|'+type (calc.aliasSuggestions' own keys). Never defaulted to
+  // 'merge' — an unaddressed suggestion behaves exactly like today (keep separate).
+  const [aliasDecision, setAliasDecision] = React.useState({});
   const [busy, setBusy] = React.useState(false);
   const [result, setResult] = React.useState(null); // { imported, failed, estimated }
   const [err, setErr] = React.useState(null);
@@ -686,8 +707,25 @@ function ImportTab2({ go }) {
     // C2-D117 (Item C) — sum each file's unrecognised-kind row count alongside the
     // existing net-to-zero `dropped[]`, so the preview can report both.
     const unclassified = files.reduce((s, f) => s + (f.unclassified || 0), 0);
-    setCalc(Object.assign({}, out, { unclassified: unclassified }));
+    // C2-D118 — cross-broker ticker-alias detection: for each incoming position,
+    // resolve BOTH its own ticker and every existing live holding's ticker through
+    // CROSS_BROKER_ALIASES; if they resolve to the same canonical symbol but the
+    // literal tickers differ, this row is very likely the same company under a
+    // different broker's symbol (e.g. Revolut's NOK vs. DEGIRO's NOKIA). Never
+    // auto-merges — only surfaces a suggestion (mirrors the C2-D102 propose/
+    // confirm pattern). Same type required (a stock/crypto symbol collision is
+    // out of scope here, same limitation doImport's own keyOf already documents).
+    const aliasSuggestions = {};
+    out.positions.forEach((p) => {
+      const canonical = f2ResolveAlias(p.ticker);
+      const existing = (store.holdings || []).find((h) => h.type === p.type && h.ticker !== p.ticker && f2ResolveAlias(h.ticker) === canonical);
+      if (existing) {
+        aliasSuggestions[p.ticker + '|' + p.type] = { liveTicker: existing.ticker, canonical: canonical };
+      }
+    });
+    setCalc(Object.assign({}, out, { unclassified: unclassified, aliasSuggestions: aliasSuggestions }));
     setSel(out.positions.map((p) => p.valid)); // valid pre-checked, invalid off
+    setAliasDecision({});
   };
 
   const positions = calc ? calc.positions : [];
@@ -720,7 +758,18 @@ function ImportTab2({ go }) {
 
   /* ── Import the selected net positions ── */
   const doImport = async () => {
-    const rows = positions.filter((p, i) => sel[i] && p.valid);
+    // C2-D118 — a row the owner explicitly chose to Merge gets its ticker rewritten
+    // to the alias table's canonical symbol BEFORE the replay below ever runs. From
+    // here on it's indistinguishable from a CSV row that always said the canonical
+    // ticker — doImport's existing ticker-only keying folds it into the existing
+    // holding with no new merge code (same mechanism today's cross-broker blending
+    // already relies on). Unaddressed / explicitly-kept rows are untouched.
+    const rows = positions.filter((p, i) => sel[i] && p.valid).map((p) => {
+      const key = p.ticker + '|' + p.type;
+      const sugg = calc && calc.aliasSuggestions && calc.aliasSuggestions[key];
+      if (sugg && aliasDecision[key] === 'merge') return Object.assign({}, p, { ticker: sugg.canonical });
+      return p;
+    });
     if (!rows.length) return;
     setBusy(true); setErr(null);
 
@@ -948,8 +997,13 @@ function ImportTab2({ go }) {
               ))}
             </div>
 
-            {positions.map((p, i) => (
-              <div key={p.ticker + '|' + p.type} className="f2-row" style={{ display: 'grid', gridTemplateColumns: pvCols, gap: 12, alignItems: 'center', padding: `${t.rowPadY}px 4px`, borderTop: `1px solid ${t.hair}`, opacity: p.valid ? 1 : 0.62 }}>
+            {positions.map((p, i) => {
+              const aliasKey = p.ticker + '|' + p.type;
+              const sugg = calc.aliasSuggestions && calc.aliasSuggestions[aliasKey];
+              const decision = aliasDecision[aliasKey];
+              return (
+              <React.Fragment key={aliasKey}>
+              <div className="f2-row" style={{ display: 'grid', gridTemplateColumns: pvCols, gap: 12, alignItems: 'center', padding: `${t.rowPadY}px 4px`, borderTop: `1px solid ${t.hair}`, opacity: p.valid ? 1 : 0.62 }}>
                 <button onClick={() => p.valid && toggleRow(i)} disabled={!p.valid} title={p.valid ? undefined : 'Ticker looks invalid — fix the column mapping to import'}
                   style={{ width: 19, height: 19, borderRadius: 5, border: `1.5px solid ${sel[i] && p.valid ? t.green : t.inputBorder}`, background: sel[i] && p.valid ? t.green : 'transparent', cursor: p.valid ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>
                   {sel[i] && p.valid && <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke={t.dark ? '#0A0B0D' : '#fff'} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M2.5 6.5l2.5 2.5 4.5-5"></path></svg>}
@@ -964,7 +1018,26 @@ function ImportTab2({ go }) {
                 <MonoTxt size={12} color={t.green} style={{ textAlign: 'right' }}>{p.buyCount}{p.stakingQty ? '+s' : ''}</MonoTxt>
                 <MonoTxt size={12} color={t.red} style={{ textAlign: 'right' }}>{p.sellCount}</MonoTxt>
               </div>
-            ))}
+              {sugg && (
+                // C2-D118 — cross-broker alias suggestion. Propose only, never auto-merge
+                // (mirrors C2-D102's rotation-suggestion pattern) — owner picks explicitly.
+                <div style={{ margin: '0 4px 10px', padding: '10px 12px', borderRadius: 9, background: t.amberSoft, border: `1px solid ${t.cardBorder}`, fontSize: 11.5, color: t.dim, lineHeight: 1.5 }}>
+                  This row says '{p.ticker}' — you already hold '{sugg.liveTicker}', likely the same company on a different exchange/broker. Treat as the same position?
+                  <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                    <button onClick={() => setAliasDecision((d) => Object.assign({}, d, { [aliasKey]: 'merge' }))}
+                      style={{ border: `1.5px solid ${decision === 'merge' ? t.green : t.inputBorder}`, background: decision === 'merge' ? t.green : 'transparent', color: decision === 'merge' ? (t.dark ? '#0A0B0D' : '#fff') : t.ink, borderRadius: 7, padding: '4px 10px', fontSize: 11.5, fontWeight: 600, cursor: 'pointer', fontFamily: t.sans }}>
+                      Merge into {sugg.liveTicker}
+                    </button>
+                    <button onClick={() => setAliasDecision((d) => Object.assign({}, d, { [aliasKey]: 'keep' }))}
+                      style={{ border: `1.5px solid ${decision === 'keep' ? t.accent : t.inputBorder}`, background: decision === 'keep' ? t.accentSoft : 'transparent', color: t.ink, borderRadius: 7, padding: '4px 10px', fontSize: 11.5, fontWeight: 600, cursor: 'pointer', fontFamily: t.sans }}>
+                      Keep separate
+                    </button>
+                  </div>
+                </div>
+              )}
+              </React.Fragment>
+              );
+            })}
 
             {calc.dropped.length > 0 && (
               <div style={{ fontSize: 11.5, color: t.faint, padding: '12px 4px 0' }}>
