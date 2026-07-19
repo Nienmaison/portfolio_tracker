@@ -1,17 +1,66 @@
-/* Fincr 2.0 — Rotations overview page (C2-D104). One place to see which partial-sells
-   are LINKED / AUTO·PENDING / UNLINKED across the whole book, and to link the ones the
-   at-buy-time heuristic (C2-D102) missed — including retroactively, against history older
-   than its 14-day window. Status is recomputed fresh on every render via
-   f2ComputeRotationStatuses (store2.jsx); the only persisted bit is a dismissed suggestion.
-   Row actions open the SHARED C2-D103 editor (SellRotationModal2) — not a duplicate.
-   v1 = open-holding partial sells only (fully-closed positions are a fast follow-up).
+/* Fincr 2.0 — Rotations overview page (C2-D104; closed-positions section C2-D120).
+   Two sections, deliberately separate vocabularies (see decisions.md [C2-D120] for why):
+     01 — Open positions: which partial-sells on still-open holdings are
+          LINKED / AUTO·PENDING / UNLINKED across the whole book. Status via
+          f2ComputeRotationStatuses (store2.jsx) — UNTOUCHED by C2-D120.
+     02 — Closed positions: untagged / fully allocated / partially allocated / exit,
+          via the new f2ComputeClosedRotationStatuses below (scoped to `closed` only —
+          does not read or modify open-holding state, does not touch store2.jsx).
+   Row actions: section 01 opens the shared C2-D103 editor (SellRotationModal2); section
+   02 opens the shared ClosedReviewModal2 (closedpositions2.jsx) — both reused as-is, no
+   duplicate editors.
    Exports window.RotationsTab2. */
+
+/* C2-D120 — closed-position rotation status. Pure, scoped to `closed` (closed_positions)
+   only — mirrors f2ComputeRotationStatuses' shape/spirit but is NOT a modification of it;
+   open-position status is completely untouched. Vocabulary (locked in the spec, grounded
+   in real data from the scoping pass):
+     untagged            — !sell_type (identical predicate to store2.jsx's untaggedClosedCount)
+     exit                — sell_type:'exit' — settled, never counts as needing attention
+     fully_allocated     — sell_type:'rotate' AND proceeds - Σ(portion_eur) <= 0.50
+     partially_allocated — sell_type:'rotate', gap > 0.50 — NEUTRAL, not an error (leftover
+                            proceeds can legitimately just be untagged realized gain)
+   `usingLegacyProceeds` (proceeds field absent, e.g. OP) reuses the exact existing fallback
+   from ClosedReviewModal2 (closedpositions2.jsx:323-326: sellPrice * qty) — same figure,
+   same "approximate" framing, not reinvented here.
+   `hasIncompleteLink` is the existing, DISTINCT unlinkedRotationCount concept (store2.jsx:
+   675-679) — a rotate-tagged link with no target_txn_id yet — surfaced as a separate note,
+   never folded into the main status label (per spec, these are different questions:
+   "is there enough money accounted for" vs. "is this specific link still a placeholder"). */
+function f2ComputeClosedRotationStatuses(closed) {
+  return (closed || []).map((c) => {
+    const untagged = !c.sell_type;
+    const usingLegacyProceeds = c.proceeds == null;
+    const proceeds = c.proceeds != null
+      ? c.proceeds
+      : (c.sellPrice != null && c.qty != null) ? c.sellPrice * c.qty : null;
+    const links = c.rotation_links || [];
+    const linkedSum = links.reduce((s, l) => s + (l.portion_eur || 0), 0);
+    const gap = proceeds != null ? proceeds - linkedSum : null;
+    const hasIncompleteLink = c.sell_type === 'rotate' && links.length > 0
+      && links.some((l) => l.target_txn_id == null);
+
+    let status;
+    if (untagged) status = 'untagged';
+    else if (c.sell_type === 'exit') status = 'exit';
+    else if (c.sell_type === 'rotate') status = (gap != null && gap <= 0.5) ? 'fully_allocated' : 'partially_allocated';
+    else status = 'untagged'; // defensive: any unrecognised sell_type value
+
+    return {
+      entry: c, id: c.id || null, ticker: c.ticker, closedAt: c.closedAt, status: status,
+      proceeds: proceeds, usingLegacyProceeds: usingLegacyProceeds,
+      linkedSum: linkedSum, gap: gap, hasIncompleteLink: hasIncompleteLink,
+      targets: links.map((l) => l.target_ticker),
+    };
+  });
+}
 
 function RotationsTab2() {
   const t = useTheme2();
   const store = useStore2();
   const F = window.FINCR;
   const [openSell, setOpenSell] = React.useState(null); // { sellTicker, sellTxnId, suggested? }
+  const [reviewKey, setReviewKey] = React.useState(null); // { id } or { ticker, closedAt } for legacy
 
   const statuses = (typeof window.f2ComputeRotationStatuses === 'function')
     ? window.f2ComputeRotationStatuses(store.holdings) : [];
@@ -36,6 +85,21 @@ function RotationsTab2() {
     && ((store.holdings || []).find((h) => h.ticker === openSell.sellTicker) || {}).txns;
   const editingTx = editing ? editing.find((x) => x.id === openSell.sellTxnId) : null;
 
+  // C2-D120 — closed-position rows, most recently closed first. Same "always live, never a
+  // click-time snapshot" discipline as editingTx above: reviewKey stores only an identifier
+  // (stable id when present, ticker+closedAt fallback for legacy entries — the exact
+  // C2-D113 matching convention), and the live entry is looked up fresh on every render.
+  const closedStatuses = f2ComputeClosedRotationStatuses(store.closed);
+  const closedRows = closedStatuses.slice().sort((a, b) => (a.closedAt < b.closedAt ? 1 : (a.closedAt > b.closedAt ? -1 : 0)));
+  const untaggedClosedCount = closedRows.filter((r) => r.status === 'untagged').length;
+  const fullyAllocatedCount = closedRows.filter((r) => r.status === 'fully_allocated').length;
+  const partiallyAllocatedCount = closedRows.filter((r) => r.status === 'partially_allocated').length;
+  const exitCount = closedRows.filter((r) => r.status === 'exit').length;
+
+  const reviewEntry = reviewKey
+    ? (store.closed || []).find((c) => (reviewKey.id ? c.id === reviewKey.id : (c.ticker === reviewKey.ticker && c.closedAt === reviewKey.closedAt)))
+    : null;
+
   const eur = (n, d) => F.eur(n, d);
   const cols = '150px 1fr 210px 116px';
 
@@ -58,6 +122,48 @@ function RotationsTab2() {
       );
     }
     return <Chip2 tone="mute">unlinked</Chip2>;
+  };
+
+  // C2-D120 — closed-section status cell. `partially_allocated` deliberately uses the same
+  // neutral "mute" tone as `unlinked`, NOT an amber/warning tone — leftover proceeds are a
+  // legitimate, common outcome (real example: MRVL), not a mistake to flag.
+  const closedStatusCell = (r) => {
+    const targetLabel = (r.targets && r.targets.length === 1) ? r.targets[0] : ((r.targets || []).length + ' targets');
+    const legacyNote = r.usingLegacyProceeds && (
+      <MonoTxt size={10} color={t.faint} style={{ display: 'block', marginTop: 3 }}>
+        This close predates real proceeds tracking — validating against an approximate figure ({eur(r.proceeds)}).
+      </MonoTxt>
+    );
+    const incompleteNote = r.hasIncompleteLink && (
+      <MonoTxt size={10} color={t.amber} style={{ display: 'block', marginTop: 3 }}>⚠ one link has no buy attached yet</MonoTxt>
+    );
+    if (r.status === 'untagged') {
+      return <div><Chip2 tone="watch">untagged</Chip2>{legacyNote}{incompleteNote}</div>;
+    }
+    if (r.status === 'exit') {
+      return <div><Chip2 tone="mute">exit</Chip2>{legacyNote}</div>;
+    }
+    if (r.status === 'fully_allocated') {
+      return (
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Chip2 tone="accent">fully allocated</Chip2>
+            <MonoTxt size={11} color={t.dim}>→ {targetLabel}</MonoTxt>
+          </div>
+          {legacyNote}{incompleteNote}
+        </div>
+      );
+    }
+    // partially_allocated
+    return (
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Chip2 tone="mute">partially allocated</Chip2>
+          <MonoTxt size={11} color={t.dim}>→ {targetLabel} · {eur(r.gap)} left</MonoTxt>
+        </div>
+        {legacyNote}{incompleteNote}
+      </div>
+    );
   };
 
   return (
@@ -129,6 +235,60 @@ function RotationsTab2() {
         )}
       </section>
 
+      {/* C2-D120 — closed positions */}
+      <section>
+        <SecHead n="02" right={<MonoTxt size={10.5} color={t.faint}>{closedRows.length} CLOSED</MonoTxt>}>Closed positions</SecHead>
+
+        {closedRows.length > 0 && (
+          <div style={{ display: 'flex', gap: 26, flexWrap: 'wrap', marginTop: 12, marginBottom: 4 }}>
+            {[['UNTAGGED', untaggedClosedCount, t.amber], ['PARTIALLY ALLOCATED', partiallyAllocatedCount, t.faint], ['FULLY ALLOCATED', fullyAllocatedCount, t.accent], ['EXIT', exitCount, t.faint]].map((row) => (
+              <div key={row[0]} style={{ display: 'flex', alignItems: 'baseline', gap: 9 }}>
+                <Money size={16} weight={700} color={row[2]}>{row[1]}</Money>
+                <MonoTxt size={9} color={t.faint} style={{ letterSpacing: '0.1em' }}>{row[0]}</MonoTxt>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {closedRows.length === 0 ? (
+          <div style={{ marginTop: 14, padding: '26px 22px', border: `1px dashed ${t.hairStrong}`, borderRadius: 12, textAlign: 'center' }}>
+            <div style={{ fontSize: 13, color: t.faint, lineHeight: 1.5 }}>No closed positions yet.</div>
+          </div>
+        ) : (
+          <div style={{ marginTop: 6 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: cols, gap: 14, padding: '8px 8px', borderBottom: `1px solid ${t.hair}` }}>
+              {['Instrument', 'Detail', 'Status', ''].map((h, i) => (
+                <span key={i} style={{ fontFamily: t.mono, fontSize: 9, fontWeight: 600, letterSpacing: '0.14em', textTransform: 'uppercase', color: t.ghost, textAlign: i === 3 ? 'right' : 'left' }}>{h}</span>
+              ))}
+            </div>
+            {closedRows.map((r, idx) => (
+              <div key={(r.id || (r.ticker + '_' + r.closedAt))} className="f2-row" style={{ display: 'grid', gridTemplateColumns: cols, gap: 14, padding: `${t.rowPadY + 2}px 8px`, alignItems: 'center', borderTop: idx === 0 ? 'none' : `1px solid ${t.hair}`, borderRadius: 6 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                  <span style={{ fontFamily: t.mono, fontSize: 9, fontWeight: 700, letterSpacing: '0.06em', color: t.dim, border: `1px solid ${t.hairStrong}`, borderRadius: 4, padding: '2px 5px' }}>CLS</span>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 700, color: t.ink }}>{r.ticker}</div>
+                    <MonoTxt size={10} color={t.faint} style={{ display: 'block', marginTop: 1 }}>{r.closedAt}</MonoTxt>
+                  </div>
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 7 }}>
+                    <Money size={13.5} weight={700}>{r.proceeds != null ? eur(r.proceeds) : '—'}</Money>
+                    <MonoTxt size={9.5} color={t.ghost} style={{ letterSpacing: '0.1em' }}>PROCEEDS</MonoTxt>
+                  </div>
+                  {r.status !== 'untagged' && r.status !== 'exit' && (
+                    <MonoTxt size={11} color={t.dim} style={{ display: 'block', marginTop: 2 }}>{eur(r.linkedSum)} linked</MonoTxt>
+                  )}
+                </div>
+                <div>{closedStatusCell(r)}</div>
+                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <Btn2 onClick={() => setReviewKey(r.id ? { id: r.id } : { ticker: r.ticker, closedAt: r.closedAt })} style={{ padding: '6px 12px', fontSize: 12 }}>Edit</Btn2>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
       {/* shared C2-D103 editor (modal), pre-filled with the suggestion in Review mode */}
       <SellRotationModal2
         open={!!editingTx}
@@ -137,6 +297,9 @@ function RotationsTab2() {
         suggested={openSell && openSell.suggested}
         onClose={() => setOpenSell(null)}
       />
+
+      {/* C2-D120 — shared C2-S7/S8 editor (modal), reused as-is */}
+      <ClosedReviewModal2 entry={reviewEntry} onClose={() => setReviewKey(null)} />
     </div>
   );
 }

@@ -8,7 +8,7 @@
 // Bump CACHE_VERSION after any significant frontend change to force a full
 // cache flush on all clients.
 
-const CACHE_VERSION = 'fincr-v45'; // C2-D118: cross-broker ticker-alias detection at import (curated table, propose/confirm merge)
+const CACHE_VERSION = 'fincr-v46'; // C2-D120: Rotations overview gains a closed-positions section (untagged/fully/partially allocated/exit)
 
 const SHELL_ASSETS = [
   './index.html',

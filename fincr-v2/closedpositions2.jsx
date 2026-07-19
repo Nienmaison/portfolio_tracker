@@ -542,3 +542,4 @@ function ClosedPositionsList2() {
 
 window.RotationLinkPicker2 = RotationLinkPicker2;
 window.ClosedPositionsList2 = ClosedPositionsList2;
+window.ClosedReviewModal2 = ClosedReviewModal2; // C2-D120 — style-consistency export; already reachable via script-load-order global scoping, reused as-is by rotations2.jsx
