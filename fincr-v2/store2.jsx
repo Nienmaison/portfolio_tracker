@@ -1283,6 +1283,80 @@ function FincrProvider({ children }) {
     return () => { cancelled = true; clearInterval(interval); };
   }, []);
 
+  // C2-D121 — automatic SnapTrade sync on every dashboard load (Version A: browser-
+  // triggered; no server-side/background sync — Version B explicitly deferred, see
+  // decisions.md). Fires both position and activity sync on mount, EVERY load, no
+  // throttle — the owner's explicit preference for always-current data on open.
+  // Non-blocking: this is a mount effect, so the dashboard has already rendered from
+  // last-known state before this ever runs; each sync updates the store in place once
+  // it resolves. Silent-fail, matching the FX-poller's convention just above: a network
+  // issue or SnapTrade outage gets a console.warn only — no blocking error, no retry
+  // within this load (the next full page load tries again naturally).
+  // Reuses the EXACT SAME store actions the manual "Sync brokers"/"Sync history"
+  // buttons call (actions.syncBrokerPositions/syncBrokerActivities, broker2.jsx) — the
+  // merge/guard logic itself (source-aware snapshot merge, the C2-D87 qty-reconciliation
+  // guard, the C2-D88 history-managed guard) is completely untouched; only when it fires
+  // changes. A window-level guard (not component-local state — BrokerConnect2's own
+  // syncing/histing state can't see this effect, and vice versa) stops this auto-trigger
+  // and a manual click from racing each other; status broadcasts via
+  // fincr:broker-sync-status (same custom-event convention as fincr:sync-status-change/
+  // fincr:fx-update) so BrokerConnect2's own UI reflects an auto-triggered sync too, not
+  // just a manual click.
+  React.useEffect(() => {
+    const key = (typeof localStorage !== 'undefined' && localStorage.getItem('fincr-api-key')) || '';
+    if (!key) return; // no-key device — nothing to sync
+
+    const emit = (kind, status, extra) => window.dispatchEvent(new CustomEvent('fincr:broker-sync-status', { detail: { kind: kind, status: status, extra: extra } }));
+
+    (async () => {
+      if (window.__fincrBrokerPosSyncing) return;
+      window.__fincrBrokerPosSyncing = true;
+      emit('positions', 'syncing');
+      try {
+        const r = await fetch(F2_API_BASE + '/broker/positions', { headers: { 'X-API-Key': key } });
+        const d = await r.json();
+        if (r.ok && d.configured !== false) {
+          const res = await actions.syncBrokerPositions(d.positions || []);
+          emit('positions', 'ok', res);
+        } else {
+          emit('positions', 'error', null);
+        }
+      } catch (e) {
+        if (typeof console !== 'undefined') console.warn('[auto-sync] positions failed:', e.message);
+        emit('positions', 'error', null);
+      } finally {
+        window.__fincrBrokerPosSyncing = false;
+      }
+    })();
+
+    (async () => {
+      if (window.__fincrBrokerActSyncing) return;
+      window.__fincrBrokerActSyncing = true;
+      emit('activities', 'syncing');
+      try {
+        // Guard 1 (C2-D87) needs current-position truth alongside the activity feed —
+        // same reason "Sync history" fetches both, independent of the positions fetch above.
+        const [ra, rp] = await Promise.all([
+          fetch(F2_API_BASE + '/broker/activities', { headers: { 'X-API-Key': key } }),
+          fetch(F2_API_BASE + '/broker/positions', { headers: { 'X-API-Key': key } }),
+        ]);
+        const da = await ra.json();
+        const dp = await rp.json();
+        if (ra.ok && da.configured !== false) {
+          const res = await actions.syncBrokerActivities(da.activities || [], dp.positions || []);
+          emit('activities', 'ok', res);
+        } else {
+          emit('activities', 'error', null);
+        }
+      } catch (e) {
+        if (typeof console !== 'undefined') console.warn('[auto-sync] activities failed:', e.message);
+        emit('activities', 'error', null);
+      } finally {
+        window.__fincrBrokerActSyncing = false;
+      }
+    })();
+  }, []);
+
   const ctx = { holdings: derived, closed, targets, totals, loading, drawerTicker, addOpen, actions, deriveHolding: f2DeriveHolding };
   window.__fincrStore = ctx; // latest snapshot for event handlers outside the tree (⌘K)
   return React.createElement(FincrStoreCtx.Provider, { value: ctx }, children);

@@ -8,7 +8,7 @@
 // Bump CACHE_VERSION after any significant frontend change to force a full
 // cache flush on all clients.
 
-const CACHE_VERSION = 'fincr-v47'; // C2-D120 follow-up: closed-positions row simplified to ticker + status chip only
+const CACHE_VERSION = 'fincr-v48'; // C2-D121: automatic SnapTrade sync on every dashboard load (Version A, no throttle)
 
 const SHELL_ASSETS = [
   './index.html',

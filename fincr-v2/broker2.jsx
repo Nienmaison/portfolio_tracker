@@ -45,6 +45,25 @@ function BrokerConnect2() {
     return () => document.removeEventListener('visibilitychange', onVis);
   }, [load]);
 
+  // C2-D121 — reflect the mount-time auto-sync (store2.jsx) in this same UI, not just a
+  // manual click. syncing/histing here now mean "a positions/activities sync is in
+  // flight, whoever triggered it" — the window-level guard (checked in syncBrokers/
+  // syncHistory below) is what actually prevents a manual click and the auto-trigger
+  // from doing real work twice; this listener is just so the buttons/message honestly
+  // reflect it either way.
+  React.useEffect(() => {
+    const onStatus = (e) => {
+      const { kind, status, extra } = e.detail || {};
+      const setBusyFor = kind === 'positions' ? setSyncing : setHisting;
+      if (status === 'syncing') { setBusyFor(true); return; }
+      setBusyFor(false);
+      if (status === 'ok' && extra) { setMsg(summarize(kind === 'positions' ? 'position' : 'ticker history', extra, null)); setErr(null); }
+      else if (status === 'error') { /* auto-sync fails silently by design — no owner-facing error from a background trigger */ }
+    };
+    window.addEventListener('fincr:broker-sync-status', onStatus);
+    return () => window.removeEventListener('fincr:broker-sync-status', onStatus);
+  }, []);
+
   const connect = async () => {
     if (busy) return;                       // Btn2 has no disabled prop — guard here
     const key = apiKey();
@@ -82,24 +101,31 @@ function BrokerConnect2() {
   };
 
   const syncBrokers = async () => {
-    if (syncing) return;
+    // C2-D121 — shared window-level guard with the mount-time auto-sync (store2.jsx): if
+    // an auto-triggered positions sync is already in flight, don't fire a second,
+    // redundant one — the onStatus listener above already reflects its progress here.
+    if (syncing || window.__fincrBrokerPosSyncing) return;
     const key = apiKey();
     if (!key) { setErr('Enter your API key above (Data & connections) first.'); return; }
+    window.__fincrBrokerPosSyncing = true;
     setSyncing(true); setMsg(null); setErr(null);
     try {
       const r = await fetch(BROKER_API_BASE + '/broker/positions', { headers: { 'X-API-Key': key } });
       const d = await r.json();
-      if (!r.ok || d.configured === false) { setErr('Positions unavailable from the server.'); setSyncing(false); return; }
+      if (!r.ok || d.configured === false) { setErr('Positions unavailable from the server.'); setSyncing(false); window.__fincrBrokerPosSyncing = false; return; }
       const res = await store.actions.syncBrokerPositions(d.positions || []);
       setMsg(summarize('position', res, null));
     } catch (e) { setErr('Sync failed. Try again.'); }
     setSyncing(false);
+    window.__fincrBrokerPosSyncing = false;
   };
 
   const syncHistory = async () => {
-    if (histing) return;
+    // C2-D121 — same shared guard, activities side.
+    if (histing || window.__fincrBrokerActSyncing) return;
     const key = apiKey();
     if (!key) { setErr('Enter your API key above (Data & connections) first.'); return; }
+    window.__fincrBrokerActSyncing = true;
     setHisting(true); setMsg(null); setErr(null);
     try {
       // Guard 1 needs the current-position truth alongside the activity feed.
@@ -109,11 +135,12 @@ function BrokerConnect2() {
       ]);
       const da = await ra.json();
       const dp = await rp.json();
-      if (!ra.ok || da.configured === false) { setErr('Activity history unavailable from the server.'); setHisting(false); return; }
+      if (!ra.ok || da.configured === false) { setErr('Activity history unavailable from the server.'); setHisting(false); window.__fincrBrokerActSyncing = false; return; }
       const res = await store.actions.syncBrokerActivities(da.activities || [], dp.positions || []);
       const dropped = da.dropped_activity_count ? (da.dropped_activity_count + ' non-trade dropped') : null;
       setMsg(summarize('ticker history', res, dropped));
     } catch (e) { setErr('History sync failed. Try again.'); }
+    window.__fincrBrokerActSyncing = false;
     setHisting(false);
   };
 
