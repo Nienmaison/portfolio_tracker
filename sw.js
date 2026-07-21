@@ -8,7 +8,7 @@
 // Bump CACHE_VERSION after any significant frontend change to force a full
 // cache flush on all clients.
 
-const CACHE_VERSION = 'fincr-v52'; // Patch: agent seed now prefills input instead of auto-sending (agent2.jsx); ThesisEditor2.save() clears queuedDraft (drawer2.jsx)
+const CACHE_VERSION = 'fincr-v53'; // Patch: sendMessage now checks r.ok before r.json(), distinguishes gateway-timeout-class errors from true network failures (agent2.jsx, C2-D124)
 
 const SHELL_ASSETS = [
   './index.html',

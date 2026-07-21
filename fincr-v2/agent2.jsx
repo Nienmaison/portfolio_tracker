@@ -458,6 +458,22 @@ function AgentTab2() {
         headers: { 'Content-Type': 'application/json', 'X-API-Key': key },
         body: JSON.stringify({ messages: messages, conversation_id: activeConvId }),
       });
+
+      if (!r.ok) {
+        // Gateway/timeout-class responses (e.g. nginx 504 when a web-search-heavy
+        // reply outruns proxy_read_timeout) are not JSON — never hand these to
+        // r.json(). See decisions.md [C2-D124].
+        setThread(function(prev) { return prev.filter(function(m) { return m.id !== typingId; }); });
+        var isGatewayTimeout = (r.status === 502 || r.status === 503 || r.status === 504);
+        var statusMsg = isGatewayTimeout
+          ? 'The agent is taking longer than expected to respond. It may still complete — try again in a moment, or shorten your message.'
+          : 'Something went wrong (status ' + r.status + ') — try again.';
+        setThread(function(prev) {
+          return [...prev, { id: 'err_' + Date.now(), role: 'agent', text: statusMsg, proposals: [] }];
+        });
+        return;
+      }
+
       var d = await r.json();
 
       // Remove typing indicator
