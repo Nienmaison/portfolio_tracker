@@ -64,6 +64,11 @@ function parseAgentResponse(text) {
       // the other invalid-shape discards above. Note: proposed is reassigned
       // to a Number here (was a string from block parsing) so downstream
       // consumers (updateThesisDraft, NumberField2) receive the right type.
+      // Reject empty/missing proposed text before Number() conversion —
+      // Number('') is 0, which would otherwise pass the finite/non-negative
+      // check below and wrongly persist as target_price=0. Mirrors the
+      // core_argument empty-check above.
+      if (!proposed || !proposed.trim()) { console.warn('[agent] discarding proposal: empty target_price proposal'); continue; }
       var tpProposed = Number(proposed);
       if (!Number.isFinite(tpProposed) || tpProposed < 0) {
         console.warn('[agent] discarding proposal: invalid target_price:', proposed);

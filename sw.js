@@ -8,7 +8,7 @@
 // Bump CACHE_VERSION after any significant frontend change to force a full
 // cache flush on all clients.
 
-const CACHE_VERSION = 'fincr-v54'; // C2-D123 extension: agent drafting-mode now also covers target_price (agent2.jsx, drawer2.jsx)
+const CACHE_VERSION = 'fincr-v55'; // C2-D123 follow-up fix: target_price empty-proposal now discarded, drawer auto-reveal covers target_price (agent2.jsx, drawer2.jsx)
 
 const SHELL_ASSETS = [
   './index.html',

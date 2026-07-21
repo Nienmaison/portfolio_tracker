@@ -646,7 +646,7 @@ function PositionDrawer2() {
     function onDraftUpdate(e) {
       var d = e.detail || {};
       if (!drawerTicker || d.ticker !== drawerTicker) return;
-      if (d.fields && d.fields.core_argument != null) setEditingThesis(true);
+      if (d.fields && (d.fields.core_argument != null || d.fields.target_price != null)) setEditingThesis(true);
     }
     window.addEventListener('fincr:thesis-draft-update', onDraftUpdate);
     return () => window.removeEventListener('fincr:thesis-draft-update', onDraftUpdate);
