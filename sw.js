@@ -8,7 +8,7 @@
 // Bump CACHE_VERSION after any significant frontend change to force a full
 // cache flush on all clients.
 
-const CACHE_VERSION = 'fincr-v51'; // Pass 2: agent chat seeded from "Write one with the agent" (positions2.jsx); C2-D123 focus/unsaved-edit guard on thesis draft prefill (drawer2.jsx)
+const CACHE_VERSION = 'fincr-v52'; // Patch: agent seed now prefills input instead of auto-sending (agent2.jsx); ThesisEditor2.save() clears queuedDraft (drawer2.jsx)
 
 const SHELL_ASSETS = [
   './index.html',

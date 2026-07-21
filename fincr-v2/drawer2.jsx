@@ -540,6 +540,7 @@ function ThesisEditor2({ th, onDone }) {
     // superseded by the owner's own edit.
     if (window.__fincrThesisDraft) delete window.__fincrThesisDraft[th.ticker];
     setArgBaseline(arg); // Pass 2 addendum — the just-persisted text is the new baseline
+    setQueuedDraft(null); // Patch — a save clears any stale queued-draft affordance too
     if (window.loadThesis) await window.loadThesis(); // refresh card + drawer
     onDone();
   };

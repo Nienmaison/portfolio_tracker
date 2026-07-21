@@ -324,13 +324,17 @@ function AgentTab2() {
   // with the agent" button (window.__fincrAgentSeed, mirrors store2.jsx's
   // window.__fincrDrawerPrefill one-shot-slot convention). <main key={tab}> in
   // shell2.jsx remounts this component on every switch into the agent tab, so
-  // this fires each time the seeded button is clicked. Auto-sends so the
-  // conversation opens already in context for that ticker.
+  // this fires each time the seeded button is clicked. Prefills the input and
+  // focuses it so the conversation opens in context for that ticker — the
+  // owner still has to hit Send/Enter themselves, same as normal typing.
+  // (Patch: was auto-send via sendMessage(seed.text); corrected per
+  // decisions.md [C2-D123] addendum — owner must trigger every send.)
   React.useEffect(function() {
     var seed = window.__fincrAgentSeed;
     if (seed && seed.text) {
       window.__fincrAgentSeed = null;
-      sendMessage(seed.text);
+      setInputText(seed.text);
+      if (inputRef.current) inputRef.current.focus();
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -406,11 +410,14 @@ function AgentTab2() {
   }
 
   // ── Send message ─────────────────────────────────────────────────────────────
-  // explicitText (Pass 2): lets the seed effect below auto-send a specific
-  // string without going through inputText state (avoids a setState-then-read
-  // race). Button onClick and Enter-key call sites still pass no argument (or
-  // pass their native event, which fails the typeof check and falls back to
-  // inputText) — existing call sites are unaffected.
+  // explicitText (Pass 2): originally let the seed effect above auto-send a
+  // specific string without going through inputText state. The seed effect no
+  // longer calls this with an argument (patch: seed now prefills inputText
+  // instead of auto-sending — see decisions.md [C2-D123] addendum); the
+  // explicitText parameter is left in place since it's harmless and no call
+  // site currently exercises it. Button onClick and Enter-key call sites pass
+  // no argument (or pass their native event, which fails the typeof check and
+  // falls back to inputText) — existing call sites are unaffected.
   async function sendMessage(explicitText) {
     var text = (typeof explicitText === 'string' ? explicitText : inputText).trim();
     if (!text || sending) return;
