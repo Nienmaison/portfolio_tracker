@@ -484,7 +484,11 @@ function ThesisEditor2({ th, onDone }) {
   );
   const [conv, setConv] = React.useState(prefill && prefill.conviction != null ? prefill.conviction : origConv);
   const [stance, setStance] = React.useState(prefill && prefill.stance != null ? prefill.stance : origStance);
-  const [targetStr, setTargetStr] = React.useState(origTarget != null ? String(origTarget) : '');
+  const [targetStr, setTargetStr] = React.useState(
+    prefill && prefill.target_price != null ? String(prefill.target_price) :
+    pendingDraft && pendingDraft.target_price != null ? String(pendingDraft.target_price) :
+    origTarget != null ? String(origTarget) : ''
+  );
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState(false);
   // Pass 2 addendum (fix to C2-D123's "not solved further" gap) — argBaseline is
@@ -497,6 +501,13 @@ function ThesisEditor2({ th, onDone }) {
   // A core_argument draft that arrived while the owner had focus/unsaved edits —
   // held here instead of applied, surfaced as a small click-to-apply affordance.
   const [queuedDraft, setQueuedDraft] = React.useState(null);
+  // target_price extension of C2-D123 — independent guard state, same shape as
+  // arg's above but tracked separately: a proposal might update one field
+  // without the other, so the two fields' focus/unsaved-edit/queued-draft state
+  // must never be conflated.
+  const [targetBaseline, setTargetBaseline] = React.useState(targetStr);
+  const [targetFocused, setTargetFocused] = React.useState(false);
+  const [queuedTargetDraft, setQueuedTargetDraft] = React.useState(null);
 
   // Live update (C2-D123, guarded per Pass 2 addendum): if a core_argument
   // proposal for THIS ticker arrives while this editor is already mounted/open,
@@ -508,19 +519,33 @@ function ThesisEditor2({ th, onDone }) {
     function onDraftUpdate(e) {
       var d = e.detail || {};
       if (d.ticker !== th.ticker) return;
-      if (!d.fields || d.fields.core_argument == null) return;
-      var incoming = d.fields.core_argument;
-      var hasUnsavedEdits = arg !== argBaseline;
-      if (argFocused || hasUnsavedEdits) {
-        setQueuedDraft(incoming);
-      } else {
-        setArg(incoming);
-        setArgBaseline(incoming);
+      if (!d.fields) return;
+      if (d.fields.core_argument != null) {
+        var incoming = d.fields.core_argument;
+        var hasUnsavedEdits = arg !== argBaseline;
+        if (argFocused || hasUnsavedEdits) {
+          setQueuedDraft(incoming);
+        } else {
+          setArg(incoming);
+          setArgBaseline(incoming);
+        }
+      }
+      // target_price extension of C2-D123 — own independent guard, mirrors the
+      // core_argument branch above exactly but never shares state with it.
+      if (d.fields.target_price != null) {
+        var incomingTarget = String(d.fields.target_price);
+        var hasUnsavedTargetEdits = targetStr !== targetBaseline;
+        if (targetFocused || hasUnsavedTargetEdits) {
+          setQueuedTargetDraft(incomingTarget);
+        } else {
+          setTargetStr(incomingTarget);
+          setTargetBaseline(incomingTarget);
+        }
       }
     }
     window.addEventListener('fincr:thesis-draft-update', onDraftUpdate);
     return () => window.removeEventListener('fincr:thesis-draft-update', onDraftUpdate);
-  }, [th.ticker, arg, argBaseline, argFocused]);
+  }, [th.ticker, arg, argBaseline, argFocused, targetStr, targetBaseline, targetFocused]);
 
   const save = async () => {
     setBusy(true); setErr(false);
@@ -541,6 +566,8 @@ function ThesisEditor2({ th, onDone }) {
     if (window.__fincrThesisDraft) delete window.__fincrThesisDraft[th.ticker];
     setArgBaseline(arg); // Pass 2 addendum — the just-persisted text is the new baseline
     setQueuedDraft(null); // Patch — a save clears any stale queued-draft affordance too
+    setTargetBaseline(targetStr); // target_price extension — its own new baseline
+    setQueuedTargetDraft(null); // target_price extension — cleared independently of queuedDraft
     if (window.loadThesis) await window.loadThesis(); // refresh card + drawer
     onDone();
   };
@@ -570,7 +597,23 @@ function ThesisEditor2({ th, onDone }) {
         <Seg2 options={[{ value: 'accumulate', label: 'Accumulate', tone: 'ok' }, { value: 'hold', label: 'Hold', tone: 'mute' }, { value: 'trim', label: 'Trim', tone: 'watch' }]} value={stance} onChange={setStance} />
       </Field2>
       <Field2 label="Price target" hint="optional">
-        <NumberField2 value={targetStr} onChange={setTargetStr} prefix="€" placeholder="—" />
+        {/* NumberField2 has no onFocus/onBlur passthrough of its own; wrapping it
+            works because React 18 implements onFocus/onBlur via focusin/focusout,
+            which bubble, so the wrapper still observes focus entering/leaving the
+            input inside. Mirrors argFocused's role for the core_argument textarea,
+            kept fully independent (targetFocused, not argFocused). */}
+        <div onFocus={() => setTargetFocused(true)} onBlur={() => setTargetFocused(false)}>
+          <NumberField2 value={targetStr} onChange={setTargetStr} prefix="€" placeholder="—" />
+        </div>
+        {queuedTargetDraft != null && (
+          // target_price's own click-to-apply affordance (mirrors queuedDraft's
+          // UI for core_argument above), scoped to this field only — never a
+          // shared/global indicator that would conflate the two fields' drafts.
+          <div onClick={() => { setTargetStr(queuedTargetDraft); setTargetBaseline(queuedTargetDraft); setQueuedTargetDraft(null); }}
+            style={{ marginTop: 6, fontSize: 11, fontFamily: t.mono, color: t.accent, cursor: 'pointer' }}>
+            New draft available — click to apply →
+          </div>
+        )}
       </Field2>
       {err && <MonoTxt size={11} color={t.red}>Failed to save — try again</MonoTxt>}
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>

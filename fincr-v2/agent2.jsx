@@ -11,7 +11,9 @@ const AGENT_HISTORY_CAP = 10;
 // a validated proposals array. Invalid blocks (wrong field, bad enum, ticker
 // not in holdings) are discarded silently (console only). core_argument is a
 // valid field (C2-D123) — free text, no enum check, forwarded like conviction/
-// stance. The system prompt gates WHEN the agent may emit it; this parser only
+// stance. target_price is also a valid field (C2-D123 extension) — no enum,
+// parsed as a plain number and accepted only if finite and non-negative. The
+// system prompt gates WHEN the agent may emit either; this parser only
 // validates shape.
 // Returns { prose: string, proposals: ProposalObject[] }
 // ProposalObject: { ticker, field, current, proposed, reasoning }
@@ -46,7 +48,7 @@ function parseAgentResponse(text) {
       console.warn('[agent] discarding proposal: ticker not in holdings:', ticker);
       continue;
     }
-    if (field !== 'conviction' && field !== 'stance' && field !== 'core_argument') {
+    if (field !== 'conviction' && field !== 'stance' && field !== 'core_argument' && field !== 'target_price') {
       console.warn('[agent] discarding proposal: invalid field:', field);
       continue;
     }
@@ -55,6 +57,19 @@ function parseAgentResponse(text) {
       // non-empty proposed text. Persistence still gated behind the owner's
       // existing thesis-editor Save action — see ProposalCard2/ThesisEditor2.
       if (!proposed || !proposed.trim()) { console.warn('[agent] discarding proposal: empty core_argument proposal'); continue; }
+    } else if (field === 'target_price') {
+      // Plain-number field (C2-D123 extension) — no enum; parse proposed and
+      // accept only a finite, non-negative number. Malformed values are
+      // discarded silently before ever reaching draft state, same pattern as
+      // the other invalid-shape discards above. Note: proposed is reassigned
+      // to a Number here (was a string from block parsing) so downstream
+      // consumers (updateThesisDraft, NumberField2) receive the right type.
+      var tpProposed = Number(proposed);
+      if (!Number.isFinite(tpProposed) || tpProposed < 0) {
+        console.warn('[agent] discarding proposal: invalid target_price:', proposed);
+        continue;
+      }
+      proposed = tpProposed;
     } else {
       var validVals = field === 'conviction' ? VALID_CONVICTIONS : VALID_STANCES;
       if (!validVals.has(current)) { console.warn('[agent] discarding proposal: invalid current:', current); continue; }
@@ -150,10 +165,14 @@ function ProposalCard2({ proposal, onCommit, onEdit }) {
         <div style={{ fontFamily: t.mono, fontSize: 11, color: t.dim }}>{'✓ Saved'}</div>
       ) : (
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          {proposal.field === 'core_argument' ? (
-            // C2-D123 — core_argument has no direct-commit control: it is already
-            // drafted into the thesis editor (session-local) the moment this card
-            // rendered. Persistence only happens via the editor's own Save button.
+          {proposal.field === 'core_argument' || proposal.field === 'target_price' ? (
+            // C2-D123 (extended to target_price) — neither field gets a direct-
+            // commit control on the card: both are already drafted into the
+            // thesis editor (session-local) the moment this card rendered.
+            // Persistence only happens via the editor's own Save button. Bias
+            // toward the conservative "draft into editor, Save gates it" path
+            // for target_price too, consistent with core_argument's precedent
+            // (owner confirms via the existing manual save, nothing auto-commits).
             <React.Fragment>
               <MonoTxt size={10.5} color={t.dim}>Drafted in thesis editor</MonoTxt>
               <Btn2 style={{ fontSize: 11, padding: '5px 12px' }} onClick={handleEdit}>
@@ -490,6 +509,8 @@ function AgentTab2() {
           parsed.proposals.forEach(function(p) {
             if (p.field === 'core_argument') {
               draftStore.actions.updateThesisDraft(p.ticker, { core_argument: p.proposed });
+            } else if (p.field === 'target_price') {
+              draftStore.actions.updateThesisDraft(p.ticker, { target_price: p.proposed });
             }
           });
         }
@@ -519,12 +540,13 @@ function AgentTab2() {
   // Commit: calls saveThesis (Spec 3, thesis-adapter.js) + refreshes F.thesis.
   // reasoning → conversation_summary → last_update_reason in thesis.json.
   async function handleCommit(proposal) {
-    // Defense in depth (C2-D123): core_argument must only ever persist via the
-    // ThesisEditor2 Save button (window.saveThesis called from drawer2.jsx),
-    // never via this direct-commit path. Should be unreachable — ProposalCard2
-    // does not render a Commit control for core_argument — but guarded here too.
-    if (proposal.field === 'core_argument') {
-      console.warn('[agent] refusing direct commit of core_argument — must go through thesis editor Save');
+    // Defense in depth (C2-D123, extended to target_price): core_argument and
+    // target_price must only ever persist via the ThesisEditor2 Save button
+    // (window.saveThesis called from drawer2.jsx), never via this direct-commit
+    // path. Should be unreachable — ProposalCard2 does not render a Commit
+    // control for either field — but guarded here too.
+    if (proposal.field === 'core_argument' || proposal.field === 'target_price') {
+      console.warn('[agent] refusing direct commit of ' + proposal.field + ' — must go through thesis editor Save');
       return false;
     }
     if (!window.saveThesis) { console.warn('[agent] saveThesis not available'); return false; }

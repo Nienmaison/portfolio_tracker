@@ -8,7 +8,7 @@
 // Bump CACHE_VERSION after any significant frontend change to force a full
 // cache flush on all clients.
 
-const CACHE_VERSION = 'fincr-v53'; // Patch: sendMessage now checks r.ok before r.json(), distinguishes gateway-timeout-class errors from true network failures (agent2.jsx, C2-D124)
+const CACHE_VERSION = 'fincr-v54'; // C2-D123 extension: agent drafting-mode now also covers target_price (agent2.jsx, drawer2.jsx)
 
 const SHELL_ASSETS = [
   './index.html',
