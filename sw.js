@@ -8,7 +8,7 @@
 // Bump CACHE_VERSION after any significant frontend change to force a full
 // cache flush on all clients.
 
-const CACHE_VERSION = 'fincr-v49'; // C2-D122: rotation candidates now include closed positions (at-buy suggestion + write-back)
+const CACHE_VERSION = 'fincr-v50'; // C2-D123: agent may draft core_argument proposals in active thesis conversations; drafts flow into ThesisEditor2, persist only via its Save button
 
 const SHELL_ASSETS = [
   './index.html',

@@ -471,13 +471,40 @@ function ThesisEditor2({ th, onDone }) {
   // The stash is set by openDrawerWithPrefill() in store2.jsx and cleared here on first render.
   const prefill = window.__fincrDrawerPrefill || null;
   if (prefill) window.__fincrDrawerPrefill = null;
+  // Pending agent-drafted core_argument text (C2-D123), keyed by ticker, set by
+  // updateThesisDraft() in store2.jsx. Unlike prefill above this is NOT cleared
+  // on read here — it stays pending across a close/reopen with no Save, and is
+  // only cleared once Save actually persists it (below).
+  const pendingDraft = (window.__fincrThesisDraft && window.__fincrThesisDraft[th.ticker]) || null;
 
-  const [arg, setArg] = React.useState(origArg);
+  const [arg, setArg] = React.useState(
+    prefill && prefill.core_argument != null ? prefill.core_argument :
+    pendingDraft && pendingDraft.core_argument != null ? pendingDraft.core_argument :
+    origArg
+  );
   const [conv, setConv] = React.useState(prefill && prefill.conviction != null ? prefill.conviction : origConv);
   const [stance, setStance] = React.useState(prefill && prefill.stance != null ? prefill.stance : origStance);
   const [targetStr, setTargetStr] = React.useState(origTarget != null ? String(origTarget) : '');
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState(false);
+
+  // Live update (C2-D123): if a core_argument proposal for THIS ticker arrives
+  // while this editor is already mounted/open, reflect it in the textarea in
+  // place instead of waiting for a remount. Still purely local React state —
+  // nothing here calls saveThesis. Note: if the owner is mid-edit when this
+  // fires, the incoming proposal overwrites the in-progress typing (accepted
+  // tradeoff — proposals only arrive after a concluded conversation turn, not
+  // mid-keystroke; not solved further here per spec's don't-over-build guidance).
+  React.useEffect(() => {
+    function onDraftUpdate(e) {
+      var d = e.detail || {};
+      if (d.ticker !== th.ticker) return;
+      if (d.fields && d.fields.core_argument != null) setArg(d.fields.core_argument);
+    }
+    window.addEventListener('fincr:thesis-draft-update', onDraftUpdate);
+    return () => window.removeEventListener('fincr:thesis-draft-update', onDraftUpdate);
+  }, [th.ticker]);
+
   const save = async () => {
     setBusy(true); setErr(false);
     // Diff against originals — only send what changed (avoid needless version bumps).
@@ -490,6 +517,11 @@ function ThesisEditor2({ th, onDone }) {
     if (Object.keys(changes).length === 0) { onDone(); return; } // no-op — just close
     const ok = await window.saveThesis(th.ticker, changes, '');
     if (!ok) { setErr(true); setBusy(false); return; }
+    // Clear any pending agent-drafted core_argument for this ticker now that a
+    // save actually went through (C2-D123) — whatever was pending has either
+    // just been persisted (if left unmodified in the textarea) or explicitly
+    // superseded by the owner's own edit.
+    if (window.__fincrThesisDraft) delete window.__fincrThesisDraft[th.ticker];
     if (window.loadThesis) await window.loadThesis(); // refresh card + drawer
     onDone();
   };
@@ -530,6 +562,21 @@ function PositionDrawer2() {
     setMode('detail');
     // Auto-open thesis editor if an agent proposal prefill is waiting (C2-S4b).
     setEditingThesis(!!(window.__fincrDrawerPrefill));
+  }, [drawerTicker]);
+
+  React.useEffect(() => {
+    // C2-D123 — if a core_argument proposal lands for the ticker whose drawer
+    // is already open, reveal the thesis editor so the live-updating textarea
+    // (ThesisEditor2's own listener, above) is visible without closing/reopening
+    // anything. Never opens a drawer for a DIFFERENT ticker than the one
+    // already open — that force-open case is explicitly out of scope (C2-D123).
+    function onDraftUpdate(e) {
+      var d = e.detail || {};
+      if (!drawerTicker || d.ticker !== drawerTicker) return;
+      if (d.fields && d.fields.core_argument != null) setEditingThesis(true);
+    }
+    window.addEventListener('fincr:thesis-draft-update', onDraftUpdate);
+    return () => window.removeEventListener('fincr:thesis-draft-update', onDraftUpdate);
   }, [drawerTicker]);
 
   const h = drawerTicker ? store.holdings.find((x) => x.ticker === drawerTicker) : null;

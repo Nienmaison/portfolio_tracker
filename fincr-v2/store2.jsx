@@ -748,6 +748,18 @@ function FincrProvider({ children }) {
       window.__fincrDrawerPrefill = prefill;
       setDrawerTicker(ticker);
     },
+    updateThesisDraft: (ticker, fields) => {
+      // C2-D123 — session-local, per-ticker thesis draft populated by agent
+      // core_argument proposals. Unlike openDrawerWithPrefill this never opens
+      // or changes the drawer — it only stashes text (keyed by ticker, so it
+      // survives regardless of what's currently open) and fires an event so an
+      // already-mounted ThesisEditor2 for that ticker updates live. Nothing here
+      // touches thesis.json; only the editor's own Save button (window.saveThesis)
+      // persists it.
+      window.__fincrThesisDraft = window.__fincrThesisDraft || {};
+      window.__fincrThesisDraft[ticker] = { ...(window.__fincrThesisDraft[ticker] || {}), ...fields };
+      window.dispatchEvent(new CustomEvent('fincr:thesis-draft-update', { detail: { ticker: ticker, fields: fields } }));
+    },
     closeDrawer: () => setDrawerTicker(null),
     openAdd: () => setAddOpen(true),
     closeAdd: () => setAddOpen(false),
