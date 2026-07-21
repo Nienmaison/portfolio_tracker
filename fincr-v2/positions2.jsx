@@ -73,7 +73,18 @@ function PositionsTab2({ highlight }) {
                 </div>
               </div>
               <div style={{ fontSize: 12.5, color: t.faint, lineHeight: 1.5 }}>No thesis on record. You hold <Money size={12} color={t.dim}>{F.eur(h.value)}</Money> without a written reason.</div>
-              <button className="f2-press" style={{ alignSelf: 'flex-start', fontFamily: t.sans, fontSize: 12, fontWeight: 600, color: t.accent, background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}>Write one with the agent →</button>
+              <button
+                className="f2-press"
+                onClick={() => {
+                  // Pass 2 — seed the agent chat with this ticker so the conversation
+                  // opens already in context. window.__fincrAgentSeed is a one-shot
+                  // slot (mirrors store2.jsx's window.__fincrDrawerPrefill convention);
+                  // fincr:go-tab is the existing tab-switch event (already used
+                  // elsewhere in agent2.jsx, e.g. the "Set API key in Settings" link).
+                  window.__fincrAgentSeed = { ticker: h.ticker, text: `Let's work on the thesis for ${h.ticker}.` };
+                  window.dispatchEvent(new CustomEvent('fincr:go-tab', { detail: { tab: 'agent' } }));
+                }}
+                style={{ alignSelf: 'flex-start', fontFamily: t.sans, fontSize: 12, fontWeight: 600, color: t.accent, background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}>Write one with the agent →</button>
             </div>
           ))}
         </div>

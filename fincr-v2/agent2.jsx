@@ -320,6 +320,20 @@ function AgentTab2() {
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // On mount: consume a one-shot agent seed set by positions2.jsx's "Write one
+  // with the agent" button (window.__fincrAgentSeed, mirrors store2.jsx's
+  // window.__fincrDrawerPrefill one-shot-slot convention). <main key={tab}> in
+  // shell2.jsx remounts this component on every switch into the agent tab, so
+  // this fires each time the seeded button is clicked. Auto-sends so the
+  // conversation opens already in context for that ticker.
+  React.useEffect(function() {
+    var seed = window.__fincrAgentSeed;
+    if (seed && seed.text) {
+      window.__fincrAgentSeed = null;
+      sendMessage(seed.text);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── API helpers ──────────────────────────────────────────────────────────────
   function apiKey() { return localStorage.getItem('fincr-api-key') || ''; }
 
@@ -392,8 +406,13 @@ function AgentTab2() {
   }
 
   // ── Send message ─────────────────────────────────────────────────────────────
-  async function sendMessage() {
-    var text = inputText.trim();
+  // explicitText (Pass 2): lets the seed effect below auto-send a specific
+  // string without going through inputText state (avoids a setState-then-read
+  // race). Button onClick and Enter-key call sites still pass no argument (or
+  // pass their native event, which fails the typeof check and falls back to
+  // inputText) — existing call sites are unaffected.
+  async function sendMessage(explicitText) {
+    var text = (typeof explicitText === 'string' ? explicitText : inputText).trim();
     if (!text || sending) return;
     var key = apiKey();
     if (!key) {

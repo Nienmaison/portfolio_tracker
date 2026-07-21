@@ -8,7 +8,7 @@
 // Bump CACHE_VERSION after any significant frontend change to force a full
 // cache flush on all clients.
 
-const CACHE_VERSION = 'fincr-v50'; // C2-D123: agent may draft core_argument proposals in active thesis conversations; drafts flow into ThesisEditor2, persist only via its Save button
+const CACHE_VERSION = 'fincr-v51'; // Pass 2: agent chat seeded from "Write one with the agent" (positions2.jsx); C2-D123 focus/unsaved-edit guard on thesis draft prefill (drawer2.jsx)
 
 const SHELL_ASSETS = [
   './index.html',

@@ -487,23 +487,40 @@ function ThesisEditor2({ th, onDone }) {
   const [targetStr, setTargetStr] = React.useState(origTarget != null ? String(origTarget) : '');
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState(false);
+  // Pass 2 addendum (fix to C2-D123's "not solved further" gap) — argBaseline is
+  // the last value the textarea was set to by something OTHER than the owner's
+  // own typing (initial mount value, an auto-applied draft, or a persisted save).
+  // Comparing current `arg` against it is how we detect "unsaved edits" below,
+  // without touching what actually gets persisted (still only Save/window.saveThesis).
+  const [argBaseline, setArgBaseline] = React.useState(arg);
+  const [argFocused, setArgFocused] = React.useState(false);
+  // A core_argument draft that arrived while the owner had focus/unsaved edits —
+  // held here instead of applied, surfaced as a small click-to-apply affordance.
+  const [queuedDraft, setQueuedDraft] = React.useState(null);
 
-  // Live update (C2-D123): if a core_argument proposal for THIS ticker arrives
-  // while this editor is already mounted/open, reflect it in the textarea in
-  // place instead of waiting for a remount. Still purely local React state —
-  // nothing here calls saveThesis. Note: if the owner is mid-edit when this
-  // fires, the incoming proposal overwrites the in-progress typing (accepted
-  // tradeoff — proposals only arrive after a concluded conversation turn, not
-  // mid-keystroke; not solved further here per spec's don't-over-build guidance).
+  // Live update (C2-D123, guarded per Pass 2 addendum): if a core_argument
+  // proposal for THIS ticker arrives while this editor is already mounted/open,
+  // only overwrite the textarea when the owner is NOT actively using it — i.e.
+  // it's unfocused AND has no unsaved edits (arg === argBaseline). Otherwise the
+  // draft is queued (never discarded) for the owner to apply on their own terms.
+  // Still purely local React state either way — nothing here calls saveThesis.
   React.useEffect(() => {
     function onDraftUpdate(e) {
       var d = e.detail || {};
       if (d.ticker !== th.ticker) return;
-      if (d.fields && d.fields.core_argument != null) setArg(d.fields.core_argument);
+      if (!d.fields || d.fields.core_argument == null) return;
+      var incoming = d.fields.core_argument;
+      var hasUnsavedEdits = arg !== argBaseline;
+      if (argFocused || hasUnsavedEdits) {
+        setQueuedDraft(incoming);
+      } else {
+        setArg(incoming);
+        setArgBaseline(incoming);
+      }
     }
     window.addEventListener('fincr:thesis-draft-update', onDraftUpdate);
     return () => window.removeEventListener('fincr:thesis-draft-update', onDraftUpdate);
-  }, [th.ticker]);
+  }, [th.ticker, arg, argBaseline, argFocused]);
 
   const save = async () => {
     setBusy(true); setErr(false);
@@ -522,6 +539,7 @@ function ThesisEditor2({ th, onDone }) {
     // just been persisted (if left unmodified in the textarea) or explicitly
     // superseded by the owner's own edit.
     if (window.__fincrThesisDraft) delete window.__fincrThesisDraft[th.ticker];
+    setArgBaseline(arg); // Pass 2 addendum — the just-persisted text is the new baseline
     if (window.loadThesis) await window.loadThesis(); // refresh card + drawer
     onDone();
   };
@@ -530,8 +548,19 @@ function ThesisEditor2({ th, onDone }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 10 }}>
       <Field2 label="Core argument">
         <textarea value={arg} onChange={(e) => setArg(e.target.value)} rows={3} placeholder="Why do you hold this?"
-          onFocus={(e) => e.target.style.borderColor = t.accent} onBlur={(e) => e.target.style.borderColor = t.inputBorder}
+          onFocus={(e) => { e.target.style.borderColor = t.accent; setArgFocused(true); }}
+          onBlur={(e) => { e.target.style.borderColor = t.inputBorder; setArgFocused(false); }}
           style={{ ...inputStyle, resize: 'vertical', minHeight: 66, lineHeight: 1.5 }} />
+        {queuedDraft != null && (
+          // Pass 2 addendum — small click-to-apply affordance for a draft that
+          // arrived while the owner had focus/unsaved edits. Applying it here
+          // only changes the textarea's local display value; it still requires
+          // the owner's own Save click to reach thesis.json, same as any edit.
+          <div onClick={() => { setArg(queuedDraft); setArgBaseline(queuedDraft); setQueuedDraft(null); }}
+            style={{ marginTop: 6, fontSize: 11, fontFamily: t.mono, color: t.accent, cursor: 'pointer' }}>
+            New draft available — click to apply →
+          </div>
+        )}
       </Field2>
       <Field2 label="Conviction">
         <Seg2 options={[{ value: 'high', label: 'High', tone: 'ok' }, { value: 'medium', label: 'Medium', tone: 'watch' }, { value: 'low', label: 'Low', tone: 'mute' }]} value={conv} onChange={setConv} />
