@@ -8,7 +8,7 @@
 // Bump CACHE_VERSION after any significant frontend change to force a full
 // cache flush on all clients.
 
-const CACHE_VERSION = 'fincr-v58'; // C2-D125 addendum: pre-tab-switch guard closing the endConversation data-loss path for un-reviewed thesis_indicators proposals (shell2.jsx)
+const CACHE_VERSION = 'fincr-v59'; // C2-D125 addendum: startNewConversation ('+' button, agent2.jsx) guard closing its sibling endConversation data-loss path for un-reviewed thesis_indicators proposals
 
 const SHELL_ASSETS = [
   './index.html',

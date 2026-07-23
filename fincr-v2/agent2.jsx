@@ -619,7 +619,26 @@ function AgentTab2() {
   }
 
   // Clear thread and start fresh. Lazy — no API call until user sends.
+  // Guarded (C2-D125 follow-up): mirrors guardedSetTab's pending-indicator-
+  // proposal check (shell2.jsx) — same window.__fincrPendingIndicatorProposals
+  // summing logic duplicated here rather than cross-file-imported, matching
+  // this codebase's plain <script type="text/babel"> convention (no ES
+  // modules/shared helper file — see store2.jsx/drawer2.jsx's own per-file
+  // id-generator precedent for the same reasoning). Cancel leaves convId,
+  // thread, and the pending Set completely untouched — nothing unmounts.
   function startNewConversation() {
+    var pendingMap = window.__fincrPendingIndicatorProposals || {};
+    var count = 0;
+    Object.keys(pendingMap).forEach(function (tk) {
+      var s = pendingMap[tk];
+      if (s && s.size) count += s.size;
+    });
+    if (count > 0) {
+      var msg = 'You have ' + count + ' suggested indicator' + (count === 1 ? '' : 's') +
+        " you haven't reviewed yet. Starting a new conversation will lose " + (count === 1 ? 'it' : 'them') +
+        ' permanently. Continue anyway?';
+      if (!confirm(msg)) return; // Cancel — convId/thread/pending Set untouched, nothing lost
+    }
     setConvId(function(prev) {
       if (prev) endConversation(prev);
       return null;
