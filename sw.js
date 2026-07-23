@@ -8,7 +8,7 @@
 // Bump CACHE_VERSION after any significant frontend change to force a full
 // cache flush on all clients.
 
-const CACHE_VERSION = 'fincr-v56'; // C2-D125: thesis_challenge_signals -> typed thesis_indicators (risk/price_level/catalyst); manual list editor + per-suggestion agent accept/dismiss (thesis-adapter.js, positions2.jsx, drawer2.jsx, store2.jsx, agent2.jsx)
+const CACHE_VERSION = 'fincr-v57'; // C2-D125 gap-fix: visible pending-count affordance + soft-confirm-on-Save for un-reviewed thesis_indicators proposals (agent2.jsx, drawer2.jsx)
 
 const SHELL_ASSETS = [
   './index.html',

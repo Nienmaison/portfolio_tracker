@@ -277,6 +277,53 @@ function ProposalCard2({ proposal, onCommit, onEdit }) {
 function IndicatorProposalCard2({ proposal }) {
   const t = useTheme2();
   const [status, setStatus] = React.useState('pending'); // pending | accepted | dismissed
+  // Gap-fix (closes a real production gap found after C2-D125 shipped — see
+  // decisions.md addendum, NOT a reversal of the per-suggestion accept/dismiss
+  // design). `status` above is deliberately local/isolated — that's what makes
+  // "accepting one never affects a sibling" true for free. But that same
+  // isolation is exactly why nothing OUTSIDE a card instance (e.g. drawer2.jsx's
+  // ThesisEditor2, a different component) could ever tell "how many of these
+  // are still awaiting review." idRef gives this instance a stable identity in
+  // a small shared per-ticker Set (window.__fincrPendingIndicatorProposals) —
+  // the minimal shared surface needed for a live pending count elsewhere. Same
+  // window.__fincr* + CustomEvent convention already used for __fincrThesisDraft/
+  // __fincrThesisIndicatorDrafts (store2.jsx). Deliberately NOT a shared
+  // top-level function reused across script tags — this codebase avoids relying
+  // on that (see drawer2.jsx's f2indicatorId redeclaration comment) — every
+  // read/write below touches the window global directly, inline.
+  const idRef = React.useRef('ip_' + Math.random().toString(36).slice(2, 9));
+
+  // Register as pending on mount; unregister the moment status leaves
+  // 'pending' (accept/dismiss) OR on unmount without resolution (e.g.
+  // switching away from the Agent tab, which remounts AgentTab2 and drops the
+  // whole thread). The unmount case is a deliberate scope limit, not an
+  // oversight: these cards have always been pure session-local state that
+  // resets on unmount/reload (see ProposalCard2's own precedent above) — this
+  // patch only makes that existing lifetime VISIBLE elsewhere, it does not add
+  // new durability beyond it.
+  React.useEffect(function() {
+    var ticker = proposal.ticker, id = idRef.current;
+    window.__fincrPendingIndicatorProposals = window.__fincrPendingIndicatorProposals || {};
+    var set = window.__fincrPendingIndicatorProposals[ticker] || new Set();
+    set.add(id);
+    window.__fincrPendingIndicatorProposals[ticker] = set;
+    window.dispatchEvent(new CustomEvent('fincr:indicator-proposal-pending-change', { detail: { ticker: ticker, count: set.size } }));
+    return function() {
+      var s = window.__fincrPendingIndicatorProposals && window.__fincrPendingIndicatorProposals[ticker];
+      if (!s || !s.has(id)) return;
+      s.delete(id);
+      window.dispatchEvent(new CustomEvent('fincr:indicator-proposal-pending-change', { detail: { ticker: ticker, count: s.size } }));
+    };
+  }, [proposal.ticker]);
+
+  React.useEffect(function() {
+    if (status === 'pending') return;
+    var ticker = proposal.ticker, id = idRef.current;
+    var s = window.__fincrPendingIndicatorProposals && window.__fincrPendingIndicatorProposals[ticker];
+    if (!s || !s.has(id)) return;
+    s.delete(id);
+    window.dispatchEvent(new CustomEvent('fincr:indicator-proposal-pending-change', { detail: { ticker: ticker, count: s.size } }));
+  }, [status, proposal.ticker]);
 
   function handleAccept() {
     var store = window.__fincrStore;

@@ -556,6 +556,32 @@ function ThesisEditor2({ th, onDone }) {
     return () => window.removeEventListener('fincr:thesis-indicator-draft-add', onIndicatorDraftAdd);
   }, [th.ticker]);
 
+  // Gap-fix (closes a real production gap found after C2-D125 shipped — see
+  // decisions.md addendum, NOT a reversal of the per-suggestion accept/dismiss
+  // design). Live pending count of NOT-YET-accepted/dismissed indicator
+  // suggestions still sitting in the chat (agent2.jsx's IndicatorProposalCard2
+  // instances), scoped to THIS ticker only. Distinct from pendingIndicatorDrafts
+  // above: that list is suggestions the owner already clicked Accept on and are
+  // waiting on Save — this counts suggestions the owner hasn't clicked
+  // Accept/Dismiss on AT ALL yet, which is the actual visibility gap this patch
+  // closes (a batch of proposals can be entirely un-reviewed with no signal
+  // near Save). Initial read is a synchronous window-global read (same pattern
+  // as pendingIndicatorDrafts above); the listener keeps it live while mounted,
+  // filtered by ticker so a different ticker's pending proposals never leak in.
+  const [pendingProposalCount, setPendingProposalCount] = React.useState(() => {
+    var set = window.__fincrPendingIndicatorProposals && window.__fincrPendingIndicatorProposals[th.ticker];
+    return set ? set.size : 0;
+  });
+  React.useEffect(() => {
+    function onPendingChange(e) {
+      var d = e.detail || {};
+      if (d.ticker !== th.ticker) return;
+      setPendingProposalCount(d.count);
+    }
+    window.addEventListener('fincr:indicator-proposal-pending-change', onPendingChange);
+    return () => window.removeEventListener('fincr:indicator-proposal-pending-change', onPendingChange);
+  }, [th.ticker]);
+
   // Manual editor row helpers — add/edit/remove, fully independent of the agent.
   function addIndicatorRow() {
     setIndicators((prev) => prev.concat([{ id: f2indicatorId(), type: 'risk', text: '', target_price: null }]));
@@ -614,6 +640,16 @@ function ThesisEditor2({ th, onDone }) {
   }, [th.ticker, arg, argBaseline, argFocused, targetStr, targetBaseline, targetFocused]);
 
   const save = async () => {
+    // Gap-fix — single friction moment, never a hard block: if there are
+    // still-unreviewed indicator suggestions for this ticker, ask once before
+    // saving. Cancel returns immediately, before any state mutation (setBusy
+    // included) — Save simply doesn't fire, nothing else changes. Confirming
+    // falls through to the exact same save path as always.
+    if (pendingProposalCount > 0) {
+      var msg = 'You have ' + pendingProposalCount + ' indicator suggestion'
+        + (pendingProposalCount === 1 ? '' : 's') + " you haven't reviewed yet — save anyway?";
+      if (!confirm(msg)) return;
+    }
     setBusy(true); setErr(false);
     // Diff against originals — only send what changed (avoid needless version bumps).
     const changes = {};
@@ -750,6 +786,24 @@ function ThesisEditor2({ th, onDone }) {
           <TextBtn2 tone="accent" onClick={addIndicatorRow} style={{ alignSelf: 'flex-start' }}>+ Add indicator</TextBtn2>
         </div>
       </Field2>
+      {pendingProposalCount > 0 && (
+        // Gap-fix — hard-to-miss, anchored directly above Save (not another
+        // easily-scrolled-past chat card). Clears itself automatically the
+        // instant the count reaches 0 (every pending suggestion for this
+        // ticker accepted or dismissed) — no manual dismiss for this banner.
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+          background: t.amberSoft, border: '1px solid ' + t.amber, borderRadius: 9,
+          padding: '10px 13px',
+        }}>
+          <span style={{ fontSize: 12, color: t.ink, fontWeight: 600 }}>
+            {pendingProposalCount + ' suggested indicator' + (pendingProposalCount === 1 ? '' : 's') + ' awaiting review'}
+          </span>
+          <TextBtn2 tone="accent" onClick={() => window.dispatchEvent(new CustomEvent('fincr:go-tab', { detail: { tab: 'agent' } }))}>
+            Review in chat →
+          </TextBtn2>
+        </div>
+      )}
       {err && <MonoTxt size={11} color={t.red}>Failed to save — try again</MonoTxt>}
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
         <Btn2 onClick={onDone}>Cancel</Btn2>
