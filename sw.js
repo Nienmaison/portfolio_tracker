@@ -8,7 +8,7 @@
 // Bump CACHE_VERSION after any significant frontend change to force a full
 // cache flush on all clients.
 
-const CACHE_VERSION = 'fincr-v57'; // C2-D125 gap-fix: visible pending-count affordance + soft-confirm-on-Save for un-reviewed thesis_indicators proposals (agent2.jsx, drawer2.jsx)
+const CACHE_VERSION = 'fincr-v58'; // C2-D125 addendum: pre-tab-switch guard closing the endConversation data-loss path for un-reviewed thesis_indicators proposals (shell2.jsx)
 
 const SHELL_ASSETS = [
   './index.html',

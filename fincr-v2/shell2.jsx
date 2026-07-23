@@ -35,6 +35,14 @@ function Shell2() {
   const [palette, setPalette] = React.useState(false);
   const [highlight, setHighlight] = React.useState(null);
   const [toast, setToast] = React.useState(null);  // C2-S3 transient non-blocking notice
+  // C2-D125 addendum (tab-switch data-loss close) — latest `tab` value for
+  // guardedSetTab (a referentially-stable useCallback, see below) to read
+  // without needing `tab` in its own deps array. Keeping guardedSetTab stable
+  // matters because `actions` (useMemo, empty deps, below) hands out `go:
+  // guardedSetTab` once on first render — if guardedSetTab itself closed over
+  // `tab` directly it would go stale the moment `tab` changed.
+  const tabRef = React.useRef(tab);
+  tabRef.current = tab;
   const t = window.makeTheme2(mode, density);
   // Owner identity - single source, mirrors backend ACCOUNT_DEFAULT shape ({name, avatar}).
   // Fallback keeps the chip rendering even if appdata did not load. [C2-D55]
@@ -62,7 +70,7 @@ function Shell2() {
     window.addEventListener('fincr:fx-update', handler);
     window.addEventListener('fincr:thesis-update', handler);  // C2-S2: repaint on thesis load
     window.addEventListener('fincr:key-change', handler);  // C2-D89: repaint status bar + tree when the API key is entered
-    const goTab = (e) => { const tk = e.detail && e.detail.tab; if (tk) setTab(tk); };
+    const goTab = (e) => { const tk = e.detail && e.detail.tab; if (tk) guardedSetTab(tk); };
     window.addEventListener('fincr:go-tab', goTab);
     // Tick every 30s so "SYNC 5M AGO" stays fresh between syncs.
     const tick = setInterval(() => forceRerender((n) => n + 1), 30000);
@@ -89,26 +97,60 @@ function Shell2() {
     return () => clearTimeout(id);
   }, [toast]);
 
+  // C2-D125 addendum — closes the tab-switch data-loss path found while
+  // validating the pending-indicators banner: <main key={tab}> in this file
+  // unmounts AgentTab2 on any switch away from 'agent', whose mount-effect
+  // cleanup (agent2.jsx) calls endConversation() for real — any unresolved
+  // IndicatorProposalCard2 for that conversation is then unrecoverable (the
+  // resume/reopen path hardcodes proposals:[] on every reconstructed message).
+  // Every path that can change `tab` funnels through this single guard instead
+  // of duplicating the confirm() per call site: the fincr:go-tab listener, the
+  // command palette's actions.go, focusTicker, the 1–5 keyboard shortcuts, and
+  // the sidebar rail buttons all call setTab today (confirmed via grep — no
+  // other file calls setTab directly; children only ever reach it through the
+  // `go`/`focusTicker` actions below). Returns true if the switch proceeded
+  // (or wasn't gated), false if the owner canceled — callers with follow-on
+  // side effects (focusTicker) check this before running them.
+  const guardedSetTab = React.useCallback((next) => {
+    var current = tabRef.current;
+    if (current === 'agent' && next !== 'agent') {
+      var pendingMap = window.__fincrPendingIndicatorProposals || {};
+      var count = 0;
+      Object.keys(pendingMap).forEach(function (tk) {
+        var s = pendingMap[tk];
+        if (s && s.size) count += s.size;
+      });
+      if (count > 0) {
+        var msg = 'You have ' + count + ' suggested indicator' + (count === 1 ? '' : 's') +
+          " you haven't reviewed yet. Leaving now will lose " + (count === 1 ? 'it' : 'them') +
+          ' permanently. Leave anyway?';
+        if (!confirm(msg)) return false; // Cancel — stay on 'agent', nothing unmounts, proposals untouched
+      }
+    }
+    setTab(next);
+    return true;
+  }, []);
+
   const actions = React.useMemo(() => ({
-    go: setTab,
+    go: guardedSetTab,
     toggleDiscrete: () => setDiscrete((d) => !d),
     toggleTheme: () => setMode((m) => m === 'ink' ? 'paper' : 'ink'),
     toggleRail: () => setRailOpen((r) => !r),
     addPosition: () => window.__fincrStore && window.__fincrStore.actions.openAdd(),
     openTicker: (tk) => window.__fincrStore && window.__fincrStore.actions.openDrawer(tk),
-    focusTicker: (tk) => {setTab('positions');setHighlight(tk);setTimeout(() => setHighlight(null), 2600);}
-  }), []);
+    focusTicker: (tk) => {if (!guardedSetTab('positions')) return;setHighlight(tk);setTimeout(() => setHighlight(null), 2600);}
+  }), [guardedSetTab]);
 
   React.useEffect(() => {
     const onKey = (e) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {e.preventDefault();setPalette((p) => !p);return;}
       const tag = (e.target.tagName || '').toLowerCase();
       if (tag === 'input' || tag === 'textarea' || e.metaKey || e.ctrlKey || e.altKey) return;
-      if (e.key === '1') setTab('overview');else
-      if (e.key === '2') setTab('positions');else
-      if (e.key === '3') setTab('agent');else
-      if (e.key === '4') setTab('import');else
-      if (e.key === '5') setTab('settings');
+      if (e.key === '1') guardedSetTab('overview');else
+      if (e.key === '2') guardedSetTab('positions');else
+      if (e.key === '3') guardedSetTab('agent');else
+      if (e.key === '4') guardedSetTab('import');else
+      if (e.key === '5') guardedSetTab('settings');
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -135,7 +177,7 @@ function Shell2() {
   const railItem = (id, label, d, anchor) => {
     const on = tab === id;
     return (
-      <button key={id} onClick={() => setTab(id)} title={railOpen ? undefined : label} style={{ display: 'flex', alignItems: 'center', justifyContent: railOpen ? 'flex-start' : 'center', gap: railOpen ? 12 : 0, padding: railOpen ? '10px 12px' : '10px 0', borderRadius: 11, fontSize: 13.5, fontWeight: 600, fontFamily: t.sans, cursor: 'pointer', textAlign: 'left', width: '100%',
+      <button key={id} onClick={() => guardedSetTab(id)} title={railOpen ? undefined : label} style={{ display: 'flex', alignItems: 'center', justifyContent: railOpen ? 'flex-start' : 'center', gap: railOpen ? 12 : 0, padding: railOpen ? '10px 12px' : '10px 0', borderRadius: 11, fontSize: 13.5, fontWeight: 600, fontFamily: t.sans, cursor: 'pointer', textAlign: 'left', width: '100%',
         color: on ? t.railInk : t.railDim, background: on ? t.railActive : 'transparent', border: `1px solid ${on ? t.railBorder : 'transparent'}`, transition: 'all 0.15s' }}>
         <svg width="19" height="19" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><path d={d} data-comment-anchor={anchor || undefined} /></svg>
         {railOpen && <span style={{ whiteSpace: 'nowrap', overflow: 'hidden' }}>{label}</span>}
