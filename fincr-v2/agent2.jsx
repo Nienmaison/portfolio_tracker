@@ -490,6 +490,56 @@ function ConvRailItem2({ conv, active, t, onOpen, onRename }) {
   );
 }
 
+// ── Shared pending-indicator-proposal guard (consolidates 3 prior one-offs) ───
+// Three independent call sites used to each carry their OWN copy of the same
+// "sum window.__fincrPendingIndicatorProposals, confirm() if > 0" logic:
+// guardedSetTab (shell2.jsx, C2-D125 tab-switch addendum), startNewConversation
+// (agent2.jsx, C2-D125 "+"-button addendum), and openConversation (agent2.jsx,
+// found unguarded during that same addendum's sweep and explicitly flagged as
+// a follow-up rather than fixed inline). Three occurrences of the identical
+// bug class is the trigger signal for a structural fix rather than a fourth
+// copy-pasted guard — see decisions.md [C2-D125] addendum (this session).
+//
+// Defined ONCE here (agent2.jsx owns window.__fincrPendingIndicatorProposals
+// and two of the three call sites) and exposed as a window global so shell2.jsx
+// — a separate <script type="text/babel"> tag with no ES-module import between
+// them — can call into the identical logic instead of duplicating it. This is
+// a deliberate exception to this codebase's usual "small helpers/constants get
+// redeclared per file" convention (e.g. the ind_-id-generator precedent): that
+// convention is fine when only the output *shape* matters (any file's copy of
+// a random-id generator behaves identically by construction), but here the
+// whole point of consolidating is that the exact confirm() wording and
+// summing behavior must be the SAME code, not three copies that could drift.
+// index.html loads agent2.jsx (line 62) before shell2.jsx (line 71), so this
+// global is guaranteed to exist by the time any guarded action can actually
+// fire (all three are click-time actions, long after both scripts have run).
+//
+// actionFn: the real thread/tab-replacing action, called only if the caller
+//   should proceed (zero pending, or the owner confirmed).
+// actionPhrase: gerund-style clause slotted into the existing sentence shape,
+//   e.g. "Leaving now", "Starting a new conversation", "Switching conversations".
+// closeQuestion: the confirm's final question, e.g. "Leave anyway?" — kept as
+//   its own parameter (rather than hardcoded) so each of the two already-
+//   shipped call sites keeps its EXACT prior copy verbatim (no visible copy
+//   regression from this refactor).
+// Returns true if actionFn ran (or wasn't gated), false if the owner canceled.
+window.__fincrGuardedThreadReplace = function(actionFn, actionPhrase, closeQuestion) {
+  var pendingMap = window.__fincrPendingIndicatorProposals || {};
+  var count = 0;
+  Object.keys(pendingMap).forEach(function (tk) {
+    var s = pendingMap[tk];
+    if (s && s.size) count += s.size;
+  });
+  if (count > 0) {
+    var msg = 'You have ' + count + ' suggested indicator' + (count === 1 ? '' : 's') +
+      " you haven't reviewed yet. " + actionPhrase + ' will lose ' + (count === 1 ? 'it' : 'them') +
+      ' permanently. ' + closeQuestion;
+    if (!confirm(msg)) return false; // Cancel — nothing runs, state untouched
+  }
+  actionFn();
+  return true;
+};
+
 // ── AgentTab2 — main component ────────────────────────────────────────────────
 // Live /chat integration ported from archive/v1.html.
 // Thread rail: full conversation management (list/new/open/resume/rename/end).
@@ -590,6 +640,16 @@ function AgentTab2() {
   }
 
   // Load a past conversation into the thread (open/resume).
+  // Guarded (this session — was found unguarded, flagged not fixed, in the
+  // C2-D125 "+"-button addendum): switching to a different past conversation
+  // replaces `thread` wholesale, silently unmounting any IndicatorProposalCard2
+  // still pending for the conversation being left. Routed through the shared
+  // window.__fincrGuardedThreadReplace (defined above AgentTab2) — same
+  // mechanism guardedSetTab (shell2.jsx) and startNewConversation (below) use,
+  // so this is the third and final call site consolidated onto one guard
+  // rather than a fourth hand-copied confirm(). Cancel leaves thread/convId
+  // completely untouched — the fetch already happened, but nothing from it
+  // is applied unless the owner confirms (or there was nothing to lose).
   async function openConversation(id) {
     var key = apiKey();
     if (!key) return;
@@ -602,9 +662,11 @@ function AgentTab2() {
       var restoredThread = msgs.map(function(m) {
         return { id: 'h_' + Math.random().toString(36).slice(2, 8), role: m.role === 'user' ? 'user' : 'agent', text: m.content, proposals: [] };
       });
-      setThread(restoredThread);
-      convMsgsRef.current = msgs.map(function(m) { return { role: m.role, content: m.content }; });
-      setConvId(id);
+      window.__fincrGuardedThreadReplace(function() {
+        setThread(restoredThread);
+        convMsgsRef.current = msgs.map(function(m) { return { role: m.role, content: m.content }; });
+        setConvId(id);
+      }, 'Switching conversations', 'Continue anyway?');
     } catch(e) { console.warn('[agent] openConversation failed:', e.message); }
   }
 
@@ -619,33 +681,22 @@ function AgentTab2() {
   }
 
   // Clear thread and start fresh. Lazy — no API call until user sends.
-  // Guarded (C2-D125 follow-up): mirrors guardedSetTab's pending-indicator-
-  // proposal check (shell2.jsx) — same window.__fincrPendingIndicatorProposals
-  // summing logic duplicated here rather than cross-file-imported, matching
-  // this codebase's plain <script type="text/babel"> convention (no ES
-  // modules/shared helper file — see store2.jsx/drawer2.jsx's own per-file
-  // id-generator precedent for the same reasoning). Cancel leaves convId,
-  // thread, and the pending Set completely untouched — nothing unmounts.
+  // Guarded via the shared window.__fincrGuardedThreadReplace (defined above
+  // AgentTab2) — this used to carry its own duplicated summing+confirm copy
+  // (C2-D125 "+"-button addendum); consolidated this session alongside
+  // guardedSetTab (shell2.jsx) and openConversation (above) onto one guard.
+  // Cancel leaves convId, thread, and the pending Set completely untouched —
+  // nothing unmounts.
   function startNewConversation() {
-    var pendingMap = window.__fincrPendingIndicatorProposals || {};
-    var count = 0;
-    Object.keys(pendingMap).forEach(function (tk) {
-      var s = pendingMap[tk];
-      if (s && s.size) count += s.size;
-    });
-    if (count > 0) {
-      var msg = 'You have ' + count + ' suggested indicator' + (count === 1 ? '' : 's') +
-        " you haven't reviewed yet. Starting a new conversation will lose " + (count === 1 ? 'it' : 'them') +
-        ' permanently. Continue anyway?';
-      if (!confirm(msg)) return; // Cancel — convId/thread/pending Set untouched, nothing lost
-    }
-    setConvId(function(prev) {
-      if (prev) endConversation(prev);
-      return null;
-    });
-    setThread([]);
-    convMsgsRef.current = [];
-    if (inputRef.current) inputRef.current.focus();
+    window.__fincrGuardedThreadReplace(function() {
+      setConvId(function(prev) {
+        if (prev) endConversation(prev);
+        return null;
+      });
+      setThread([]);
+      convMsgsRef.current = [];
+      if (inputRef.current) inputRef.current.focus();
+    }, 'Starting a new conversation', 'Continue anyway?');
   }
 
   // ── Send message ─────────────────────────────────────────────────────────────

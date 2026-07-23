@@ -111,21 +111,19 @@ function Shell2() {
   // `go`/`focusTicker` actions below). Returns true if the switch proceeded
   // (or wasn't gated), false if the owner canceled — callers with follow-on
   // side effects (focusTicker) check this before running them.
+  //
+  // Consolidated this session: the summing+confirm logic used to be its own
+  // copy here (a sibling copy also lived in agent2.jsx's startNewConversation,
+  // and a third call site — openConversation — had no guard at all). All three
+  // now route through window.__fincrGuardedThreadReplace (defined once in
+  // agent2.jsx, which loads before this file per index.html's script order —
+  // see that function's own comment for why a shared global is the right call
+  // here instead of this codebase's usual per-file-duplication convention).
+  // Wording unchanged from what shipped in the tab-switch addendum.
   const guardedSetTab = React.useCallback((next) => {
     var current = tabRef.current;
     if (current === 'agent' && next !== 'agent') {
-      var pendingMap = window.__fincrPendingIndicatorProposals || {};
-      var count = 0;
-      Object.keys(pendingMap).forEach(function (tk) {
-        var s = pendingMap[tk];
-        if (s && s.size) count += s.size;
-      });
-      if (count > 0) {
-        var msg = 'You have ' + count + ' suggested indicator' + (count === 1 ? '' : 's') +
-          " you haven't reviewed yet. Leaving now will lose " + (count === 1 ? 'it' : 'them') +
-          ' permanently. Leave anyway?';
-        if (!confirm(msg)) return false; // Cancel — stay on 'agent', nothing unmounts, proposals untouched
-      }
+      return window.__fincrGuardedThreadReplace(function() { setTab(next); }, 'Leaving now', 'Leave anyway?');
     }
     setTab(next);
     return true;
