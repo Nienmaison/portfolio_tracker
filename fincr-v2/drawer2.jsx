@@ -456,9 +456,19 @@ function Stat2({ label, children, color }) {
   );
 }
 
+// C2-D125 — local redeclaration, not a reference to store2.jsx's f2indicatorId.
+// Matches this codebase's existing convention (see THESIS_SENTINEL, redeclared
+// identically in both positions2.jsx and here) of each plain-script file owning
+// its own copy of small constants/helpers rather than relying on cross-<script>-
+// tag global-scope leakage of top-level const/let. Same id shape as store2.jsx's
+// generator (used there for agent-accepted drafts) and f2closedId (C2-D113) —
+// this copy is for manually-added rows, created directly in this file.
+const f2indicatorId = () => 'ind_' + Math.random().toString(36).slice(2, 9);
+
 /* C2-S3 — inline per-holding thesis editor. Edits core_argument / conviction /
-   stance / target_price via POST /thesis/update (window.saveThesis), sends only
-   changed fields, then refreshes F.thesis via loadThesis(). Transient local state. */
+   stance / target_price / thesis_indicators (C2-D125) via POST /thesis/update
+   (window.saveThesis), sends only changed fields, then refreshes F.thesis via
+   loadThesis(). Transient local state. */
 function ThesisEditor2({ th, onDone }) {
   const t = useTheme2();
   // Original backend values. The adapter display-cases conviction/stance; lowercasing
@@ -509,6 +519,62 @@ function ThesisEditor2({ th, onDone }) {
   const [targetFocused, setTargetFocused] = React.useState(false);
   const [queuedTargetDraft, setQueuedTargetDraft] = React.useState(null);
 
+  // C2-D125 — thesis_indicators (typed list: risk/price_level/catalyst).
+  // origIndicators is the last-saved backend state, read fresh on mount, same
+  // as origArg/origConv/origStance/origTarget above.
+  const origIndicators = th.indicators || [];
+  // Any agent-accepted indicator suggestions still pending (not yet saved),
+  // stashed by store2.jsx's addThesisIndicatorDraft — mirrors pendingDraft's
+  // role above, but as a list. NOT cleared on read here (same as pendingDraft):
+  // stays pending across a close/reopen with no Save, only cleared once Save
+  // actually persists it (below).
+  const pendingIndicatorDrafts = (window.__fincrThesisIndicatorDrafts && window.__fincrThesisIndicatorDrafts[th.ticker]) || [];
+  // Initial list = saved entries + any pending drafts not already reflected in
+  // the saved list (id dedup — a draft accepted, saved, then somehow not
+  // cleared should never double up). This is the ONLY place ids are deduped on
+  // read; the live-append listener below dedupes on write for the same reason.
+  const [indicators, setIndicators] = React.useState(() => {
+    var extra = pendingIndicatorDrafts.filter((d) => !origIndicators.some((o) => o.id === d.id));
+    return origIndicators.concat(extra);
+  });
+
+  // Live append (C2-D125): an agent-accepted indicator suggestion for THIS
+  // ticker arrived (via agent2.jsx's per-suggestion Accept -> store2.jsx's
+  // addThesisIndicatorDraft) while this editor is already mounted. Unlike the
+  // core_argument/target_price guard above, a list needs no focus/unsaved-edit
+  // guard at all: appending a new entry can never clobber an entry the owner is
+  // mid-edit on elsewhere in the list (per spec — a list is naturally safe
+  // against the overwrite failure mode a single scalar has to guard against).
+  // Simple append, deduped by id so a duplicate event can never double an entry.
+  React.useEffect(() => {
+    function onIndicatorDraftAdd(e) {
+      var d = e.detail || {};
+      if (d.ticker !== th.ticker || !d.indicator) return;
+      setIndicators((prev) => prev.some((x) => x.id === d.indicator.id) ? prev : prev.concat([d.indicator]));
+    }
+    window.addEventListener('fincr:thesis-indicator-draft-add', onIndicatorDraftAdd);
+    return () => window.removeEventListener('fincr:thesis-indicator-draft-add', onIndicatorDraftAdd);
+  }, [th.ticker]);
+
+  // Manual editor row helpers — add/edit/remove, fully independent of the agent.
+  function addIndicatorRow() {
+    setIndicators((prev) => prev.concat([{ id: f2indicatorId(), type: 'risk', text: '', target_price: null }]));
+  }
+  function updateIndicatorRow(id, patch) {
+    setIndicators((prev) => prev.map((ind) => {
+      if (ind.id !== id) return ind;
+      var next = { ...ind, ...patch };
+      // type-conditional: target_price only means anything for price_level —
+      // clearing it on a type change away from price_level keeps the shape
+      // honest rather than leaving a stale number the UI no longer shows.
+      if (next.type !== 'price_level') next.target_price = null;
+      return next;
+    }));
+  }
+  function removeIndicatorRow(id) {
+    setIndicators((prev) => prev.filter((ind) => ind.id !== id));
+  }
+
   // Live update (C2-D123, guarded per Pass 2 addendum): if a core_argument
   // proposal for THIS ticker arrives while this editor is already mounted/open,
   // only overwrite the textarea when the owner is NOT actively using it — i.e.
@@ -556,6 +622,16 @@ function ThesisEditor2({ th, onDone }) {
     if (stance !== origStance) changes.stance = stance;
     const newTarget = targetStr.trim() === '' ? null : Number(targetStr);
     if (newTarget !== origTarget) changes.target_price = newTarget;
+    // C2-D125 — thesis_indicators. Rows with empty/whitespace-only text are
+    // dropped before diffing/sending: the owner can click "+ Add indicator",
+    // decide not to fill it in, and Cancel/Save without it ever blocking Save
+    // or persisting a blank entry. Compared by JSON (order + content) against
+    // the last-saved list — cheap and correct at this list size, same
+    // "only send what changed" discipline as every other field here.
+    const cleanIndicators = indicators
+      .filter((ind) => ind.text && ind.text.trim())
+      .map((ind) => ({ id: ind.id, type: ind.type, text: ind.text.trim(), target_price: ind.type === 'price_level' ? ind.target_price : null }));
+    if (JSON.stringify(cleanIndicators) !== JSON.stringify(origIndicators)) changes.thesis_indicators = cleanIndicators;
     if (Object.keys(changes).length === 0) { onDone(); return; } // no-op — just close
     const ok = await window.saveThesis(th.ticker, changes, '');
     if (!ok) { setErr(true); setBusy(false); return; }
@@ -564,10 +640,15 @@ function ThesisEditor2({ th, onDone }) {
     // just been persisted (if left unmodified in the textarea) or explicitly
     // superseded by the owner's own edit.
     if (window.__fincrThesisDraft) delete window.__fincrThesisDraft[th.ticker];
+    // C2-D125 — same clearing discipline for the indicator draft list: whatever
+    // was pending has now either been persisted (if still present/unedited in
+    // `indicators`) or explicitly dropped by the owner's own remove/edit.
+    if (window.__fincrThesisIndicatorDrafts) delete window.__fincrThesisIndicatorDrafts[th.ticker];
     setArgBaseline(arg); // Pass 2 addendum — the just-persisted text is the new baseline
     setQueuedDraft(null); // Patch — a save clears any stale queued-draft affordance too
     setTargetBaseline(targetStr); // target_price extension — its own new baseline
     setQueuedTargetDraft(null); // target_price extension — cleared independently of queuedDraft
+    setIndicators(cleanIndicators); // C2-D125 — the just-persisted list is the new baseline
     if (window.loadThesis) await window.loadThesis(); // refresh card + drawer
     onDone();
   };
@@ -615,6 +696,60 @@ function ThesisEditor2({ th, onDone }) {
           </div>
         )}
       </Field2>
+      {/* C2-D125 — manual add/edit/remove list editor for thesis_indicators.
+          Fully independent of the agent: every row here can be created, typed
+          into, and removed with no agent involvement whatsoever, bound to the
+          same local `indicators` state agent-accepted suggestions also append
+          to (see the live-append effect above) and the same Save flow as every
+          other field on this form (POST /thesis/update via window.saveThesis —
+          no new write path). */}
+      <Field2 label="Thesis indicators" hint="risks · price levels · catalysts">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {indicators.map((ind) => (
+            <div key={ind.id} style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 10, border: `1px solid ${t.hair}`, borderRadius: 8 }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <div style={{ flex: 1 }}>
+                  <Seg2
+                    options={[
+                      { value: 'risk', label: 'Risk', tone: 'bad' },
+                      { value: 'price_level', label: 'Price level', tone: 'watch' },
+                      { value: 'catalyst', label: 'Catalyst', tone: 'ok' },
+                    ]}
+                    value={ind.type}
+                    onChange={(v) => updateIndicatorRow(ind.id, { type: v })}
+                  />
+                </div>
+                <button onClick={() => removeIndicatorRow(ind.id)} title="Remove indicator" className="f2-press"
+                  style={{ background: 'none', border: 'none', color: t.faint, cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: '4px 6px', borderRadius: 6, flexShrink: 0 }}>
+                  {'×'}
+                </button>
+              </div>
+              <TextField2
+                value={ind.text}
+                onChange={(v) => updateIndicatorRow(ind.id, { text: v })}
+                placeholder={
+                  ind.type === 'price_level' ? 'e.g. Accumulate more below this level'
+                  : ind.type === 'catalyst' ? 'e.g. Q3 earnings, mainnet launch, regulatory ruling'
+                  : 'e.g. What would prove this thesis wrong?'
+                }
+              />
+              {/* Type-conditional field — target_price only ever rendered for
+                  Price Level, per spec. updateIndicatorRow also force-nulls
+                  target_price whenever type changes away from price_level, so
+                  no stale number can hide behind a hidden field. */}
+              {ind.type === 'price_level' && (
+                <NumberField2
+                  value={ind.target_price != null ? String(ind.target_price) : ''}
+                  onChange={(v) => updateIndicatorRow(ind.id, { target_price: v.trim() === '' ? null : Number(v) })}
+                  prefix="€"
+                  placeholder="—"
+                />
+              )}
+            </div>
+          ))}
+          <TextBtn2 tone="accent" onClick={addIndicatorRow} style={{ alignSelf: 'flex-start' }}>+ Add indicator</TextBtn2>
+        </div>
+      </Field2>
       {err && <MonoTxt size={11} color={t.red}>Failed to save — try again</MonoTxt>}
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
         <Btn2 onClick={onDone}>Cancel</Btn2>
@@ -648,8 +783,23 @@ function PositionDrawer2() {
       if (!drawerTicker || d.ticker !== drawerTicker) return;
       if (d.fields && (d.fields.core_argument != null || d.fields.target_price != null)) setEditingThesis(true);
     }
+    // C2-D125 — same auto-reveal, extended to an accepted thesis_indicators
+    // suggestion (agent2.jsx's IndicatorProposalCard2 Accept button ->
+    // addThesisIndicatorDraft). Separate event (fincr:thesis-indicator-draft-add,
+    // list-shaped) from the scalar one above — kept as its own listener rather
+    // than folded into onDraftUpdate so the two payload shapes never have to be
+    // reconciled into one conditional.
+    function onIndicatorDraftAdd(e) {
+      var d = e.detail || {};
+      if (!drawerTicker || d.ticker !== drawerTicker) return;
+      setEditingThesis(true);
+    }
     window.addEventListener('fincr:thesis-draft-update', onDraftUpdate);
-    return () => window.removeEventListener('fincr:thesis-draft-update', onDraftUpdate);
+    window.addEventListener('fincr:thesis-indicator-draft-add', onIndicatorDraftAdd);
+    return () => {
+      window.removeEventListener('fincr:thesis-draft-update', onDraftUpdate);
+      window.removeEventListener('fincr:thesis-indicator-draft-add', onIndicatorDraftAdd);
+    };
   }, [drawerTicker]);
 
   const h = drawerTicker ? store.holdings.find((x) => x.ticker === drawerTicker) : null;

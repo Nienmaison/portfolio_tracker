@@ -18,15 +18,28 @@ function ThesisCard2({ th, highlight }) {
         <Chip2 tone={th.conviction === 'High' ? 'ok' : 'mute'}>{th.conviction}</Chip2>
       </div>
       <div style={{ fontSize: 12.5, color: t.dim, lineHeight: 1.55 }}>{th.argument}</div>
+      {/* C2-D125 — was th.triggers (flat thesis_challenge_signals strings under
+          a single "THESIS RISKS" label). Now th.indicators: a typed list (risk /
+          price_level / catalyst). Read-only display here — the editor lives in
+          drawer2.jsx's ThesisEditor2. Each type gets its own small mono tag so
+          the three kinds are visually distinguishable at a glance without
+          adding a fourth signal colour (design.md §3.4 rule) — tag text alone
+          carries the distinction, all still rendered in t.ink/t.faint. */}
       <div style={{ display: 'flex', flexDirection: 'column' }}>
-        {/* Renamed from T1/T2 — these are exit conditions, not targets (C2-S3) */}
-        {th.triggers && th.triggers.length > 0 && (
-          <MonoTxt size={10} color={t.faint} style={{ letterSpacing: '0.12em', padding: '2px 0 1px' }}>THESIS RISKS</MonoTxt>
+        {th.indicators && th.indicators.length > 0 && (
+          <MonoTxt size={10} color={t.faint} style={{ letterSpacing: '0.12em', padding: '2px 0 1px' }}>THESIS INDICATORS</MonoTxt>
         )}
-        {th.triggers.map((tr, i) => (
-          <div key={i} style={{ display: 'flex', alignItems: 'baseline', gap: 9, padding: '7px 0', borderTop: `1px solid ${t.hair}` }}>
-            <span style={{ fontFamily: t.mono, fontSize: 9.5, color: t.ghost, flexShrink: 0 }}>·</span>
-            <span style={{ fontSize: 12, color: t.ink }}>{tr}</span>
+        {(th.indicators || []).map((ind, i) => (
+          <div key={ind.id || i} style={{ display: 'flex', alignItems: 'baseline', gap: 9, padding: '7px 0', borderTop: `1px solid ${t.hair}` }}>
+            <span style={{ fontFamily: t.mono, fontSize: 9, color: t.faint, flexShrink: 0, letterSpacing: '0.06em', textTransform: 'uppercase', minWidth: 58 }}>
+              {ind.type === 'price_level' ? 'Price level' : ind.type === 'catalyst' ? 'Catalyst' : 'Risk'}
+            </span>
+            <span style={{ fontSize: 12, color: t.ink, flex: 1 }}>
+              {ind.text}
+              {ind.type === 'price_level' && ind.target_price != null && (
+                <span style={{ fontFamily: t.mono, color: t.faint }}>{' — €' + Number(ind.target_price).toLocaleString()}</span>
+              )}
+            </span>
           </div>
         ))}
       </div>

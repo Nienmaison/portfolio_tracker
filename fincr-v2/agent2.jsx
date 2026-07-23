@@ -12,14 +12,22 @@ const AGENT_HISTORY_CAP = 10;
 // not in holdings) are discarded silently (console only). core_argument is a
 // valid field (C2-D123) — free text, no enum check, forwarded like conviction/
 // stance. target_price is also a valid field (C2-D123 extension) — no enum,
-// parsed as a plain number and accepted only if finite and non-negative. The
-// system prompt gates WHEN the agent may emit either; this parser only
-// validates shape.
+// parsed as a plain number and accepted only if finite and non-negative.
+// thesis_indicators (C2-D125) is a THIRD, different shape again — a typed list
+// entry (risk/price_level/catalyst), not a scalar current->proposed change; one
+// block per indicator, no current/proposed keys at all (see the type/text/
+// target_price handling below). The system prompt gates WHEN the agent may
+// emit any of these three "drafted, not direct-commit" fields; this parser
+// only validates shape.
 // Returns { prose: string, proposals: ProposalObject[] }
-// ProposalObject: { ticker, field, current, proposed, reasoning }
+// ProposalObject (conviction/stance/core_argument/target_price):
+//   { ticker, field, current, proposed, reasoning }
+// ProposalObject (thesis_indicators): { ticker, field: 'thesis_indicators',
+//   type, text, target_price, reasoning } — no current/proposed at all.
 function parseAgentResponse(text) {
   const VALID_CONVICTIONS = new Set(['high', 'medium', 'low']);
   const VALID_STANCES = new Set(['accumulate', 'hold', 'trim']);
+  const VALID_INDICATOR_TYPES = new Set(['risk', 'price_level', 'catalyst']);
   const proposals = [];
 
   const blockRe = /<<<THESIS_PROPOSAL\s*\n([\s\S]*?)>>>/g;
@@ -48,8 +56,52 @@ function parseAgentResponse(text) {
       console.warn('[agent] discarding proposal: ticker not in holdings:', ticker);
       continue;
     }
-    if (field !== 'conviction' && field !== 'stance' && field !== 'core_argument' && field !== 'target_price') {
+    if (field !== 'conviction' && field !== 'stance' && field !== 'core_argument' && field !== 'target_price' && field !== 'thesis_indicators') {
       console.warn('[agent] discarding proposal: invalid field:', field);
+      continue;
+    }
+    if (field === 'thesis_indicators') {
+      // C2-D125 — a different shape entirely: no current/proposed keys, a
+      // type/text/target_price triple instead. Validated and pushed here, then
+      // `continue`s past the generic current/proposed handling below (which
+      // does not apply to this field at all).
+      var indType = block.type;
+      var indText = block.text;
+      var indReasoning = block.reasoning;
+      if (!VALID_INDICATOR_TYPES.has(indType)) {
+        console.warn('[agent] discarding thesis_indicators proposal: invalid type:', indType);
+        continue;
+      }
+      if (!indText || !indText.trim()) {
+        console.warn('[agent] discarding thesis_indicators proposal: empty text');
+        continue;
+      }
+      if (!indReasoning || !indReasoning.trim()) {
+        console.warn('[agent] discarding thesis_indicators proposal: empty reasoning');
+        continue;
+      }
+      // target_price only meaningful for price_level (validation mirrors the
+      // scalar target_price field's own rule above) — required to be a finite,
+      // non-negative number when present for price_level; silently nulled for
+      // risk/catalyst even if the agent mistakenly included one (defensive,
+      // same posture as the server-side guard in api.py's /thesis/update).
+      var indTargetPrice = null;
+      if (indType === 'price_level' && block.target_price != null && block.target_price.trim() !== '') {
+        var tpParsed = Number(block.target_price);
+        if (!Number.isFinite(tpParsed) || tpParsed < 0) {
+          console.warn('[agent] discarding thesis_indicators proposal: invalid target_price:', block.target_price);
+          continue;
+        }
+        indTargetPrice = tpParsed;
+      }
+      proposals.push({
+        ticker: ticker.toUpperCase(),
+        field: 'thesis_indicators',
+        type: indType,
+        text: indText.trim(),
+        target_price: indTargetPrice,
+        reasoning: indReasoning,
+      });
       continue;
     }
     if (field === 'core_argument') {
@@ -194,6 +246,103 @@ function ProposalCard2({ proposal, onCommit, onEdit }) {
               </Btn2>
             </React.Fragment>
           )}
+          <button onClick={handleDismiss} style={{
+            background: 'none', border: 'none', cursor: 'pointer',
+            fontFamily: t.mono, fontSize: 11, color: t.dim, padding: '5px 8px',
+          }}>
+            Dismiss
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Indicator proposal card component (C2-D125) ───────────────────────────────
+// Genuinely new interaction shape — confirmed during scoping that no existing
+// pattern fit: ProposalCard2 above handles a single scalar current->proposed
+// change (direct Commit for conviction/stance, "drafted in editor" for
+// core_argument/target_price), but never "N independent list-item suggestions
+// in one response, each its own accept/dismiss unit." Renders one card per
+// proposed indicator. Each card is its OWN component instance with its own
+// `status` state — this is what makes "accepting one never affects any other
+// pending suggestion" true for free: there is no shared/array state across
+// sibling cards to accidentally couple them, exactly the same isolation
+// ProposalCard2 already gets for scalar proposals in the same message.
+// Accept calls addThesisIndicatorDraft (store2.jsx) — appends ONLY this entry
+// to the ticker's draft list; Dismiss only ever changes this card's own local
+// status. Same "drafted, not direct-commit" posture as core_argument/
+// target_price: nothing reaches thesis.json until the owner's own Save click
+// in ThesisEditor2 — there is no Commit control here at all, by design.
+function IndicatorProposalCard2({ proposal }) {
+  const t = useTheme2();
+  const [status, setStatus] = React.useState('pending'); // pending | accepted | dismissed
+
+  function handleAccept() {
+    var store = window.__fincrStore;
+    if (store && store.actions && store.actions.addThesisIndicatorDraft) {
+      store.actions.addThesisIndicatorDraft(proposal.ticker, {
+        type: proposal.type,
+        text: proposal.text,
+        target_price: proposal.target_price,
+      });
+    } else {
+      console.warn('[agent] addThesisIndicatorDraft not available');
+    }
+    setStatus('accepted');
+  }
+
+  function handleDismiss() {
+    setStatus('dismissed');
+  }
+
+  if (status === 'dismissed') return null;
+
+  var typeLabel = proposal.type === 'price_level' ? 'Price level' : proposal.type === 'catalyst' ? 'Catalyst' : 'Risk';
+
+  return (
+    <div style={{
+      borderLeft: '3px solid ' + t.amber,
+      background: status === 'accepted' ? t.press : t.raise,
+      border: '1px solid ' + t.cardBorder,
+      borderLeft: '3px solid ' + t.amber,
+      borderRadius: 8,
+      padding: '10px 12px',
+      marginTop: 8,
+      opacity: status === 'accepted' ? 0.7 : 1,
+      transition: 'opacity 0.2s, background 0.2s',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}>
+        <span style={{ fontFamily: t.mono, fontSize: 11, fontWeight: 600, color: t.ink, letterSpacing: '0.04em' }}>
+          {proposal.ticker}
+        </span>
+        <span style={{ fontFamily: t.mono, fontSize: 10, color: t.dim }}>thesis_indicators</span>
+        <span style={{ fontFamily: t.mono, fontSize: 9.5, color: t.faint, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{typeLabel}</span>
+      </div>
+
+      <div style={{ fontSize: 12.5, color: t.ink, lineHeight: 1.5, marginBottom: 4 }}>
+        {proposal.text}
+        {proposal.type === 'price_level' && proposal.target_price != null && (
+          <span style={{ fontFamily: t.mono, color: t.faint }}>{' — €' + Number(proposal.target_price).toLocaleString()}</span>
+        )}
+      </div>
+
+      <div style={{
+        fontSize: 12, color: t.dim, fontStyle: 'italic', lineHeight: 1.5,
+        overflow: 'hidden', display: '-webkit-box',
+        WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+        marginBottom: 8,
+      }}>
+        {proposal.reasoning}
+      </div>
+
+      {status === 'accepted' ? (
+        <div style={{ fontFamily: t.mono, fontSize: 11, color: t.dim }}>{'✓ Added to draft — Save in editor to persist'}</div>
+      ) : (
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <Btn2 primary style={{ fontSize: 11, padding: '5px 12px' }} onClick={handleAccept}>
+            Accept
+          </Btn2>
           <button onClick={handleDismiss} style={{
             background: 'none', border: 'none', cursor: 'pointer',
             fontFamily: t.mono, fontSize: 11, color: t.dim, padding: '5px 8px',
@@ -545,12 +694,15 @@ function AgentTab2() {
   // Commit: calls saveThesis (Spec 3, thesis-adapter.js) + refreshes F.thesis.
   // reasoning → conversation_summary → last_update_reason in thesis.json.
   async function handleCommit(proposal) {
-    // Defense in depth (C2-D123, extended to target_price): core_argument and
-    // target_price must only ever persist via the ThesisEditor2 Save button
-    // (window.saveThesis called from drawer2.jsx), never via this direct-commit
-    // path. Should be unreachable — ProposalCard2 does not render a Commit
-    // control for either field — but guarded here too.
-    if (proposal.field === 'core_argument' || proposal.field === 'target_price') {
+    // Defense in depth (C2-D123, extended to target_price and thesis_indicators
+    // C2-D125): core_argument/target_price/thesis_indicators must only ever
+    // persist via the ThesisEditor2 Save button (window.saveThesis called from
+    // drawer2.jsx), never via this direct-commit path. Should be unreachable —
+    // ProposalCard2 does not render a Commit control for the first two, and
+    // thesis_indicators proposals never reach this handler at all (they render
+    // via IndicatorProposalCard2, whose Accept calls addThesisIndicatorDraft
+    // directly, not onCommit) — but guarded here too.
+    if (proposal.field === 'core_argument' || proposal.field === 'target_price' || proposal.field === 'thesis_indicators') {
       console.warn('[agent] refusing direct commit of ' + proposal.field + ' — must go through thesis editor Save');
       return false;
     }
@@ -720,6 +872,21 @@ function AgentTab2() {
                   {msg.text}
                 </div>
                 {msg.proposals && msg.proposals.map(function(p, pi) {
+                  // C2-D125 — thesis_indicators proposals render as their own
+                  // independent accept/dismiss unit (IndicatorProposalCard2),
+                  // a different shape from every other field's current->proposed
+                  // ProposalCard2. Each list item is its own component instance
+                  // in this .map, which is exactly what gives "accepting one
+                  // never touches any sibling" for free — no shared array state
+                  // ties the cards together.
+                  if (p.field === 'thesis_indicators') {
+                    return (
+                      <IndicatorProposalCard2
+                        key={p.ticker + ':thesis_indicators:' + p.type + ':' + pi}
+                        proposal={p}
+                      />
+                    );
+                  }
                   return (
                     <ProposalCard2
                       key={p.ticker + ':' + p.field + ':' + pi}

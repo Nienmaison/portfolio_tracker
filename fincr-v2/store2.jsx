@@ -14,6 +14,11 @@ const f2uid = () => 'tx_' + Math.random().toString(36).slice(2, 9);
 // C2-D113: stable id for closed_positions entries -- lets edit/delete target one
 // entry unambiguously even on a same-ticker double-close (close, re-buy, close again).
 const f2closedId = () => 'cl_' + Math.random().toString(36).slice(2, 9);
+// C2-D125: stable id for thesis_indicators entries (risk/price_level/catalyst) --
+// same shape/generator as f2closedId above, reused verbatim (not reinvented) since
+// this is exactly the same "frontend generates its own stable id for a list entry
+// the backend just persists" pattern C2-D113 established for closed_positions.
+const f2indicatorId = () => 'ind_' + Math.random().toString(36).slice(2, 9);
 const F2_PALETTE = ['#5481D4', '#5E7DA8', '#8B9EC9', '#3D6B9E', '#A6B3CC', '#2E5480', '#6E8FD0'];
 const FincrStoreCtx = React.createContext(null);
 
@@ -759,6 +764,28 @@ function FincrProvider({ children }) {
       window.__fincrThesisDraft = window.__fincrThesisDraft || {};
       window.__fincrThesisDraft[ticker] = { ...(window.__fincrThesisDraft[ticker] || {}), ...fields };
       window.dispatchEvent(new CustomEvent('fincr:thesis-draft-update', { detail: { ticker: ticker, fields: fields } }));
+    },
+    // C2-D125 — session-local, per-ticker LIST draft populated by agent
+    // thesis_indicators proposals (one call per accepted indicator, from
+    // agent2.jsx's per-suggestion Accept button). Deliberately append-only:
+    // unlike updateThesisDraft (a single scalar that can legitimately be
+    // overwritten by a fresher draft), a list is naturally safe against the
+    // "clobbers an in-progress edit" failure mode a scalar draft has to guard
+    // against with focus/baseline tracking (see ThesisEditor2's argFocused/
+    // argBaseline/queuedDraft machinery) — appending a new entry never touches
+    // any entry already in the array, whether that entry came from the owner
+    // typing or an earlier accepted suggestion. No focus/baseline guard is
+    // reproduced here; a simpler model already satisfies the requirement.
+    // Generates the entry's stable id itself (f2indicatorId, C2-D125 / C2-D113
+    // precedent) — the caller (agent2.jsx) only supplies type/text/target_price.
+    // Nothing here touches thesis.json; only ThesisEditor2's own Save button does.
+    addThesisIndicatorDraft: (ticker, indicator) => {
+      window.__fincrThesisIndicatorDrafts = window.__fincrThesisIndicatorDrafts || {};
+      var entry = { id: f2indicatorId(), type: indicator.type, text: indicator.text, target_price: indicator.target_price != null ? indicator.target_price : null };
+      var existing = window.__fincrThesisIndicatorDrafts[ticker] || [];
+      window.__fincrThesisIndicatorDrafts[ticker] = existing.concat([entry]);
+      window.dispatchEvent(new CustomEvent('fincr:thesis-indicator-draft-add', { detail: { ticker: ticker, indicator: entry } }));
+      return entry;
     },
     closeDrawer: () => setDrawerTicker(null),
     openAdd: () => setAddOpen(true),

@@ -4,12 +4,13 @@
    drawer2.jsx expect on window.FINCR.thesis. Defined as a global (plain script,
    like data.js/appdata.js/theme2.js) so the text/babel store can call it on mount.
 
-   Backend shape (post-Spec-1, C2-D57/C2-D58): each holding lives under
-   holdings[TICKER] with company, core_argument (the single canonical per-holding
-   thesis), conviction (lowercase), thesis_challenge_signals, stance (lowercase),
-   target_price (number|null, EUR, no symbol), plus layer / thesis_type /
-   trailing_stop_pct / last_updated. crypto_thesis is membership-only and is NOT
-   read here — core_argument is the only canonical per-holding source now.
+   Backend shape (post-Spec-1, C2-D57/C2-D58; thesis_indicators per C2-D125): each
+   holding lives under holdings[TICKER] with company, core_argument (the single
+   canonical per-holding thesis), conviction (lowercase), thesis_indicators (typed
+   list: {id, type: risk|price_level|catalyst, text, target_price}), stance
+   (lowercase), target_price (number|null, EUR, no symbol), plus layer /
+   thesis_type / trailing_stop_pct / last_updated. crypto_thesis is membership-only
+   and is NOT read here — core_argument is the only canonical per-holding source now.
 
    Auth + base mirror store2.jsx's holdings fetch exactly: same base, same
    'fincr-api-key' localStorage key, same X-API-Key header. No key / non-200 /
@@ -81,7 +82,14 @@
         name: h.company,                                   // company -> name
         argument: h.core_argument,                         // core_argument -> argument
         conviction: titleCase(h.conviction),               // "high" -> "High"
-        triggers: h.thesis_challenge_signals || [],        // thesis_challenge_signals -> triggers
+        // C2-D125 — thesis_challenge_signals (flat string list, exposed as
+        // `triggers`) replaced by thesis_indicators (typed: risk/price_level/
+        // catalyst, exposed as `indicators`). Passed through as-is (each entry
+        // keeps its own id/type/text/target_price) — positions2.jsx's
+        // ThesisCard2 and drawer2.jsx's ThesisEditor2 both read the raw shape
+        // directly rather than a display-cased projection, since the three
+        // types render differently from one another.
+        indicators: h.thesis_indicators || [],
         stance: titleCase(h.stance),                       // "hold" -> "Hold"
         target: (h.target_price != null)                   // number -> "€N" (display only)
           ? '€' + Number(h.target_price).toLocaleString()
