@@ -8,7 +8,7 @@
 // Bump CACHE_VERSION after any significant frontend change to force a full
 // cache flush on all clients.
 
-const CACHE_VERSION = 'fincr-v60'; // C2-D125 addendum: consolidated guardedSetTab/startNewConversation/openConversation onto one shared window.__fincrGuardedThreadReplace guard; openConversation is now guarded (previously the one unguarded sibling)
+const CACHE_VERSION = 'fincr-v61'; // C2-D125b: Review in chat now closes the drawer (actions.closeDrawer) before switching to the agent tab
 
 const SHELL_ASSETS = [
   './index.html',

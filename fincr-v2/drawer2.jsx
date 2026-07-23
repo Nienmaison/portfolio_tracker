@@ -471,6 +471,7 @@ const f2indicatorId = () => 'ind_' + Math.random().toString(36).slice(2, 9);
    loadThesis(). Transient local state. */
 function ThesisEditor2({ th, onDone }) {
   const t = useTheme2();
+  const { actions } = useStore2(); // C2-D125b -- reuse the drawer close action (below)
   // Original backend values. The adapter display-cases conviction/stance; lowercasing
   // is the lossless inverse of its titleCase, giving back the stored enum.
   const origArg = (th.argument && th.argument !== THESIS_SENTINEL) ? th.argument : '';
@@ -799,7 +800,15 @@ function ThesisEditor2({ th, onDone }) {
           <span style={{ fontSize: 12, color: t.ink, fontWeight: 600 }}>
             {pendingProposalCount + ' suggested indicator' + (pendingProposalCount === 1 ? '' : 's') + ' awaiting review'}
           </span>
-          <TextBtn2 tone="accent" onClick={() => window.dispatchEvent(new CustomEvent('fincr:go-tab', { detail: { tab: 'agent' } }))}>
+          <TextBtn2 tone="accent" onClick={() => {
+            // C2-D125b -- close the drawer via the SAME mechanism as the X button
+            // and click-outside (actions.closeDrawer, store2.jsx), then switch
+            // tabs. Previously this only dispatched fincr:go-tab, so the portal
+            // overlay (independent of tab state) stayed open on top of the newly
+            // switched agent tab with no visible change.
+            actions.closeDrawer();
+            window.dispatchEvent(new CustomEvent('fincr:go-tab', { detail: { tab: 'agent' } }));
+          }}>
             Review in chat →
           </TextBtn2>
         </div>
