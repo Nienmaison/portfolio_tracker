@@ -1,0 +1,12 @@
+# ── Fincr dashboard (portfolio_tracker) — .gitignore ─────────────────────────
+# Mirrors the *bak* glob from the funnel-backend repo's .gitignore.
+# Pattern is *bak* (matches 'bak' anywhere), NOT *.bak or *bak — this repo
+# already had pre-C2S4b/pre-C2D96/pre-C2S5-style backup files sitting
+# untracked in the working tree before this file existed.
+*bak*
+
+# ── OS / EDITOR CRUFT ─────────────────────────────────────────────────────────
+.DS_Store
+*.swp
+*.swo
+*~
