@@ -101,8 +101,9 @@ function Shell2() {
   // validating the pending-indicators banner: <main key={tab}> in this file
   // unmounts AgentTab2 on any switch away from 'agent', whose mount-effect
   // cleanup (agent2.jsx) calls endConversation() for real — any unresolved
-  // IndicatorProposalCard2 for that conversation is then unrecoverable (the
-  // resume/reopen path hardcodes proposals:[] on every reconstructed message).
+  // UnifiedThesisProposalCard2 (C2-D126) for that conversation is then
+  // unrecoverable (the resume/reopen path hardcodes proposals:[] on every
+  // reconstructed message).
   // Every path that can change `tab` funnels through this single guard instead
   // of duplicating the confirm() per call site: the fincr:go-tab listener, the
   // command palette's actions.go, focusTicker, the 1–5 keyboard shortcuts, and

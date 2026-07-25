@@ -1,11 +1,40 @@
 /* Fincr 2.0 — Positions: thesis per holding, watchlist, desk rules.
    The "why I own it" layer that sits under the overview ledger. */
 
+// C2-D126 — whole-card fold. A thesis body (argument + indicators + target)
+// past this combined character count folds behind ONE toggle, badges always
+// visible. Below it the card never shows a toggle at all — short theses
+// (e.g. TSM's one-liner) render exactly as before. Net-new: no prior
+// collapsible-thesis mechanism existed to extend (confirmed live, investigative
+// Researcher pass, 2026-07-25).
+const F2_THESIS_FOLD_CHARS = 220;
+
+// First sentence (if it lands before maxLen) else a word-boundary truncation
+// with an ellipsis — used for the collapsed card's glanceable snippet.
+function f2FirstSentenceSnippet(text, maxLen) {
+  if (!text) return '';
+  var periodIdx = text.indexOf('. ');
+  if (periodIdx > -1 && periodIdx < maxLen) return text.slice(0, periodIdx + 1);
+  if (text.length <= maxLen) return text;
+  return text.slice(0, maxLen).replace(/\s+\S*$/, '') + '…';
+}
+
 function ThesisCard2({ th, highlight }) {
   const t = useTheme2();
   const F = window.FINCR;
   const h = F.holdings.find((x) => x.ticker === th.ticker);
   const stanceTone = th.stance === 'Accumulate' ? 'accent' : th.stance === 'Trim' ? 'watch' : 'mute';
+  const indicators = th.indicators || [];
+  // Combined body length across all three fold-eligible fields — same "one
+  // whole-card fold" boundary the argument/indicators/target render together
+  // below (a fixed 20-char allowance stands in for the TARGET row's own
+  // rendered width, which isn't text-length-shaped).
+  const bodyChars = (th.argument || '').length
+    + indicators.reduce((sum, ind) => sum + (ind.text || '').length, 0)
+    + (th.target ? 20 : 0);
+  const foldable = bodyChars > F2_THESIS_FOLD_CHARS;
+  const [expanded, setExpanded] = React.useState(!foldable);
+  const showBody = !foldable || expanded;
   return (
     <div style={{ background: t.card, backdropFilter: t.blur, WebkitBackdropFilter: t.blur, boxShadow: t.cardShadow, border: `1px solid ${highlight === th.ticker ? t.accent : t.cardBorder}`, borderRadius: 16, padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: 13, transition: 'border-color 0.4s' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -17,38 +46,63 @@ function ThesisCard2({ th, highlight }) {
         <Chip2 tone={stanceTone}>{th.stance}</Chip2>
         <Chip2 tone={th.conviction === 'High' ? 'ok' : 'mute'}>{th.conviction}</Chip2>
       </div>
-      <div style={{ fontSize: 12.5, color: t.dim, lineHeight: 1.55 }}>{th.argument}</div>
-      {/* C2-D125 — was th.triggers (flat thesis_challenge_signals strings under
-          a single "THESIS RISKS" label). Now th.indicators: a typed list (risk /
-          price_level / catalyst). Read-only display here — the editor lives in
-          drawer2.jsx's ThesisEditor2. Each type gets its own small mono tag so
-          the three kinds are visually distinguishable at a glance without
-          adding a fourth signal colour (design.md §3.4 rule) — tag text alone
-          carries the distinction, all still rendered in t.ink/t.faint. */}
-      <div style={{ display: 'flex', flexDirection: 'column' }}>
-        {th.indicators && th.indicators.length > 0 && (
-          <MonoTxt size={10} color={t.faint} style={{ letterSpacing: '0.12em', padding: '2px 0 1px' }}>THESIS INDICATORS</MonoTxt>
-        )}
-        {(th.indicators || []).map((ind, i) => (
-          <div key={ind.id || i} style={{ display: 'flex', alignItems: 'baseline', gap: 9, padding: '7px 0', borderTop: `1px solid ${t.hair}` }}>
-            <span style={{ fontFamily: t.mono, fontSize: 9, color: t.faint, flexShrink: 0, letterSpacing: '0.06em', textTransform: 'uppercase', minWidth: 58 }}>
-              {ind.type === 'price_level' ? 'Price level' : ind.type === 'catalyst' ? 'Catalyst' : 'Risk'}
-            </span>
-            <span style={{ fontSize: 12, color: t.ink, flex: 1 }}>
-              {ind.text}
-              {ind.type === 'price_level' && ind.target_price != null && (
-                <span style={{ fontFamily: t.mono, color: t.faint }}>{' — €' + Number(ind.target_price).toLocaleString()}</span>
-              )}
-            </span>
+
+      {showBody ? (
+        <React.Fragment>
+          <div style={{ fontSize: 12.5, color: t.dim, lineHeight: 1.55 }}>{th.argument}</div>
+          {/* C2-D125 — was th.triggers (flat thesis_challenge_signals strings under
+              a single "THESIS RISKS" label). Now th.indicators: a typed list (risk /
+              price_level / catalyst). Read-only display here — the editor lives in
+              drawer2.jsx's ThesisEditor2. Each type gets its own small mono tag so
+              the three kinds are visually distinguishable at a glance without
+              adding a fourth signal colour (design.md §3.4 rule) — tag text alone
+              carries the distinction, all still rendered in t.ink/t.faint. */}
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            {indicators.length > 0 && (
+              <MonoTxt size={10} color={t.faint} style={{ letterSpacing: '0.12em', padding: '2px 0 1px' }}>THESIS INDICATORS</MonoTxt>
+            )}
+            {indicators.map((ind, i) => (
+              <div key={ind.id || i} style={{ display: 'flex', alignItems: 'baseline', gap: 9, padding: '7px 0', borderTop: `1px solid ${t.hair}` }}>
+                <span style={{ fontFamily: t.mono, fontSize: 9, color: t.faint, flexShrink: 0, letterSpacing: '0.06em', textTransform: 'uppercase', minWidth: 58 }}>
+                  {ind.type === 'price_level' ? 'Price level' : ind.type === 'catalyst' ? 'Catalyst' : 'Risk'}
+                </span>
+                <span style={{ fontSize: 12, color: t.ink, flex: 1 }}>
+                  {ind.text}
+                  {ind.type === 'price_level' && ind.target_price != null && (
+                    <span style={{ fontFamily: t.mono, color: t.faint }}>{' — €' + Number(ind.target_price).toLocaleString()}</span>
+                  )}
+                </span>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
-      {/* Only render TARGET when a price target has been set (null until set via editor, C2-S3) */}
-      {th.target && (
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', borderTop: `1px solid ${t.hair}`, paddingTop: 10 }}>
-        <MonoTxt size={10} color={t.faint} style={{ letterSpacing: '0.12em' }}>TARGET</MonoTxt>
-        <Money size={12.5} weight={600}>{th.target}</Money>
-      </div>
+          {/* Only render TARGET when a price target has been set (null until set via editor, C2-S3) */}
+          {th.target && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', borderTop: `1px solid ${t.hair}`, paddingTop: 10 }}>
+            <MonoTxt size={10} color={t.faint} style={{ letterSpacing: '0.12em' }}>TARGET</MonoTxt>
+            <Money size={12.5} weight={600}>{th.target}</Money>
+          </div>
+          )}
+        </React.Fragment>
+      ) : (
+        // Collapsed — glanceable, not just hidden: a snippet of the argument
+        // plus a compact count so the card still communicates something at a
+        // glance without the owner having to expand it.
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+          <div style={{ fontSize: 12.5, color: t.dim, lineHeight: 1.55 }}>{f2FirstSentenceSnippet(th.argument, 140)}</div>
+          <MonoTxt size={10} color={t.faint} style={{ letterSpacing: '0.06em' }}>
+            {indicators.length + ' indicator' + (indicators.length === 1 ? '' : 's') + (th.target ? ' · target set' : '')}
+          </MonoTxt>
+        </div>
+      )}
+
+      {foldable && (
+        <button
+          className="f2-press"
+          onClick={() => setExpanded((e) => !e)}
+          style={{ alignSelf: 'flex-start', fontFamily: t.mono, fontSize: 10.5, fontWeight: 600, letterSpacing: '0.06em', color: t.accent, background: 'none', border: 'none', cursor: 'pointer', padding: '2px 0' }}
+        >
+          {expanded ? 'Show less' : 'Show more'}
+        </button>
       )}
     </div>
   );

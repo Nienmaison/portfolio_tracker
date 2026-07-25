@@ -468,120 +468,42 @@ const f2indicatorId = () => 'ind_' + Math.random().toString(36).slice(2, 9);
 /* C2-S3 — inline per-holding thesis editor. Edits core_argument / conviction /
    stance / target_price / thesis_indicators (C2-D125) via POST /thesis/update
    (window.saveThesis), sends only changed fields, then refreshes F.thesis via
-   loadThesis(). Transient local state. */
+   loadThesis(). Transient local state.
+
+   C2-D126 — this editor no longer has any awareness of agent-proposed
+   core_argument/target_price/thesis_indicators. That whole "draft into this
+   editor, Save gates it" flow (C2-D123/C2-D125) is retired: those three
+   fields now edit and commit directly from chat via
+   UnifiedThesisProposalCard2 (agent2.jsx), never touching this component.
+   openDrawerWithPrefill/window.__fincrDrawerPrefill is UNRELATED and still
+   live — it's the generic conviction/stance "Edit" prefill from
+   ProposalCard2, not the retired mechanism. */
 function ThesisEditor2({ th, onDone }) {
   const t = useTheme2();
-  const { actions } = useStore2(); // C2-D125b -- reuse the drawer close action (below)
   // Original backend values. The adapter display-cases conviction/stance; lowercasing
   // is the lossless inverse of its titleCase, giving back the stored enum.
   const origArg = (th.argument && th.argument !== THESIS_SENTINEL) ? th.argument : '';
   const origConv = th.conviction ? th.conviction.toLowerCase() : 'medium';
   const origStance = th.stance ? th.stance.toLowerCase() : 'hold';
   const origTarget = th.target_price != null ? th.target_price : null;
-  // Pre-fill from agent proposal card (C2-S4b).
-  // The stash is set by openDrawerWithPrefill() in store2.jsx and cleared here on first render.
+  // Pre-fill from agent proposal card (C2-S4b) — conviction/stance only
+  // (ProposalCard2's "Edit" button). The stash is set by
+  // openDrawerWithPrefill() in store2.jsx and cleared here on first render.
   const prefill = window.__fincrDrawerPrefill || null;
   if (prefill) window.__fincrDrawerPrefill = null;
-  // Pending agent-drafted core_argument text (C2-D123), keyed by ticker, set by
-  // updateThesisDraft() in store2.jsx. Unlike prefill above this is NOT cleared
-  // on read here — it stays pending across a close/reopen with no Save, and is
-  // only cleared once Save actually persists it (below).
-  const pendingDraft = (window.__fincrThesisDraft && window.__fincrThesisDraft[th.ticker]) || null;
 
-  const [arg, setArg] = React.useState(
-    prefill && prefill.core_argument != null ? prefill.core_argument :
-    pendingDraft && pendingDraft.core_argument != null ? pendingDraft.core_argument :
-    origArg
-  );
+  const [arg, setArg] = React.useState(origArg);
   const [conv, setConv] = React.useState(prefill && prefill.conviction != null ? prefill.conviction : origConv);
   const [stance, setStance] = React.useState(prefill && prefill.stance != null ? prefill.stance : origStance);
-  const [targetStr, setTargetStr] = React.useState(
-    prefill && prefill.target_price != null ? String(prefill.target_price) :
-    pendingDraft && pendingDraft.target_price != null ? String(pendingDraft.target_price) :
-    origTarget != null ? String(origTarget) : ''
-  );
+  const [targetStr, setTargetStr] = React.useState(origTarget != null ? String(origTarget) : '');
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState(false);
-  // Pass 2 addendum (fix to C2-D123's "not solved further" gap) — argBaseline is
-  // the last value the textarea was set to by something OTHER than the owner's
-  // own typing (initial mount value, an auto-applied draft, or a persisted save).
-  // Comparing current `arg` against it is how we detect "unsaved edits" below,
-  // without touching what actually gets persisted (still only Save/window.saveThesis).
-  const [argBaseline, setArgBaseline] = React.useState(arg);
-  const [argFocused, setArgFocused] = React.useState(false);
-  // A core_argument draft that arrived while the owner had focus/unsaved edits —
-  // held here instead of applied, surfaced as a small click-to-apply affordance.
-  const [queuedDraft, setQueuedDraft] = React.useState(null);
-  // target_price extension of C2-D123 — independent guard state, same shape as
-  // arg's above but tracked separately: a proposal might update one field
-  // without the other, so the two fields' focus/unsaved-edit/queued-draft state
-  // must never be conflated.
-  const [targetBaseline, setTargetBaseline] = React.useState(targetStr);
-  const [targetFocused, setTargetFocused] = React.useState(false);
-  const [queuedTargetDraft, setQueuedTargetDraft] = React.useState(null);
 
   // C2-D125 — thesis_indicators (typed list: risk/price_level/catalyst).
   // origIndicators is the last-saved backend state, read fresh on mount, same
   // as origArg/origConv/origStance/origTarget above.
   const origIndicators = th.indicators || [];
-  // Any agent-accepted indicator suggestions still pending (not yet saved),
-  // stashed by store2.jsx's addThesisIndicatorDraft — mirrors pendingDraft's
-  // role above, but as a list. NOT cleared on read here (same as pendingDraft):
-  // stays pending across a close/reopen with no Save, only cleared once Save
-  // actually persists it (below).
-  const pendingIndicatorDrafts = (window.__fincrThesisIndicatorDrafts && window.__fincrThesisIndicatorDrafts[th.ticker]) || [];
-  // Initial list = saved entries + any pending drafts not already reflected in
-  // the saved list (id dedup — a draft accepted, saved, then somehow not
-  // cleared should never double up). This is the ONLY place ids are deduped on
-  // read; the live-append listener below dedupes on write for the same reason.
-  const [indicators, setIndicators] = React.useState(() => {
-    var extra = pendingIndicatorDrafts.filter((d) => !origIndicators.some((o) => o.id === d.id));
-    return origIndicators.concat(extra);
-  });
-
-  // Live append (C2-D125): an agent-accepted indicator suggestion for THIS
-  // ticker arrived (via agent2.jsx's per-suggestion Accept -> store2.jsx's
-  // addThesisIndicatorDraft) while this editor is already mounted. Unlike the
-  // core_argument/target_price guard above, a list needs no focus/unsaved-edit
-  // guard at all: appending a new entry can never clobber an entry the owner is
-  // mid-edit on elsewhere in the list (per spec — a list is naturally safe
-  // against the overwrite failure mode a single scalar has to guard against).
-  // Simple append, deduped by id so a duplicate event can never double an entry.
-  React.useEffect(() => {
-    function onIndicatorDraftAdd(e) {
-      var d = e.detail || {};
-      if (d.ticker !== th.ticker || !d.indicator) return;
-      setIndicators((prev) => prev.some((x) => x.id === d.indicator.id) ? prev : prev.concat([d.indicator]));
-    }
-    window.addEventListener('fincr:thesis-indicator-draft-add', onIndicatorDraftAdd);
-    return () => window.removeEventListener('fincr:thesis-indicator-draft-add', onIndicatorDraftAdd);
-  }, [th.ticker]);
-
-  // Gap-fix (closes a real production gap found after C2-D125 shipped — see
-  // decisions.md addendum, NOT a reversal of the per-suggestion accept/dismiss
-  // design). Live pending count of NOT-YET-accepted/dismissed indicator
-  // suggestions still sitting in the chat (agent2.jsx's IndicatorProposalCard2
-  // instances), scoped to THIS ticker only. Distinct from pendingIndicatorDrafts
-  // above: that list is suggestions the owner already clicked Accept on and are
-  // waiting on Save — this counts suggestions the owner hasn't clicked
-  // Accept/Dismiss on AT ALL yet, which is the actual visibility gap this patch
-  // closes (a batch of proposals can be entirely un-reviewed with no signal
-  // near Save). Initial read is a synchronous window-global read (same pattern
-  // as pendingIndicatorDrafts above); the listener keeps it live while mounted,
-  // filtered by ticker so a different ticker's pending proposals never leak in.
-  const [pendingProposalCount, setPendingProposalCount] = React.useState(() => {
-    var set = window.__fincrPendingIndicatorProposals && window.__fincrPendingIndicatorProposals[th.ticker];
-    return set ? set.size : 0;
-  });
-  React.useEffect(() => {
-    function onPendingChange(e) {
-      var d = e.detail || {};
-      if (d.ticker !== th.ticker) return;
-      setPendingProposalCount(d.count);
-    }
-    window.addEventListener('fincr:indicator-proposal-pending-change', onPendingChange);
-    return () => window.removeEventListener('fincr:indicator-proposal-pending-change', onPendingChange);
-  }, [th.ticker]);
+  const [indicators, setIndicators] = React.useState(origIndicators);
 
   // Manual editor row helpers — add/edit/remove, fully independent of the agent.
   function addIndicatorRow() {
@@ -602,55 +524,7 @@ function ThesisEditor2({ th, onDone }) {
     setIndicators((prev) => prev.filter((ind) => ind.id !== id));
   }
 
-  // Live update (C2-D123, guarded per Pass 2 addendum): if a core_argument
-  // proposal for THIS ticker arrives while this editor is already mounted/open,
-  // only overwrite the textarea when the owner is NOT actively using it — i.e.
-  // it's unfocused AND has no unsaved edits (arg === argBaseline). Otherwise the
-  // draft is queued (never discarded) for the owner to apply on their own terms.
-  // Still purely local React state either way — nothing here calls saveThesis.
-  React.useEffect(() => {
-    function onDraftUpdate(e) {
-      var d = e.detail || {};
-      if (d.ticker !== th.ticker) return;
-      if (!d.fields) return;
-      if (d.fields.core_argument != null) {
-        var incoming = d.fields.core_argument;
-        var hasUnsavedEdits = arg !== argBaseline;
-        if (argFocused || hasUnsavedEdits) {
-          setQueuedDraft(incoming);
-        } else {
-          setArg(incoming);
-          setArgBaseline(incoming);
-        }
-      }
-      // target_price extension of C2-D123 — own independent guard, mirrors the
-      // core_argument branch above exactly but never shares state with it.
-      if (d.fields.target_price != null) {
-        var incomingTarget = String(d.fields.target_price);
-        var hasUnsavedTargetEdits = targetStr !== targetBaseline;
-        if (targetFocused || hasUnsavedTargetEdits) {
-          setQueuedTargetDraft(incomingTarget);
-        } else {
-          setTargetStr(incomingTarget);
-          setTargetBaseline(incomingTarget);
-        }
-      }
-    }
-    window.addEventListener('fincr:thesis-draft-update', onDraftUpdate);
-    return () => window.removeEventListener('fincr:thesis-draft-update', onDraftUpdate);
-  }, [th.ticker, arg, argBaseline, argFocused, targetStr, targetBaseline, targetFocused]);
-
   const save = async () => {
-    // Gap-fix — single friction moment, never a hard block: if there are
-    // still-unreviewed indicator suggestions for this ticker, ask once before
-    // saving. Cancel returns immediately, before any state mutation (setBusy
-    // included) — Save simply doesn't fire, nothing else changes. Confirming
-    // falls through to the exact same save path as always.
-    if (pendingProposalCount > 0) {
-      var msg = 'You have ' + pendingProposalCount + ' indicator suggestion'
-        + (pendingProposalCount === 1 ? '' : 's') + " you haven't reviewed yet — save anyway?";
-      if (!confirm(msg)) return;
-    }
     setBusy(true); setErr(false);
     // Diff against originals — only send what changed (avoid needless version bumps).
     const changes = {};
@@ -672,19 +546,6 @@ function ThesisEditor2({ th, onDone }) {
     if (Object.keys(changes).length === 0) { onDone(); return; } // no-op — just close
     const ok = await window.saveThesis(th.ticker, changes, '');
     if (!ok) { setErr(true); setBusy(false); return; }
-    // Clear any pending agent-drafted core_argument for this ticker now that a
-    // save actually went through (C2-D123) — whatever was pending has either
-    // just been persisted (if left unmodified in the textarea) or explicitly
-    // superseded by the owner's own edit.
-    if (window.__fincrThesisDraft) delete window.__fincrThesisDraft[th.ticker];
-    // C2-D125 — same clearing discipline for the indicator draft list: whatever
-    // was pending has now either been persisted (if still present/unedited in
-    // `indicators`) or explicitly dropped by the owner's own remove/edit.
-    if (window.__fincrThesisIndicatorDrafts) delete window.__fincrThesisIndicatorDrafts[th.ticker];
-    setArgBaseline(arg); // Pass 2 addendum — the just-persisted text is the new baseline
-    setQueuedDraft(null); // Patch — a save clears any stale queued-draft affordance too
-    setTargetBaseline(targetStr); // target_price extension — its own new baseline
-    setQueuedTargetDraft(null); // target_price extension — cleared independently of queuedDraft
     setIndicators(cleanIndicators); // C2-D125 — the just-persisted list is the new baseline
     if (window.loadThesis) await window.loadThesis(); // refresh card + drawer
     onDone();
@@ -694,19 +555,9 @@ function ThesisEditor2({ th, onDone }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 10 }}>
       <Field2 label="Core argument">
         <textarea value={arg} onChange={(e) => setArg(e.target.value)} rows={3} placeholder="Why do you hold this?"
-          onFocus={(e) => { e.target.style.borderColor = t.accent; setArgFocused(true); }}
-          onBlur={(e) => { e.target.style.borderColor = t.inputBorder; setArgFocused(false); }}
+          onFocus={(e) => { e.target.style.borderColor = t.accent; }}
+          onBlur={(e) => { e.target.style.borderColor = t.inputBorder; }}
           style={{ ...inputStyle, resize: 'vertical', minHeight: 66, lineHeight: 1.5 }} />
-        {queuedDraft != null && (
-          // Pass 2 addendum — small click-to-apply affordance for a draft that
-          // arrived while the owner had focus/unsaved edits. Applying it here
-          // only changes the textarea's local display value; it still requires
-          // the owner's own Save click to reach thesis.json, same as any edit.
-          <div onClick={() => { setArg(queuedDraft); setArgBaseline(queuedDraft); setQueuedDraft(null); }}
-            style={{ marginTop: 6, fontSize: 11, fontFamily: t.mono, color: t.accent, cursor: 'pointer' }}>
-            New draft available — click to apply →
-          </div>
-        )}
       </Field2>
       <Field2 label="Conviction">
         <Seg2 options={[{ value: 'high', label: 'High', tone: 'ok' }, { value: 'medium', label: 'Medium', tone: 'watch' }, { value: 'low', label: 'Low', tone: 'mute' }]} value={conv} onChange={setConv} />
@@ -715,31 +566,14 @@ function ThesisEditor2({ th, onDone }) {
         <Seg2 options={[{ value: 'accumulate', label: 'Accumulate', tone: 'ok' }, { value: 'hold', label: 'Hold', tone: 'mute' }, { value: 'trim', label: 'Trim', tone: 'watch' }]} value={stance} onChange={setStance} />
       </Field2>
       <Field2 label="Price target" hint="optional">
-        {/* NumberField2 has no onFocus/onBlur passthrough of its own; wrapping it
-            works because React 18 implements onFocus/onBlur via focusin/focusout,
-            which bubble, so the wrapper still observes focus entering/leaving the
-            input inside. Mirrors argFocused's role for the core_argument textarea,
-            kept fully independent (targetFocused, not argFocused). */}
-        <div onFocus={() => setTargetFocused(true)} onBlur={() => setTargetFocused(false)}>
-          <NumberField2 value={targetStr} onChange={setTargetStr} prefix="€" placeholder="—" />
-        </div>
-        {queuedTargetDraft != null && (
-          // target_price's own click-to-apply affordance (mirrors queuedDraft's
-          // UI for core_argument above), scoped to this field only — never a
-          // shared/global indicator that would conflate the two fields' drafts.
-          <div onClick={() => { setTargetStr(queuedTargetDraft); setTargetBaseline(queuedTargetDraft); setQueuedTargetDraft(null); }}
-            style={{ marginTop: 6, fontSize: 11, fontFamily: t.mono, color: t.accent, cursor: 'pointer' }}>
-            New draft available — click to apply →
-          </div>
-        )}
+        <NumberField2 value={targetStr} onChange={setTargetStr} prefix="€" placeholder="—" />
       </Field2>
       {/* C2-D125 — manual add/edit/remove list editor for thesis_indicators.
-          Fully independent of the agent: every row here can be created, typed
-          into, and removed with no agent involvement whatsoever, bound to the
-          same local `indicators` state agent-accepted suggestions also append
-          to (see the live-append effect above) and the same Save flow as every
-          other field on this form (POST /thesis/update via window.saveThesis —
-          no new write path). */}
+          Fully independent of the agent (C2-D126 retired the only path the
+          agent ever had into this list) — every row here is created, typed
+          into, and removed by the owner alone, via the same Save flow as
+          every other field on this form (POST /thesis/update via
+          window.saveThesis — no new write path). */}
       <Field2 label="Thesis indicators" hint="risks · price levels · catalysts">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {indicators.map((ind) => (
@@ -787,32 +621,11 @@ function ThesisEditor2({ th, onDone }) {
           <TextBtn2 tone="accent" onClick={addIndicatorRow} style={{ alignSelf: 'flex-start' }}>+ Add indicator</TextBtn2>
         </div>
       </Field2>
-      {pendingProposalCount > 0 && (
-        // Gap-fix — hard-to-miss, anchored directly above Save (not another
-        // easily-scrolled-past chat card). Clears itself automatically the
-        // instant the count reaches 0 (every pending suggestion for this
-        // ticker accepted or dismissed) — no manual dismiss for this banner.
-        <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
-          background: t.amberSoft, border: '1px solid ' + t.amber, borderRadius: 9,
-          padding: '10px 13px',
-        }}>
-          <span style={{ fontSize: 12, color: t.ink, fontWeight: 600 }}>
-            {pendingProposalCount + ' suggested indicator' + (pendingProposalCount === 1 ? '' : 's') + ' awaiting review'}
-          </span>
-          <TextBtn2 tone="accent" onClick={() => {
-            // C2-D125b -- close the drawer via the SAME mechanism as the X button
-            // and click-outside (actions.closeDrawer, store2.jsx), then switch
-            // tabs. Previously this only dispatched fincr:go-tab, so the portal
-            // overlay (independent of tab state) stayed open on top of the newly
-            // switched agent tab with no visible change.
-            actions.closeDrawer();
-            window.dispatchEvent(new CustomEvent('fincr:go-tab', { detail: { tab: 'agent' } }));
-          }}>
-            Review in chat →
-          </TextBtn2>
-        </div>
-      )}
+      {/* C2-D126 — the "N suggested indicators awaiting review" banner (and the
+          pendingProposalCount it read) is retired along with the mechanism it
+          existed to surface: agent-proposed core_argument/target_price/
+          thesis_indicators no longer draft into this editor at all, so there
+          is nothing left for this banner to ever report on. */}
       {err && <MonoTxt size={11} color={t.red}>Failed to save — try again</MonoTxt>}
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
         <Btn2 onClick={onDone}>Cancel</Btn2>
@@ -835,35 +648,12 @@ function PositionDrawer2() {
     setEditingThesis(!!(window.__fincrDrawerPrefill));
   }, [drawerTicker]);
 
-  React.useEffect(() => {
-    // C2-D123 — if a core_argument proposal lands for the ticker whose drawer
-    // is already open, reveal the thesis editor so the live-updating textarea
-    // (ThesisEditor2's own listener, above) is visible without closing/reopening
-    // anything. Never opens a drawer for a DIFFERENT ticker than the one
-    // already open — that force-open case is explicitly out of scope (C2-D123).
-    function onDraftUpdate(e) {
-      var d = e.detail || {};
-      if (!drawerTicker || d.ticker !== drawerTicker) return;
-      if (d.fields && (d.fields.core_argument != null || d.fields.target_price != null)) setEditingThesis(true);
-    }
-    // C2-D125 — same auto-reveal, extended to an accepted thesis_indicators
-    // suggestion (agent2.jsx's IndicatorProposalCard2 Accept button ->
-    // addThesisIndicatorDraft). Separate event (fincr:thesis-indicator-draft-add,
-    // list-shaped) from the scalar one above — kept as its own listener rather
-    // than folded into onDraftUpdate so the two payload shapes never have to be
-    // reconciled into one conditional.
-    function onIndicatorDraftAdd(e) {
-      var d = e.detail || {};
-      if (!drawerTicker || d.ticker !== drawerTicker) return;
-      setEditingThesis(true);
-    }
-    window.addEventListener('fincr:thesis-draft-update', onDraftUpdate);
-    window.addEventListener('fincr:thesis-indicator-draft-add', onIndicatorDraftAdd);
-    return () => {
-      window.removeEventListener('fincr:thesis-draft-update', onDraftUpdate);
-      window.removeEventListener('fincr:thesis-indicator-draft-add', onIndicatorDraftAdd);
-    };
-  }, [drawerTicker]);
+  // C2-D126 — the auto-reveal-editor effect that used to listen for
+  // fincr:thesis-draft-update / fincr:thesis-indicator-draft-add (C2-D123/
+  // C2-D125) is retired along with those events' only producer: agent-
+  // proposed core_argument/target_price/thesis_indicators now commit
+  // directly from chat via UnifiedThesisProposalCard2 and never touch this
+  // drawer at all, so there is nothing left to auto-reveal the editor for.
 
   const h = drawerTicker ? store.holdings.find((x) => x.ticker === drawerTicker) : null;
   const open = !!h;

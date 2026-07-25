@@ -5,6 +5,11 @@
 const AGENT_API_BASE = 'https://fincr.duckdns.org';
 // Mirror api.py's server-side cap: last 10 messages = 5 exchanges.
 const AGENT_HISTORY_CAP = 10;
+// Same sentinel as positions2.jsx/drawer2.jsx (redeclared per this codebase's
+// per-file-constant convention) — needed here so UnifiedThesisProposalCard2
+// can diff a proposed core_argument against the real current text rather
+// than the scaffold stub.
+const THESIS_SENTINEL = "Position opened via dashboard — thesis details pending.";
 
 // ── THESIS_PROPOSAL parser ────────────────────────────────────────────────────
 // Strips <<<THESIS_PROPOSAL>>> blocks from agent response prose and returns
@@ -106,16 +111,17 @@ function parseAgentResponse(text) {
     }
     if (field === 'core_argument') {
       // Free-text field (C2-D123) — no enum to validate against, just require
-      // non-empty proposed text. Persistence still gated behind the owner's
-      // existing thesis-editor Save action — see ProposalCard2/ThesisEditor2.
+      // non-empty proposed text. Persistence gated behind the owner's explicit
+      // Commit click on UnifiedThesisProposalCard2 (C2-D126).
       if (!proposed || !proposed.trim()) { console.warn('[agent] discarding proposal: empty core_argument proposal'); continue; }
     } else if (field === 'target_price') {
       // Plain-number field (C2-D123 extension) — no enum; parse proposed and
       // accept only a finite, non-negative number. Malformed values are
-      // discarded silently before ever reaching draft state, same pattern as
-      // the other invalid-shape discards above. Note: proposed is reassigned
-      // to a Number here (was a string from block parsing) so downstream
-      // consumers (updateThesisDraft, NumberField2) receive the right type.
+      // discarded silently before ever reaching the proposal card, same
+      // pattern as the other invalid-shape discards above. Note: proposed is
+      // reassigned to a Number here (was a string from block parsing) so
+      // downstream consumers (UnifiedThesisProposalCard2, NumberField2)
+      // receive the right type.
       // Reject empty/missing proposed text before Number() conversion —
       // Number('') is 0, which would otherwise pass the finite/non-negative
       // check below and wrongly persist as target_price=0. Mirrors the
@@ -143,12 +149,12 @@ function parseAgentResponse(text) {
 }
 
 // ── Proposal card component ───────────────────────────────────────────────────
-// Renders one card per proposal below the assistant bubble that emitted it.
-// Card is session-local state — resets on reload. Commit reuses window.saveThesis
-// from Spec 3 (thesis-adapter.js), so no new write path. Exception (C2-D123):
-// core_argument never gets a Commit control here — it is pushed straight into
-// the thesis editor's draft state on arrival and only persists via that
-// editor's own Save button (see handleCommit's guard and updateThesisDraft).
+// Renders one card per conviction/stance proposal below the assistant bubble
+// that emitted it. Card is session-local state — resets on reload. Commit
+// reuses window.saveThesis from Spec 3 (thesis-adapter.js), so no new write
+// path. core_argument / target_price / thesis_indicators never reach this
+// component (C2-D126) — those three render as one UnifiedThesisProposalCard2
+// instead (below), grouped by ticker at the call site.
 function ProposalCard2({ proposal, onCommit, onEdit }) {
   const t = useTheme2();
   const [status, setStatus] = React.useState('pending'); // pending | committed | dismissed
@@ -222,30 +228,12 @@ function ProposalCard2({ proposal, onCommit, onEdit }) {
         <div style={{ fontFamily: t.mono, fontSize: 11, color: t.dim }}>{'✓ Saved'}</div>
       ) : (
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          {proposal.field === 'core_argument' || proposal.field === 'target_price' ? (
-            // C2-D123 (extended to target_price) — neither field gets a direct-
-            // commit control on the card: both are already drafted into the
-            // thesis editor (session-local) the moment this card rendered.
-            // Persistence only happens via the editor's own Save button. Bias
-            // toward the conservative "draft into editor, Save gates it" path
-            // for target_price too, consistent with core_argument's precedent
-            // (owner confirms via the existing manual save, nothing auto-commits).
-            <React.Fragment>
-              <MonoTxt size={10.5} color={t.dim}>Drafted in thesis editor</MonoTxt>
-              <Btn2 style={{ fontSize: 11, padding: '5px 12px' }} onClick={handleEdit}>
-                Open editor
-              </Btn2>
-            </React.Fragment>
-          ) : (
-            <React.Fragment>
-              <Btn2 primary style={{ fontSize: 11, padding: '5px 12px' }} onClick={handleCommit} disabled={busy}>
-                {busy ? '…' : 'Commit'}
-              </Btn2>
-              <Btn2 style={{ fontSize: 11, padding: '5px 12px' }} onClick={handleEdit}>
-                Edit
-              </Btn2>
-            </React.Fragment>
-          )}
+          <Btn2 primary style={{ fontSize: 11, padding: '5px 12px' }} onClick={handleCommit} disabled={busy}>
+            {busy ? '…' : 'Commit'}
+          </Btn2>
+          <Btn2 style={{ fontSize: 11, padding: '5px 12px' }} onClick={handleEdit}>
+            Edit
+          </Btn2>
           <button onClick={handleDismiss} style={{
             background: 'none', border: 'none', cursor: 'pointer',
             fontFamily: t.mono, fontSize: 11, color: t.dim, padding: '5px 8px',
@@ -258,145 +246,221 @@ function ProposalCard2({ proposal, onCommit, onEdit }) {
   );
 }
 
-// ── Indicator proposal card component (C2-D125) ───────────────────────────────
-// Genuinely new interaction shape — confirmed during scoping that no existing
-// pattern fit: ProposalCard2 above handles a single scalar current->proposed
-// change (direct Commit for conviction/stance, "drafted in editor" for
-// core_argument/target_price), but never "N independent list-item suggestions
-// in one response, each its own accept/dismiss unit." Renders one card per
-// proposed indicator. Each card is its OWN component instance with its own
-// `status` state — this is what makes "accepting one never affects any other
-// pending suggestion" true for free: there is no shared/array state across
-// sibling cards to accidentally couple them, exactly the same isolation
-// ProposalCard2 already gets for scalar proposals in the same message.
-// Accept calls addThesisIndicatorDraft (store2.jsx) — appends ONLY this entry
-// to the ticker's draft list; Dismiss only ever changes this card's own local
-// status. Same "drafted, not direct-commit" posture as core_argument/
-// target_price: nothing reaches thesis.json until the owner's own Save click
-// in ThesisEditor2 — there is no Commit control here at all, by design.
-function IndicatorProposalCard2({ proposal }) {
+// ── Unified thesis proposal card (C2-D126) ────────────────────────────────────
+// Replaces both ProposalCard2's old core_argument/target_price branch (C2-D123
+// — "drafted in editor, Save gates it") AND IndicatorProposalCard2 above
+// (C2-D125 — per-indicator accept/dismiss into a draft list). When an agent
+// response proposes any combination of core_argument / target_price /
+// thesis_indicators for one ticker, it renders as ONE card styled like the
+// real thesis card (ThesisCard2, positions2.jsx), fully editable in place,
+// with a single Commit that writes straight to /thesis/update
+// (window.saveThesis) and a single Cancel that discards the whole thing — no
+// staged intermediate save, no per-field review. The owner-gate principle
+// both prior decisions existed to protect is preserved: still fully editable,
+// still requires an explicit owner click, still only becomes real at that
+// click — just one consistent gate instead of two differently-strict ones.
+//
+// thesis_indicators is replace-wholesale server-side (api.py's /thesis/update
+// does `target[field] = body[field]`, no merge) — so committing indicator
+// changes here sends the ticker's EXISTING saved indicators (F.thesis) plus
+// whatever remains (possibly edited/removed) in this card's list, never the
+// proposed subset alone. Sending the proposed subset alone would silently
+// delete every already-saved indicator for that ticker.
+//
+// Registers itself in window.__fincrPendingUnifiedProposals (a flat Set) for
+// the shared window.__fincrGuardedThreadReplace guard — one registration per
+// card now, not per indicator, since a unified proposal is one review unit.
+function UnifiedThesisProposalCard2({ ticker, proposals }) {
   const t = useTheme2();
-  const [status, setStatus] = React.useState('pending'); // pending | accepted | dismissed
-  // Gap-fix (closes a real production gap found after C2-D125 shipped — see
-  // decisions.md addendum, NOT a reversal of the per-suggestion accept/dismiss
-  // design). `status` above is deliberately local/isolated — that's what makes
-  // "accepting one never affects a sibling" true for free. But that same
-  // isolation is exactly why nothing OUTSIDE a card instance (e.g. drawer2.jsx's
-  // ThesisEditor2, a different component) could ever tell "how many of these
-  // are still awaiting review." idRef gives this instance a stable identity in
-  // a small shared per-ticker Set (window.__fincrPendingIndicatorProposals) —
-  // the minimal shared surface needed for a live pending count elsewhere. Same
-  // window.__fincr* + CustomEvent convention already used for __fincrThesisDraft/
-  // __fincrThesisIndicatorDrafts (store2.jsx). Deliberately NOT a shared
-  // top-level function reused across script tags — this codebase avoids relying
-  // on that (see drawer2.jsx's f2indicatorId redeclaration comment) — every
-  // read/write below touches the window global directly, inline.
-  const idRef = React.useRef('ip_' + Math.random().toString(36).slice(2, 9));
+  const [status, setStatus] = React.useState('pending'); // pending | committed | dismissed
+  const [busy, setBusy] = React.useState(false);
+  const [cardError, setCardError] = React.useState(null);
 
-  // Register as pending on mount; unregister the moment status leaves
-  // 'pending' (accept/dismiss) OR on unmount without resolution (e.g.
-  // switching away from the Agent tab, which remounts AgentTab2 and drops the
-  // whole thread). The unmount case is a deliberate scope limit, not an
-  // oversight: these cards have always been pure session-local state that
-  // resets on unmount/reload (see ProposalCard2's own precedent above) — this
-  // patch only makes that existing lifetime VISIBLE elsewhere, it does not add
-  // new durability beyond it.
+  const coreArgProposal = proposals.find(function(p) { return p.field === 'core_argument'; }) || null;
+  const targetProposal = proposals.find(function(p) { return p.field === 'target_price'; }) || null;
+  const indicatorProposals = proposals.filter(function(p) { return p.field === 'thesis_indicators'; });
+
+  const [text, setText] = React.useState(coreArgProposal ? coreArgProposal.proposed : null);
+  const [targetStr, setTargetStr] = React.useState(targetProposal ? String(targetProposal.proposed) : '');
+  const [indicators, setIndicators] = React.useState(function() {
+    return indicatorProposals.map(function(p) {
+      return { id: 'up_' + Math.random().toString(36).slice(2, 9), type: p.type, text: p.text, target_price: p.target_price };
+    });
+  });
+
+  const idRef = React.useRef('unified_' + Math.random().toString(36).slice(2, 9));
   React.useEffect(function() {
-    var ticker = proposal.ticker, id = idRef.current;
-    window.__fincrPendingIndicatorProposals = window.__fincrPendingIndicatorProposals || {};
-    var set = window.__fincrPendingIndicatorProposals[ticker] || new Set();
-    set.add(id);
-    window.__fincrPendingIndicatorProposals[ticker] = set;
-    window.dispatchEvent(new CustomEvent('fincr:indicator-proposal-pending-change', { detail: { ticker: ticker, count: set.size } }));
+    var id = idRef.current;
+    window.__fincrPendingUnifiedProposals = window.__fincrPendingUnifiedProposals || new Set();
+    window.__fincrPendingUnifiedProposals.add(id);
     return function() {
-      var s = window.__fincrPendingIndicatorProposals && window.__fincrPendingIndicatorProposals[ticker];
-      if (!s || !s.has(id)) return;
-      s.delete(id);
-      window.dispatchEvent(new CustomEvent('fincr:indicator-proposal-pending-change', { detail: { ticker: ticker, count: s.size } }));
+      if (window.__fincrPendingUnifiedProposals) window.__fincrPendingUnifiedProposals.delete(id);
     };
-  }, [proposal.ticker]);
-
+  }, []);
   React.useEffect(function() {
     if (status === 'pending') return;
-    var ticker = proposal.ticker, id = idRef.current;
-    var s = window.__fincrPendingIndicatorProposals && window.__fincrPendingIndicatorProposals[ticker];
-    if (!s || !s.has(id)) return;
-    s.delete(id);
-    window.dispatchEvent(new CustomEvent('fincr:indicator-proposal-pending-change', { detail: { ticker: ticker, count: s.size } }));
-  }, [status, proposal.ticker]);
+    if (window.__fincrPendingUnifiedProposals) window.__fincrPendingUnifiedProposals.delete(idRef.current);
+  }, [status]);
 
-  function handleAccept() {
-    var store = window.__fincrStore;
-    if (store && store.actions && store.actions.addThesisIndicatorDraft) {
-      store.actions.addThesisIndicatorDraft(proposal.ticker, {
-        type: proposal.type,
-        text: proposal.text,
-        target_price: proposal.target_price,
+  function updateIndicatorRow(id, patch) {
+    setIndicators(function(prev) {
+      return prev.map(function(ind) {
+        if (ind.id !== id) return ind;
+        var next = Object.assign({}, ind, patch);
+        if (next.type !== 'price_level') next.target_price = null;
+        return next;
       });
-    } else {
-      console.warn('[agent] addThesisIndicatorDraft not available');
-    }
-    setStatus('accepted');
+    });
+  }
+  function removeIndicatorRow(id) {
+    setIndicators(function(prev) { return prev.filter(function(ind) { return ind.id !== id; }); });
   }
 
-  function handleDismiss() {
-    setStatus('dismissed');
+  async function handleCommit() {
+    setBusy(true);
+    setCardError(null);
+    var F = window.FINCR;
+    var th = (F.thesis || []).find(function(x) { return x.ticker === ticker; });
+    var changes = {};
+
+    if (coreArgProposal) {
+      var origArg = (th && th.argument && th.argument !== THESIS_SENTINEL) ? th.argument : '';
+      if (text !== origArg) changes.core_argument = text;
+    }
+    if (targetProposal) {
+      var newTarget = targetStr.trim() === '' ? null : Number(targetStr);
+      var origTarget = th && th.target_price != null ? th.target_price : null;
+      if (newTarget !== origTarget) changes.target_price = newTarget;
+    }
+    if (indicatorProposals.length > 0) {
+      var existing = (th && th.indicators) || [];
+      var cleanNew = indicators
+        .filter(function(ind) { return ind.text && ind.text.trim(); })
+        .map(function(ind) { return { id: ind.id, type: ind.type, text: ind.text.trim(), target_price: ind.type === 'price_level' ? ind.target_price : null }; });
+      var merged = existing.concat(cleanNew);
+      if (JSON.stringify(merged) !== JSON.stringify(existing)) changes.thesis_indicators = merged;
+    }
+
+    if (Object.keys(changes).length === 0) { setBusy(false); setStatus('committed'); return; }
+
+    var reasoning = Array.from(new Set(proposals.map(function(p) { return p.reasoning; }).filter(Boolean))).join(' ');
+    if (!window.saveThesis) { setBusy(false); setCardError('Failed to save — try again'); return; }
+    var ok = await window.saveThesis(ticker, changes, reasoning);
+    if (ok && window.loadThesis) await window.loadThesis();
+    setBusy(false);
+    if (ok) { setStatus('committed'); } else { setCardError('Failed to save — try again'); }
   }
+
+  function handleCancel() { setStatus('dismissed'); }
 
   if (status === 'dismissed') return null;
 
-  var typeLabel = proposal.type === 'price_level' ? 'Price level' : proposal.type === 'catalyst' ? 'Catalyst' : 'Risk';
+  var F = window.FINCR;
+  var h = (F.holdings || []).find(function(x) { return x.ticker === ticker; });
+  var th = (F.thesis || []).find(function(x) { return x.ticker === ticker; });
+  var combinedReasoning = Array.from(new Set(proposals.map(function(p) { return p.reasoning; }).filter(Boolean))).join(' ');
 
   return (
     <div style={{
-      borderLeft: '3px solid ' + t.amber,
-      background: status === 'accepted' ? t.press : t.raise,
-      border: '1px solid ' + t.cardBorder,
-      borderLeft: '3px solid ' + t.amber,
-      borderRadius: 8,
-      padding: '10px 12px',
-      marginTop: 8,
-      opacity: status === 'accepted' ? 0.7 : 1,
-      transition: 'opacity 0.2s, background 0.2s',
+      background: t.card, backdropFilter: t.blur, WebkitBackdropFilter: t.blur, boxShadow: t.cardShadow,
+      border: '1px solid ' + t.amber, borderRadius: 16, padding: '16px 18px',
+      display: 'flex', flexDirection: 'column', gap: 12, marginTop: 8,
+      opacity: status === 'committed' ? 0.7 : 1, transition: 'opacity 0.2s',
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}>
-        <span style={{ fontFamily: t.mono, fontSize: 11, fontWeight: 600, color: t.ink, letterSpacing: '0.04em' }}>
-          {proposal.ticker}
-        </span>
-        <span style={{ fontFamily: t.mono, fontSize: 10, color: t.dim }}>thesis_indicators</span>
-        <span style={{ fontFamily: t.mono, fontSize: 9.5, color: t.faint, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{typeLabel}</span>
-      </div>
-
-      <div style={{ fontSize: 12.5, color: t.ink, lineHeight: 1.5, marginBottom: 4 }}>
-        {proposal.text}
-        {proposal.type === 'price_level' && proposal.target_price != null && (
-          <span style={{ fontFamily: t.mono, color: t.faint }}>{' — €' + Number(proposal.target_price).toLocaleString()}</span>
-        )}
-      </div>
-
-      <div style={{
-        fontSize: 12, color: t.dim, fontStyle: 'italic', lineHeight: 1.5,
-        overflow: 'hidden', display: '-webkit-box',
-        WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
-        marginBottom: 8,
-      }}>
-        {proposal.reasoning}
-      </div>
-
-      {status === 'accepted' ? (
-        <div style={{ fontFamily: t.mono, fontSize: 11, color: t.dim }}>{'✓ Added to draft — Save in editor to persist'}</div>
-      ) : (
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <Btn2 primary style={{ fontSize: 11, padding: '5px 12px' }} onClick={handleAccept}>
-            Accept
-          </Btn2>
-          <button onClick={handleDismiss} style={{
-            background: 'none', border: 'none', cursor: 'pointer',
-            fontFamily: t.mono, fontSize: 11, color: t.dim, padding: '5px 8px',
-          }}>
-            Dismiss
-          </button>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        {h && <span style={{ width: 3, height: 24, borderRadius: 2, background: h.color }}></span>}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 14.5, fontWeight: 700, color: t.ink, lineHeight: 1.15 }}>{ticker}</div>
+          {th && <div style={{ fontSize: 11.5, color: t.faint }}>{th.name}</div>}
         </div>
+        <MonoTxt size={9.5} color={t.amber} style={{ letterSpacing: '0.1em' }}>PROPOSED</MonoTxt>
+      </div>
+
+      {status === 'committed' ? (
+        <div style={{ fontFamily: t.mono, fontSize: 11, color: t.dim }}>{'✓ Saved'}</div>
+      ) : (
+        <React.Fragment>
+          {combinedReasoning && (
+            <div style={{
+              fontSize: 12, color: t.dim, fontStyle: 'italic', lineHeight: 1.5,
+              overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+            }}>
+              {combinedReasoning}
+            </div>
+          )}
+
+          {coreArgProposal && (
+            <textarea
+              value={text}
+              onChange={function(e) { setText(e.target.value); }}
+              rows={3}
+              style={Object.assign({}, window.f2InputStyle(t), { resize: 'vertical', minHeight: 60, lineHeight: 1.5, fontSize: 12.5 })}
+            />
+          )}
+
+          {indicatorProposals.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <MonoTxt size={10} color={t.faint} style={{ letterSpacing: '0.12em' }}>THESIS INDICATORS (PROPOSED)</MonoTxt>
+              {indicators.map(function(ind) {
+                return (
+                  <div key={ind.id} style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 9, border: '1px solid ' + t.hair, borderRadius: 8 }}>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <div style={{ flex: 1 }}>
+                        <Seg2
+                          options={[
+                            { value: 'risk', label: 'Risk', tone: 'bad' },
+                            { value: 'price_level', label: 'Price level', tone: 'watch' },
+                            { value: 'catalyst', label: 'Catalyst', tone: 'ok' },
+                          ]}
+                          value={ind.type}
+                          onChange={function(v) { updateIndicatorRow(ind.id, { type: v }); }}
+                        />
+                      </div>
+                      <button onClick={function() { removeIndicatorRow(ind.id); }} title="Remove indicator" className="f2-press"
+                        style={{ background: 'none', border: 'none', color: t.faint, cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: '4px 6px', borderRadius: 6, flexShrink: 0 }}>
+                        {'×'}
+                      </button>
+                    </div>
+                    <TextField2 value={ind.text} onChange={function(v) { updateIndicatorRow(ind.id, { text: v }); }} />
+                    {ind.type === 'price_level' && (
+                      <NumberField2
+                        value={ind.target_price != null ? String(ind.target_price) : ''}
+                        onChange={function(v) { updateIndicatorRow(ind.id, { target_price: v.trim() === '' ? null : Number(v) }); }}
+                        prefix="€" placeholder="—"
+                      />
+                    )}
+                  </div>
+                );
+              })}
+              {indicators.length === 0 && (
+                <MonoTxt size={11} color={t.faint} style={{ fontStyle: 'italic' }}>All proposed indicators removed — none will be added.</MonoTxt>
+              )}
+            </div>
+          )}
+
+          {targetProposal && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, borderTop: '1px solid ' + t.hair, paddingTop: 10 }}>
+              <MonoTxt size={10} color={t.faint} style={{ letterSpacing: '0.12em' }}>TARGET (PROPOSED)</MonoTxt>
+              <div style={{ width: 140 }}>
+                <NumberField2 value={targetStr} onChange={setTargetStr} prefix="€" placeholder="—" />
+              </div>
+            </div>
+          )}
+
+          {cardError && <div style={{ fontSize: 11, color: t.red }}>{cardError}</div>}
+
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <button onClick={handleCancel} style={{
+              background: 'none', border: 'none', cursor: 'pointer',
+              fontFamily: t.mono, fontSize: 11, color: t.dim, padding: '5px 8px',
+            }}>
+              Cancel
+            </button>
+            <Btn2 primary style={{ fontSize: 11, padding: '5px 14px' }} onClick={handleCommit} disabled={busy}>
+              {busy ? '…' : 'Commit'}
+            </Btn2>
+          </div>
+        </React.Fragment>
       )}
     </div>
   );
@@ -490,29 +554,36 @@ function ConvRailItem2({ conv, active, t, onOpen, onRename }) {
   );
 }
 
-// ── Shared pending-indicator-proposal guard (consolidates 3 prior one-offs) ───
+// ── Shared pending-thesis-proposal guard (consolidates 3 prior one-offs) ──────
 // Three independent call sites used to each carry their OWN copy of the same
-// "sum window.__fincrPendingIndicatorProposals, confirm() if > 0" logic:
-// guardedSetTab (shell2.jsx, C2-D125 tab-switch addendum), startNewConversation
-// (agent2.jsx, C2-D125 "+"-button addendum), and openConversation (agent2.jsx,
-// found unguarded during that same addendum's sweep and explicitly flagged as
-// a follow-up rather than fixed inline). Three occurrences of the identical
-// bug class is the trigger signal for a structural fix rather than a fourth
-// copy-pasted guard — see decisions.md [C2-D125] addendum (this session).
+// "sum pending proposals, confirm() if > 0" logic: guardedSetTab (shell2.jsx,
+// C2-D125 tab-switch addendum), startNewConversation (agent2.jsx, C2-D125
+// "+"-button addendum), and openConversation (agent2.jsx, found unguarded
+// during that same addendum's sweep). Three occurrences of the identical bug
+// class is the trigger signal for a structural fix rather than a fourth
+// copy-pasted guard — see decisions.md [C2-D125] addendum.
 //
-// Defined ONCE here (agent2.jsx owns window.__fincrPendingIndicatorProposals
+// C2-D126 — the source this sums from changed. Was
+// window.__fincrPendingIndicatorProposals (a per-ticker Set of pending
+// IndicatorProposalCard2 instances); IndicatorProposalCard2 is retired, so
+// this now sums window.__fincrPendingUnifiedProposals (a flat Set — a unified
+// proposal is already one review unit per ticker, not N per-indicator units,
+// so no per-ticker grouping is needed here anymore). The guard FUNCTION
+// itself, and its two callers in shell2.jsx, are unchanged — only what it
+// counts is different.
+//
+// Defined ONCE here (agent2.jsx owns window.__fincrPendingUnifiedProposals
 // and two of the three call sites) and exposed as a window global so shell2.jsx
 // — a separate <script type="text/babel"> tag with no ES-module import between
 // them — can call into the identical logic instead of duplicating it. This is
 // a deliberate exception to this codebase's usual "small helpers/constants get
-// redeclared per file" convention (e.g. the ind_-id-generator precedent): that
-// convention is fine when only the output *shape* matters (any file's copy of
-// a random-id generator behaves identically by construction), but here the
-// whole point of consolidating is that the exact confirm() wording and
-// summing behavior must be the SAME code, not three copies that could drift.
-// index.html loads agent2.jsx (line 62) before shell2.jsx (line 71), so this
-// global is guaranteed to exist by the time any guarded action can actually
-// fire (all three are click-time actions, long after both scripts have run).
+// redeclared per file" convention: that convention is fine when only the
+// output *shape* matters, but here the whole point of consolidating is that
+// the exact confirm() wording and summing behavior must be the SAME code, not
+// three copies that could drift. index.html loads agent2.jsx (line 62) before
+// shell2.jsx (line 71), so this global is guaranteed to exist by the time any
+// guarded action can actually fire (all three are click-time actions, long
+// after both scripts have run).
 //
 // actionFn: the real thread/tab-replacing action, called only if the caller
 //   should proceed (zero pending, or the owner confirmed).
@@ -524,15 +595,11 @@ function ConvRailItem2({ conv, active, t, onOpen, onRename }) {
 //   regression from this refactor).
 // Returns true if actionFn ran (or wasn't gated), false if the owner canceled.
 window.__fincrGuardedThreadReplace = function(actionFn, actionPhrase, closeQuestion) {
-  var pendingMap = window.__fincrPendingIndicatorProposals || {};
-  var count = 0;
-  Object.keys(pendingMap).forEach(function (tk) {
-    var s = pendingMap[tk];
-    if (s && s.size) count += s.size;
-  });
+  var pending = window.__fincrPendingUnifiedProposals;
+  var count = pending ? pending.size : 0;
   if (count > 0) {
-    var msg = 'You have ' + count + ' suggested indicator' + (count === 1 ? '' : 's') +
-      " you haven't reviewed yet. " + actionPhrase + ' will lose ' + (count === 1 ? 'it' : 'them') +
+    var msg = 'You have ' + count + ' uncommitted thesis proposal' + (count === 1 ? '' : 's') +
+      ". " + actionPhrase + ' will lose ' + (count === 1 ? 'it' : 'them') +
       ' permanently. ' + closeQuestion;
     if (!confirm(msg)) return false; // Cancel — nothing runs, state untouched
   }
@@ -640,10 +707,10 @@ function AgentTab2() {
   }
 
   // Load a past conversation into the thread (open/resume).
-  // Guarded (this session — was found unguarded, flagged not fixed, in the
-  // C2-D125 "+"-button addendum): switching to a different past conversation
-  // replaces `thread` wholesale, silently unmounting any IndicatorProposalCard2
-  // still pending for the conversation being left. Routed through the shared
+  // Guarded (C2-D125 "+"-button addendum, target updated for C2-D126):
+  // switching to a different past conversation replaces `thread` wholesale,
+  // silently unmounting any UnifiedThesisProposalCard2 still pending for the
+  // conversation being left. Routed through the shared
   // window.__fincrGuardedThreadReplace (defined above AgentTab2) — same
   // mechanism guardedSetTab (shell2.jsx) and startNewConversation (below) use,
   // so this is the third and final call site consolidated onto one guard
@@ -771,20 +838,11 @@ function AgentTab2() {
 
       if (d.status === 'ok') {
         var parsed = parseAgentResponse(d.response);
-        // C2-D123 — core_argument proposals populate the thesis-editor draft
-        // immediately (not gated on the owner clicking Edit on the card), so an
-        // already-open drawer for that ticker updates live. Purely client-side —
-        // does not touch thesis.json. See updateThesisDraft in store2.jsx.
-        var draftStore = window.__fincrStore;
-        if (draftStore && draftStore.actions && draftStore.actions.updateThesisDraft) {
-          parsed.proposals.forEach(function(p) {
-            if (p.field === 'core_argument') {
-              draftStore.actions.updateThesisDraft(p.ticker, { core_argument: p.proposed });
-            } else if (p.field === 'target_price') {
-              draftStore.actions.updateThesisDraft(p.ticker, { target_price: p.proposed });
-            }
-          });
-        }
+        // C2-D126 — core_argument/target_price/thesis_indicators proposals no
+        // longer stage into a session-local thesis-editor draft on arrival
+        // (that was C2-D123/C2-D125's "drafted, editor Save gates it" posture).
+        // They render as one UnifiedThesisProposalCard2 below and commit
+        // directly from chat — nothing to pre-populate into drawer2.jsx.
         setThread(function(prev) {
           return [...prev, { id: 'a_' + Math.random().toString(36).slice(2, 8), role: 'agent', text: parsed.prose, proposals: parsed.proposals }];
         });
@@ -811,18 +869,11 @@ function AgentTab2() {
   // Commit: calls saveThesis (Spec 3, thesis-adapter.js) + refreshes F.thesis.
   // reasoning → conversation_summary → last_update_reason in thesis.json.
   async function handleCommit(proposal) {
-    // Defense in depth (C2-D123, extended to target_price and thesis_indicators
-    // C2-D125): core_argument/target_price/thesis_indicators must only ever
-    // persist via the ThesisEditor2 Save button (window.saveThesis called from
-    // drawer2.jsx), never via this direct-commit path. Should be unreachable —
-    // ProposalCard2 does not render a Commit control for the first two, and
-    // thesis_indicators proposals never reach this handler at all (they render
-    // via IndicatorProposalCard2, whose Accept calls addThesisIndicatorDraft
-    // directly, not onCommit) — but guarded here too.
-    if (proposal.field === 'core_argument' || proposal.field === 'target_price' || proposal.field === 'thesis_indicators') {
-      console.warn('[agent] refusing direct commit of ' + proposal.field + ' — must go through thesis editor Save');
-      return false;
-    }
+    // C2-D126 — core_argument/target_price/thesis_indicators no longer reach
+    // this handler at all: the render loop above routes those three fields to
+    // UnifiedThesisProposalCard2 (which commits via its own handleCommit),
+    // never to ProposalCard2's onCommit. This handler now only ever sees
+    // conviction/stance.
     if (!window.saveThesis) { console.warn('[agent] saveThesis not available'); return false; }
     var ok = await window.saveThesis(
       proposal.ticker,
@@ -988,31 +1039,46 @@ function AgentTab2() {
                 <div style={{ fontSize: 13, color: t.ink, lineHeight: 1.62, whiteSpace: 'pre-line' }}>
                   {msg.text}
                 </div>
-                {msg.proposals && msg.proposals.map(function(p, pi) {
-                  // C2-D125 — thesis_indicators proposals render as their own
-                  // independent accept/dismiss unit (IndicatorProposalCard2),
-                  // a different shape from every other field's current->proposed
-                  // ProposalCard2. Each list item is its own component instance
-                  // in this .map, which is exactly what gives "accepting one
-                  // never touches any sibling" for free — no shared array state
-                  // ties the cards together.
-                  if (p.field === 'thesis_indicators') {
-                    return (
-                      <IndicatorProposalCard2
-                        key={p.ticker + ':thesis_indicators:' + p.type + ':' + pi}
-                        proposal={p}
-                      />
-                    );
-                  }
+                {(function() {
+                  // C2-D126 — conviction/stance keep their existing per-proposal
+                  // ProposalCard2 (direct commit, unaffected by this change).
+                  // core_argument / target_price / thesis_indicators group by
+                  // ticker into ONE UnifiedThesisProposalCard2 per ticker present
+                  // in this message — the whole point of the consolidation is
+                  // that text + indicators + target for the same holding commit
+                  // together, not as N separate cards.
+                  var msgProposals = msg.proposals || [];
+                  var scalarProposals = msgProposals.filter(function(p) { return p.field === 'conviction' || p.field === 'stance'; });
+                  var unifiedFieldSet = { core_argument: true, target_price: true, thesis_indicators: true };
+                  var unifiedByTicker = {};
+                  msgProposals.forEach(function(p) {
+                    if (!unifiedFieldSet[p.field]) return;
+                    (unifiedByTicker[p.ticker] = unifiedByTicker[p.ticker] || []).push(p);
+                  });
                   return (
-                    <ProposalCard2
-                      key={p.ticker + ':' + p.field + ':' + pi}
-                      proposal={p}
-                      onCommit={handleCommit}
-                      onEdit={handleEdit}
-                    />
+                    <React.Fragment>
+                      {scalarProposals.map(function(p, pi) {
+                        return (
+                          <ProposalCard2
+                            key={p.ticker + ':' + p.field + ':' + pi}
+                            proposal={p}
+                            onCommit={handleCommit}
+                            onEdit={handleEdit}
+                          />
+                        );
+                      })}
+                      {Object.keys(unifiedByTicker).map(function(tk) {
+                        return (
+                          <UnifiedThesisProposalCard2
+                            key={tk + ':unified'}
+                            ticker={tk}
+                            proposals={unifiedByTicker[tk]}
+                          />
+                        );
+                      })}
+                    </React.Fragment>
                   );
-                })}
+                })()}
               </div>
             );
           })}
