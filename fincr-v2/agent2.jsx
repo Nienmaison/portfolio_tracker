@@ -28,7 +28,11 @@ const THESIS_SENTINEL = "Position opened via dashboard — thesis details pendin
 // ProposalObject (conviction/stance/core_argument/target_price):
 //   { ticker, field, current, proposed, reasoning }
 // ProposalObject (thesis_indicators): { ticker, field: 'thesis_indicators',
-//   type, text, target_price, reasoning } — no current/proposed at all.
+//   type, text, target_price, reasoning, revisesId } — no current/proposed at
+//   all. revisesId (C2-D127) is the existing indicator id the agent intends
+//   this as a revision of, or null for a genuinely new indicator — validated
+//   against this ticker's real current indicators in
+//   UnifiedThesisProposalCard2, not here.
 function parseAgentResponse(text) {
   const VALID_CONVICTIONS = new Set(['high', 'medium', 'low']);
   const VALID_STANCES = new Set(['accumulate', 'hold', 'trim']);
@@ -99,12 +103,26 @@ function parseAgentResponse(text) {
         }
         indTargetPrice = tpParsed;
       }
+      // C2-D127 — optional id, present only when the agent intends this as a
+      // revision of an indicator already shown in its context (api.py's
+      // build_system_prompt tags each with "[id:xxx]"). Tolerate the model
+      // echoing that exact bracket/prefix form even though the prompt asks
+      // for the bare id — strip it rather than discard a well-intentioned
+      // revision over a formatting slip. Actual validation against this
+      // ticker's real current indicator ids happens in
+      // UnifiedThesisProposalCard2 (client-side, where F.thesis lives), not
+      // here — this parser only extracts what the agent sent.
+      var indRevisesId = null;
+      if (block.id != null && block.id.trim() !== '') {
+        indRevisesId = block.id.trim().replace(/^\[?id:/i, '').replace(/\]$/, '').trim() || null;
+      }
       proposals.push({
         ticker: ticker.toUpperCase(),
         field: 'thesis_indicators',
         type: indType,
         text: indText.trim(),
         target_price: indTargetPrice,
+        revisesId: indRevisesId,
         reasoning: indReasoning,
       });
       continue;
@@ -270,6 +288,14 @@ function ProposalCard2({ proposal, onCommit, onEdit }) {
 // Registers itself in window.__fincrPendingUnifiedProposals (a flat Set) for
 // the shared window.__fincrGuardedThreadReplace guard — one registration per
 // card now, not per indicator, since a unified proposal is one review unit.
+//
+// C2-D127 — thesis_indicators proposals may now carry a revisesId (set by
+// api.py's prompt when the agent references an [id:xxx] tag already visible
+// in its context). Matched against this ticker's real current indicators at
+// mount: a match replaces that entry in place on Commit instead of appending
+// a near-duplicate; no match (including no revisesId at all) still appends,
+// same as before C2-D127. Every row is labeled "Updates existing X" / "New
+// X" / a distinct mismatch flag in the preview — see the render below.
 function UnifiedThesisProposalCard2({ ticker, proposals }) {
   const t = useTheme2();
   const [status, setStatus] = React.useState('pending'); // pending | committed | dismissed
@@ -282,9 +308,29 @@ function UnifiedThesisProposalCard2({ ticker, proposals }) {
 
   const [text, setText] = React.useState(coreArgProposal ? coreArgProposal.proposed : null);
   const [targetStr, setTargetStr] = React.useState(targetProposal ? String(targetProposal.proposed) : '');
+  // C2-D127 — each proposed indicator is matched against the ticker's REAL
+  // current indicators (F.thesis, read once at mount) by `revisesId`:
+  //   - revisesId present + matches an existing id -> matchStatus 'revision',
+  //     row's own `id` is set to that EXISTING id (not a fresh one), so
+  //     handleCommit's merge below can replace the right entry in place.
+  //   - revisesId present but matches nothing -> matchStatus 'mismatch'
+  //     (stale/hallucinated/wrong-ticker id) — safe fallback is "new", but
+  //     flagged distinctly in the preview rather than silently treated as
+  //     an ordinary new addition (a wrong id is the one failure mode this
+  //     feature must never paper over quietly).
+  //   - revisesId absent -> matchStatus 'new', same as all indicator
+  //     proposals before this decision.
   const [indicators, setIndicators] = React.useState(function() {
+    var existingIndicators = ((window.FINCR.thesis || []).find(function(x) { return x.ticker === ticker; }) || {}).indicators || [];
     return indicatorProposals.map(function(p) {
-      return { id: 'up_' + Math.random().toString(36).slice(2, 9), type: p.type, text: p.text, target_price: p.target_price };
+      var matchStatus = 'new';
+      var rowId = 'up_' + Math.random().toString(36).slice(2, 9);
+      if (p.revisesId) {
+        var matched = existingIndicators.some(function(e) { return e.id === p.revisesId; });
+        if (matched) { matchStatus = 'revision'; rowId = p.revisesId; }
+        else { matchStatus = 'mismatch'; }
+      }
+      return { id: rowId, type: p.type, text: p.text, target_price: p.target_price, _matchStatus: matchStatus };
     });
   });
 
@@ -333,11 +379,30 @@ function UnifiedThesisProposalCard2({ ticker, proposals }) {
       if (newTarget !== origTarget) changes.target_price = newTarget;
     }
     if (indicatorProposals.length > 0) {
+      // C2-D127 — 'revision' rows replace their matched existing entry in
+      // place (same id, edited content); 'new'/'mismatch' rows append as a
+      // fresh entry, exactly like every indicator proposal before this
+      // decision. A revision row the owner deleted from the preview simply
+      // isn't in `indicators` anymore, so its original entry passes through
+      // `existing` untouched below — deleting a proposed revision means
+      // "don't apply it," not "delete the original."
       var existing = (th && th.indicators) || [];
-      var cleanNew = indicators
+      var cleanRows = indicators
         .filter(function(ind) { return ind.text && ind.text.trim(); })
-        .map(function(ind) { return { id: ind.id, type: ind.type, text: ind.text.trim(), target_price: ind.type === 'price_level' ? ind.target_price : null }; });
-      var merged = existing.concat(cleanNew);
+        .map(function(ind) {
+          return {
+            id: ind.id, type: ind.type, text: ind.text.trim(),
+            target_price: ind.type === 'price_level' ? ind.target_price : null,
+            _matchStatus: ind._matchStatus,
+          };
+        });
+      var revisionsById = {};
+      var additions = [];
+      cleanRows.forEach(function(row) {
+        var entry = { id: row.id, type: row.type, text: row.text, target_price: row.target_price };
+        if (row._matchStatus === 'revision') { revisionsById[row.id] = entry; } else { additions.push(entry); }
+      });
+      var merged = existing.map(function(e) { return revisionsById[e.id] || e; }).concat(additions);
       if (JSON.stringify(merged) !== JSON.stringify(existing)) changes.thesis_indicators = merged;
     }
 
@@ -402,8 +467,18 @@ function UnifiedThesisProposalCard2({ ticker, proposals }) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <MonoTxt size={10} color={t.faint} style={{ letterSpacing: '0.12em' }}>THESIS INDICATORS (PROPOSED)</MonoTxt>
               {indicators.map(function(ind) {
+                // C2-D127 — the owner is the review gate for this whole
+                // feature; a silent id match (or mismatch) is exactly the
+                // kind of thing they need to see before Commit, not trust.
+                var typeLabel = ind.type === 'price_level' ? 'price level' : ind.type === 'catalyst' ? 'catalyst' : 'risk';
+                var matchLabel = ind._matchStatus === 'revision'
+                  ? { text: 'Updates existing ' + typeLabel, color: t.accent }
+                  : ind._matchStatus === 'mismatch'
+                    ? { text: "Proposed id didn't match any existing indicator — added as new", color: t.amber }
+                    : { text: 'New ' + typeLabel, color: t.faint };
                 return (
                   <div key={ind.id} style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 9, border: '1px solid ' + t.hair, borderRadius: 8 }}>
+                    <MonoTxt size={9.5} color={matchLabel.color} style={{ letterSpacing: '0.06em', textTransform: 'uppercase' }}>{matchLabel.text}</MonoTxt>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                       <div style={{ flex: 1 }}>
                         <Seg2

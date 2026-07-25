@@ -8,7 +8,7 @@
 // Bump CACHE_VERSION after any significant frontend change to force a full
 // cache flush on all clients.
 
-const CACHE_VERSION = 'fincr-v62'; // C2-D126: foldable whole-card thesis display + unified single-commit proposal (replaces C2-D123/C2-D125 drafting flows)
+const CACHE_VERSION = 'fincr-v63'; // C2-D127: indicator identity — agent revisions update in place instead of appending a duplicate
 
 const SHELL_ASSETS = [
   './index.html',
