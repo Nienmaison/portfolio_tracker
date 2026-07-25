@@ -8,7 +8,7 @@
 // Bump CACHE_VERSION after any significant frontend change to force a full
 // cache flush on all clients.
 
-const CACHE_VERSION = 'fincr-v61'; // C2-D125b: Review in chat now closes the drawer (actions.closeDrawer) before switching to the agent tab
+const CACHE_VERSION = 'fincr-v62'; // C2-D126: foldable whole-card thesis display + unified single-commit proposal (replaces C2-D123/C2-D125 drafting flows)
 
 const SHELL_ASSETS = [
   './index.html',
