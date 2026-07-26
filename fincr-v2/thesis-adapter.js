@@ -152,6 +152,75 @@
     return transformed;
   }
 
+  // C2-D129 — trimmed grid fetch (Phase 1's GET /thesis/grid, C2-D128). Same
+  // key-guard/fetch/error-handling/publish/dispatch shape as loadThesis()
+  // above, deliberately — this is a second, independent data source
+  // (F.thesisGrid), not a replacement for F.thesis. ThesisEditor2 (drawer2.jsx)
+  // and UnifiedThesisProposalCard2 (agent2.jsx) keep reading F.thesis/loadThesis
+  // exactly as before; only positions2.jsx's compact card reads this one.
+  // Output shape matches loadThesis()'s per-ticker fields (ticker/name/argument/
+  // conviction/stance/target/indicators) so ThesisCard2 doesn't need a second
+  // rendering convention depending on data source — plus indicatorCount, which
+  // loadThesis() has no equivalent for (the full array's own .length serves
+  // that purpose there).
+  async function loadThesisGrid() {
+    const F = (window.FINCR = window.FINCR || {});
+    const key = localStorage.getItem('fincr-api-key') || '';
+    if (!key) { F.thesisGrid = []; return []; }
+
+    let data;
+    try {
+      const r = await fetch(THESIS_API_BASE + '/thesis/grid', { headers: { 'X-API-Key': key } });
+      if (!r.ok) { console.warn('[thesis] GET /thesis/grid HTTP ' + r.status); F.thesisGrid = []; return []; }
+      data = await r.json();
+    } catch (e) {
+      console.warn('[thesis] GET /thesis/grid failed:', e.message);
+      F.thesisGrid = []; return [];
+    }
+
+    const holdings = (data && data.holdings) || {};
+    const transformed = Object.entries(holdings).map(function (entry) {
+      const ticker = entry[0];
+      const h = entry[1];
+      return {
+        ticker: ticker,
+        name: h.company,
+        argument: h.core_argument,
+        conviction: titleCase(h.conviction),
+        stance: titleCase(h.stance),
+        target: (h.target_price != null) ? '€' + Number(h.target_price).toLocaleString() : null,
+        indicators: h.thesis_indicators || [],   // already capped to 2 server-side
+        indicatorCount: h.indicator_count || 0,
+      };
+    });
+
+    F.thesisGrid = transformed;
+    window.dispatchEvent(new CustomEvent('fincr:thesis-grid-update'));
+    return transformed;
+  }
+
+  // C2-D129 — full per-holding thesis fetch (Phase 1's GET /thesis/<ticker>/full,
+  // C2-D128), called on overlay open. Deliberately NOT published to a window.FINCR
+  // field or dispatched as an event — this is fetched fresh per open and held in
+  // the overlay component's own local state, not shared app state, since only one
+  // overlay is ever open at a time and nothing else in the app reads it. Returns
+  // the raw parsed response ({status, ticker, company, ..., full_thesis,
+  // thesis_indicators, decision_rules, stats, ...}) on success, or null on any
+  // failure (no key / non-200 / network error) — never throws. Caller renders its
+  // own retry affordance on null, per the overlay's own loading/error states.
+  async function loadThesisFull(ticker) {
+    const key = localStorage.getItem('fincr-api-key') || '';
+    if (!key) { console.warn('[thesis] loadThesisFull: no api key'); return null; }
+    try {
+      const r = await fetch(THESIS_API_BASE + '/thesis/' + encodeURIComponent(ticker) + '/full', { headers: { 'X-API-Key': key } });
+      if (!r.ok) { console.warn('[thesis] GET /thesis/' + ticker + '/full HTTP ' + r.status); return null; }
+      return await r.json();
+    } catch (e) {
+      console.warn('[thesis] GET /thesis/' + ticker + '/full failed:', e.message);
+      return null;
+    }
+  }
+
   // Save edited thesis fields for a single holding (or archived entry) via
   // POST /thesis/update (C2-S3). `changes` should contain ONLY the fields the
   // caller actually changed (diffed upstream) to avoid needless version bumps.
@@ -237,6 +306,8 @@
   window.loadThesis = loadThesis;
   window.saveThesis = saveThesis;
   window.addPoolEvent = addPoolEvent;
+  window.loadThesisGrid = loadThesisGrid;
+  window.loadThesisFull = loadThesisFull;
   // Exposed for reuse/testing (parity with window.f2ParseTranches); store2.jsx reads
   // the already-computed F.poolNetCapitalDeposited, not this function directly.
   window.f2ComputePoolNetCapital = f2ComputePoolNetCapital;

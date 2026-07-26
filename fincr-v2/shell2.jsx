@@ -69,20 +69,58 @@ function Shell2() {
     window.addEventListener('fincr:sync-status-change', handler);
     window.addEventListener('fincr:fx-update', handler);
     window.addEventListener('fincr:thesis-update', handler);  // C2-S2: repaint on thesis load
+    window.addEventListener('fincr:thesis-grid-update', handler);  // C2-D129: repaint Positions cards on grid load
     window.addEventListener('fincr:key-change', handler);  // C2-D89: repaint status bar + tree when the API key is entered
     const goTab = (e) => { const tk = e.detail && e.detail.tab; if (tk) guardedSetTab(tk); };
     window.addEventListener('fincr:go-tab', goTab);
+    // C2-D129 — back/forward button support for the full-thesis overlay's URL
+    // state. openThesisOverlay (store2.jsx) pushes exactly one history entry
+    // per open; this is the other half — when the browser itself moves
+    // through history (back/forward, not a click inside the app), re-read
+    // whatever the URL says right now and sync React state to match. Covers
+    // both directions: back-past an open overlay (thesis param disappears →
+    // close it) and forward-into one (thesis param reappears → reopen it).
+    const onPopState = () => {
+      const params = new URLSearchParams(window.location.search);
+      const tk = params.get('thesis');
+      const st = window.__fincrStore;
+      if (st && st.actions) st.actions.syncThesisOverlayFromUrl(tk);
+    };
+    window.addEventListener('popstate', onPopState);
     // Tick every 30s so "SYNC 5M AGO" stays fresh between syncs.
     const tick = setInterval(() => forceRerender((n) => n + 1), 30000);
     return () => {
       window.removeEventListener('fincr:sync-status-change', handler);
       window.removeEventListener('fincr:fx-update', handler);
       window.removeEventListener('fincr:thesis-update', handler);
+      window.removeEventListener('fincr:thesis-grid-update', handler);
       window.removeEventListener('fincr:key-change', handler);
       window.removeEventListener('fincr:go-tab', goTab);
+      window.removeEventListener('popstate', onPopState);
       clearInterval(tick);
     };
   }, []);
+
+  // C2-D129 — one-shot deep-link check: if the page loaded with a ?thesis=
+  // param already in the URL (a shared/bookmarked link), switch to the
+  // Positions tab and sync the overlay open — same one-shot-on-mount
+  // convention as the agent-seed effect in agent2.jsx. No path-based routing
+  // exists anywhere in this app (confirmed during this phase's Researcher
+  // pass) and this doesn't add any — only the query string is read/written,
+  // the pathname is left exactly as the browser already has it.
+  React.useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tk = params.get('thesis');
+    if (!tk) return;
+    guardedSetTab('positions');
+    // Deferred one tick so this runs after FincrProvider's own first render
+    // has published window.__fincrStore (store2.jsx sets it on every render,
+    // but the very first paint may not have happened yet at Shell2 mount time).
+    setTimeout(() => {
+      const st = window.__fincrStore;
+      if (st && st.actions) st.actions.syncThesisOverlayFromUrl(tk);
+    }, 0);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // C2-S3 — transient toast for non-blocking notices (e.g. a post-close thesis
   // update that failed). Fired via window CustomEvent('fincr:toast', {detail:{message}}).
@@ -286,6 +324,7 @@ function Shell2() {
         <CmdPalette2 open={palette} onClose={() => setPalette(false)} actions={actions} />
         <AddPosition2 />
         <PositionDrawer2 />
+        <ThesisOverlay2 />
       </div>
       </window.FincrProvider>
     </window.Theme2Ctx.Provider>);

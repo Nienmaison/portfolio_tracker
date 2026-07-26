@@ -652,6 +652,13 @@ function FincrProvider({ children }) {
   const [closed, setClosed] = React.useState(init.current.closed || []);
   const [targets, setTargets] = React.useState(init.current.targets || null);
   const [drawerTicker, setDrawerTicker] = React.useState(null);
+  // C2-D129 — which ticker's full-thesis overlay is open (ThesisOverlay2),
+  // mirrors drawerTicker's shape exactly. A separate piece of state from
+  // drawerTicker rather than reusing it — the overlay and the position drawer
+  // are independent surfaces (opening one should never imply anything about
+  // the other) and the URL-state wiring (this decision) only ever needs to
+  // read/write this one field, not overload the drawer's.
+  const [thesisOverlayTicker, setThesisOverlayTicker] = React.useState(null);
   const [addOpen, setAddOpen] = React.useState(false);
   // Task 1 (C2) §2.4 — true while the GET /holdings hydration + price fetch is in
   // flight. Only meaningful when an API key exists (otherwise there is nothing to
@@ -742,6 +749,41 @@ function FincrProvider({ children }) {
 
   const actions = React.useMemo(() => ({
     openDrawer: (tk) => setDrawerTicker(tk),
+    // C2-D129 — opens the full-thesis overlay and pushes exactly one new
+    // history entry (`?thesis=TICKER` on the current URL, path untouched —
+    // this app has no path-based routing to preserve or invent, confirmed
+    // during this phase's Researcher pass). Mirrors openDrawer's shape but is
+    // deliberately a separate action/state (thesisOverlayTicker, not
+    // drawerTicker) — the overlay and the position drawer are independent
+    // surfaces.
+    openThesisOverlay: (tk) => {
+      setThesisOverlayTicker(tk);
+      try {
+        const url = new URL(window.location.href);
+        url.searchParams.set('thesis', tk);
+        window.history.pushState({ thesisOverlay: tk }, '', url);
+      } catch (e) { /* URL/History API unavailable — overlay still opens, just not linkable */ }
+    },
+    // Closing ALWAYS goes through history.back(), never a direct state clear
+    // plus a separate history op. openThesisOverlay above pushed exactly one
+    // history entry; back() unwinds exactly that one, and the resulting
+    // popstate (listened for in shell2.jsx) is what actually clears
+    // thesisOverlayTicker. This keeps "closed via ×/Escape/backdrop" and
+    // "closed via the browser back button" the SAME code path — there is
+    // only ever one way the overlay closes, not two that could drift apart.
+    closeThesisOverlay: () => {
+      if (window.history.state && window.history.state.thesisOverlay) {
+        window.history.back();
+      } else {
+        // Nothing to unwind (e.g. state was synced from an already-present
+        // URL param on load, never pushed) — clear directly.
+        setThesisOverlayTicker(null);
+      }
+    },
+    // One-shot sync from an already-present ?thesis= URL param on initial
+    // load (a deep link) or after a popstate. Never touches history itself —
+    // the URL is already correct; this only brings React state in line with it.
+    syncThesisOverlayFromUrl: (tk) => setThesisOverlayTicker(tk || null),
     openDrawerWithPrefill: (ticker, prefill) => {
       // Uses window.__fincrDrawerPrefill (not window.__fincrStore.drawerPrefill)
       // because window.__fincrStore is replaced on each render (C2-S4b).
@@ -1453,7 +1495,7 @@ function FincrProvider({ children }) {
     })();
   }, []);
 
-  const ctx = { holdings: derived, closed, targets, totals, loading, drawerTicker, addOpen, actions, deriveHolding: f2DeriveHolding };
+  const ctx = { holdings: derived, closed, targets, totals, loading, drawerTicker, thesisOverlayTicker, addOpen, actions, deriveHolding: f2DeriveHolding };
   window.__fincrStore = ctx; // latest snapshot for event handlers outside the tree (⌘K)
   return React.createElement(FincrStoreCtx.Provider, { value: ctx }, children);
 }

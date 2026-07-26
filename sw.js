@@ -8,7 +8,7 @@
 // Bump CACHE_VERSION after any significant frontend change to force a full
 // cache flush on all clients.
 
-const CACHE_VERSION = 'fincr-v64'; // C2-D128 Phase 1: preserve state/condition on indicator saves (drawer editor + agent revision commit)
+const CACHE_VERSION = 'fincr-v65'; // C2-D129 Phase 2: full-thesis overlay shell (read-only) — new thesisoverlay2.jsx, fold retired
 
 const SHELL_ASSETS = [
   './index.html',
