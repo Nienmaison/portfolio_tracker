@@ -539,9 +539,16 @@ function ThesisEditor2({ th, onDone }) {
     // or persisting a blank entry. Compared by JSON (order + content) against
     // the last-saved list — cheap and correct at this list size, same
     // "only send what changed" discipline as every other field here.
+    // C2-D128 — spread `ind` rather than reconstructing a bare {id,type,text,
+    // target_price} object. For an untouched row `ind` IS the original entry
+    // (origIndicators, a straight passthrough from F.thesis), so this now
+    // preserves fields this editor doesn't render (state, condition) instead
+    // of silently dropping them on every save — including a save that never
+    // touched indicators at all, since this map runs over the whole list
+    // unconditionally.
     const cleanIndicators = indicators
       .filter((ind) => ind.text && ind.text.trim())
-      .map((ind) => ({ id: ind.id, type: ind.type, text: ind.text.trim(), target_price: ind.type === 'price_level' ? ind.target_price : null }));
+      .map((ind) => ({ ...ind, text: ind.text.trim(), target_price: ind.type === 'price_level' ? ind.target_price : null }));
     if (JSON.stringify(cleanIndicators) !== JSON.stringify(origIndicators)) changes.thesis_indicators = cleanIndicators;
     if (Object.keys(changes).length === 0) { onDone(); return; } // no-op — just close
     const ok = await window.saveThesis(th.ticker, changes, '');

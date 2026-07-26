@@ -8,7 +8,7 @@
 // Bump CACHE_VERSION after any significant frontend change to force a full
 // cache flush on all clients.
 
-const CACHE_VERSION = 'fincr-v63'; // C2-D127: indicator identity — agent revisions update in place instead of appending a duplicate
+const CACHE_VERSION = 'fincr-v64'; // C2-D128 Phase 1: preserve state/condition on indicator saves (drawer editor + agent revision commit)
 
 const SHELL_ASSETS = [
   './index.html',

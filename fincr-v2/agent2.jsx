@@ -396,11 +396,24 @@ function UnifiedThesisProposalCard2({ ticker, proposals }) {
             _matchStatus: ind._matchStatus,
           };
         });
+      // C2-D128 — a revised entry is built by spreading the ORIGINAL existing
+      // entry and overriding only the fields this card actually lets the
+      // owner edit (type/text/target_price), not by reconstructing a bare
+      // 4-key object. Once indicators carry fields this card never renders
+      // (state, condition), reconstructing narrowly would silently drop them
+      // off any indicator the agent revises — this preserves everything else
+      // on that entry untouched.
+      var existingById = {};
+      existing.forEach(function(e) { existingById[e.id] = e; });
       var revisionsById = {};
       var additions = [];
       cleanRows.forEach(function(row) {
-        var entry = { id: row.id, type: row.type, text: row.text, target_price: row.target_price };
-        if (row._matchStatus === 'revision') { revisionsById[row.id] = entry; } else { additions.push(entry); }
+        if (row._matchStatus === 'revision') {
+          var orig = existingById[row.id] || {};
+          revisionsById[row.id] = Object.assign({}, orig, { id: row.id, type: row.type, text: row.text, target_price: row.target_price });
+        } else {
+          additions.push({ id: row.id, type: row.type, text: row.text, target_price: row.target_price });
+        }
       });
       var merged = existing.map(function(e) { return revisionsById[e.id] || e; }).concat(additions);
       if (JSON.stringify(merged) !== JSON.stringify(existing)) changes.thesis_indicators = merged;
