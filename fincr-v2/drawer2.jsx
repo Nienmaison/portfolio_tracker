@@ -456,28 +456,24 @@ function Stat2({ label, children, color }) {
   );
 }
 
-// C2-D125 — local redeclaration, not a reference to store2.jsx's f2indicatorId.
-// Matches this codebase's existing convention (see THESIS_SENTINEL, redeclared
-// identically in both positions2.jsx and here) of each plain-script file owning
-// its own copy of small constants/helpers rather than relying on cross-<script>-
-// tag global-scope leakage of top-level const/let. Same id shape as store2.jsx's
-// generator (used there for agent-accepted drafts) and f2closedId (C2-D113) —
-// this copy is for manually-added rows, created directly in this file.
-const f2indicatorId = () => 'ind_' + Math.random().toString(36).slice(2, 9);
-
 /* C2-S3 — inline per-holding thesis editor. Edits core_argument / conviction /
-   stance / target_price / thesis_indicators (C2-D125) via POST /thesis/update
-   (window.saveThesis), sends only changed fields, then refreshes F.thesis via
-   loadThesis(). Transient local state.
+   stance / target_price via POST /thesis/update (window.saveThesis), sends
+   only changed fields, then refreshes F.thesis via loadThesis(). Transient
+   local state.
 
    C2-D126 — this editor no longer has any awareness of agent-proposed
-   core_argument/target_price/thesis_indicators. That whole "draft into this
-   editor, Save gates it" flow (C2-D123/C2-D125) is retired: those three
-   fields now edit and commit directly from chat via
-   UnifiedThesisProposalCard2 (agent2.jsx), never touching this component.
-   openDrawerWithPrefill/window.__fincrDrawerPrefill is UNRELATED and still
-   live — it's the generic conviction/stance "Edit" prefill from
-   ProposalCard2, not the retired mechanism. */
+   core_argument/target_price. That whole "draft into this editor, Save gates
+   it" flow (C2-D123) is retired: those fields now edit and commit directly
+   from chat via UnifiedThesisProposalCard2 (agent2.jsx), never touching this
+   component. openDrawerWithPrefill/window.__fincrDrawerPrefill is UNRELATED
+   and still live — it's the generic conviction/stance "Edit" prefill from
+   ProposalCard2, not the retired mechanism.
+
+   C2-D130 — thesis_indicators editing is retired from this component
+   entirely (not just the agent-drafting path into it). The full-thesis
+   overlay (ThesisOverlay2, thesisoverlay2.jsx) is now the one canonical place
+   to add/edit/remove indicators. This editor never reads, diffs, or sends
+   thesis_indicators in any form. */
 function ThesisEditor2({ th, onDone }) {
   const t = useTheme2();
   // Original backend values. The adapter display-cases conviction/stance; lowercasing
@@ -499,31 +495,6 @@ function ThesisEditor2({ th, onDone }) {
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState(false);
 
-  // C2-D125 — thesis_indicators (typed list: risk/price_level/catalyst).
-  // origIndicators is the last-saved backend state, read fresh on mount, same
-  // as origArg/origConv/origStance/origTarget above.
-  const origIndicators = th.indicators || [];
-  const [indicators, setIndicators] = React.useState(origIndicators);
-
-  // Manual editor row helpers — add/edit/remove, fully independent of the agent.
-  function addIndicatorRow() {
-    setIndicators((prev) => prev.concat([{ id: f2indicatorId(), type: 'risk', text: '', target_price: null }]));
-  }
-  function updateIndicatorRow(id, patch) {
-    setIndicators((prev) => prev.map((ind) => {
-      if (ind.id !== id) return ind;
-      var next = { ...ind, ...patch };
-      // type-conditional: target_price only means anything for price_level —
-      // clearing it on a type change away from price_level keeps the shape
-      // honest rather than leaving a stale number the UI no longer shows.
-      if (next.type !== 'price_level') next.target_price = null;
-      return next;
-    }));
-  }
-  function removeIndicatorRow(id) {
-    setIndicators((prev) => prev.filter((ind) => ind.id !== id));
-  }
-
   const save = async () => {
     setBusy(true); setErr(false);
     // Diff against originals — only send what changed (avoid needless version bumps).
@@ -533,27 +504,9 @@ function ThesisEditor2({ th, onDone }) {
     if (stance !== origStance) changes.stance = stance;
     const newTarget = targetStr.trim() === '' ? null : Number(targetStr);
     if (newTarget !== origTarget) changes.target_price = newTarget;
-    // C2-D125 — thesis_indicators. Rows with empty/whitespace-only text are
-    // dropped before diffing/sending: the owner can click "+ Add indicator",
-    // decide not to fill it in, and Cancel/Save without it ever blocking Save
-    // or persisting a blank entry. Compared by JSON (order + content) against
-    // the last-saved list — cheap and correct at this list size, same
-    // "only send what changed" discipline as every other field here.
-    // C2-D128 — spread `ind` rather than reconstructing a bare {id,type,text,
-    // target_price} object. For an untouched row `ind` IS the original entry
-    // (origIndicators, a straight passthrough from F.thesis), so this now
-    // preserves fields this editor doesn't render (state, condition) instead
-    // of silently dropping them on every save — including a save that never
-    // touched indicators at all, since this map runs over the whole list
-    // unconditionally.
-    const cleanIndicators = indicators
-      .filter((ind) => ind.text && ind.text.trim())
-      .map((ind) => ({ ...ind, text: ind.text.trim(), target_price: ind.type === 'price_level' ? ind.target_price : null }));
-    if (JSON.stringify(cleanIndicators) !== JSON.stringify(origIndicators)) changes.thesis_indicators = cleanIndicators;
     if (Object.keys(changes).length === 0) { onDone(); return; } // no-op — just close
     const ok = await window.saveThesis(th.ticker, changes, '');
     if (!ok) { setErr(true); setBusy(false); return; }
-    setIndicators(cleanIndicators); // C2-D125 — the just-persisted list is the new baseline
     if (window.loadThesis) await window.loadThesis(); // refresh card + drawer
     onDone();
   };
@@ -575,64 +528,12 @@ function ThesisEditor2({ th, onDone }) {
       <Field2 label="Price target" hint="optional">
         <NumberField2 value={targetStr} onChange={setTargetStr} prefix="€" placeholder="—" />
       </Field2>
-      {/* C2-D125 — manual add/edit/remove list editor for thesis_indicators.
-          Fully independent of the agent (C2-D126 retired the only path the
-          agent ever had into this list) — every row here is created, typed
-          into, and removed by the owner alone, via the same Save flow as
-          every other field on this form (POST /thesis/update via
-          window.saveThesis — no new write path). */}
-      <Field2 label="Thesis indicators" hint="risks · price levels · catalysts">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {indicators.map((ind) => (
-            <div key={ind.id} style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 10, border: `1px solid ${t.hair}`, borderRadius: 8 }}>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <div style={{ flex: 1 }}>
-                  <Seg2
-                    options={[
-                      { value: 'risk', label: 'Risk', tone: 'bad' },
-                      { value: 'price_level', label: 'Price level', tone: 'watch' },
-                      { value: 'catalyst', label: 'Catalyst', tone: 'ok' },
-                    ]}
-                    value={ind.type}
-                    onChange={(v) => updateIndicatorRow(ind.id, { type: v })}
-                  />
-                </div>
-                <button onClick={() => removeIndicatorRow(ind.id)} title="Remove indicator" className="f2-press"
-                  style={{ background: 'none', border: 'none', color: t.faint, cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: '4px 6px', borderRadius: 6, flexShrink: 0 }}>
-                  {'×'}
-                </button>
-              </div>
-              <TextField2
-                value={ind.text}
-                onChange={(v) => updateIndicatorRow(ind.id, { text: v })}
-                placeholder={
-                  ind.type === 'price_level' ? 'e.g. Accumulate more below this level'
-                  : ind.type === 'catalyst' ? 'e.g. Q3 earnings, mainnet launch, regulatory ruling'
-                  : 'e.g. What would prove this thesis wrong?'
-                }
-              />
-              {/* Type-conditional field — target_price only ever rendered for
-                  Price Level, per spec. updateIndicatorRow also force-nulls
-                  target_price whenever type changes away from price_level, so
-                  no stale number can hide behind a hidden field. */}
-              {ind.type === 'price_level' && (
-                <NumberField2
-                  value={ind.target_price != null ? String(ind.target_price) : ''}
-                  onChange={(v) => updateIndicatorRow(ind.id, { target_price: v.trim() === '' ? null : Number(v) })}
-                  prefix="€"
-                  placeholder="—"
-                />
-              )}
-            </div>
-          ))}
-          <TextBtn2 tone="accent" onClick={addIndicatorRow} style={{ alignSelf: 'flex-start' }}>+ Add indicator</TextBtn2>
-        </div>
-      </Field2>
-      {/* C2-D126 — the "N suggested indicators awaiting review" banner (and the
-          pendingProposalCount it read) is retired along with the mechanism it
-          existed to surface: agent-proposed core_argument/target_price/
-          thesis_indicators no longer draft into this editor at all, so there
-          is nothing left for this banner to ever report on. */}
+      {/* C2-D130 — thesis_indicators editing retired from this drawer entirely.
+          The full-thesis overlay (ThesisOverlay2, thesisoverlay2.jsx) is now
+          the one canonical place to add/edit/remove indicators — consolidating
+          from three possible writers (this drawer, the agent's unified-commit,
+          and now potentially the overlay) down to two (overlay, agent). This
+          drawer no longer reads, diffs, or sends thesis_indicators in any form. */}
       {err && <MonoTxt size={11} color={t.red}>Failed to save — try again</MonoTxt>}
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
         <Btn2 onClick={onDone}>Cancel</Btn2>

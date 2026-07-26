@@ -249,6 +249,53 @@
     }
   }
 
+  // C2-D130 — conflict-aware variant of saveThesis, used ONLY by the overlay's
+  // editing flow (ThesisOverlay2). saveThesis's existing boolean-returning
+  // contract is deliberately left untouched — ThesisEditor2 and
+  // UnifiedThesisProposalCard2 both check `if (!ok)`, and changing that
+  // return shape to an object (even one with an `ok` key) would make those
+  // truthy-checks silently wrong (`{ok:false}` is truthy). A new function
+  // avoids retrofitting a risk onto two already-shipped writers for a
+  // capability only the newest one needs.
+  //
+  // `expectedVersion`, if non-null, is sent as `thesis_version` — the
+  // control field the C2-D130 compare-and-swap check in /thesis/update reads
+  // (never written onto the entry itself, never in UPDATABLE). Returns
+  // { ok: boolean, conflict: boolean, liveVersion?: number }:
+  //   - { ok: true } on 200.
+  //   - { ok: false, conflict: true, liveVersion } on 409 — the server's
+  //     current version is included so the caller can decide how to reload.
+  //   - { ok: false, conflict: false } on any other failure (network, 4xx/5xx
+  //     other than 409, no key) — same "never throws" posture as saveThesis.
+  async function saveThesisVersioned(ticker, changes, expectedVersion, conversationSummary) {
+    const key = localStorage.getItem('fincr-api-key') || '';
+    if (!key) { console.warn('[thesis] saveThesisVersioned: no api key — skipped'); return { ok: false, conflict: false }; }
+    const payload = Object.assign({ ticker: ticker }, changes || {});
+    if (expectedVersion != null) payload.thesis_version = expectedVersion;
+    if (conversationSummary != null) payload.conversation_summary = conversationSummary;
+    try {
+      const r = await fetch(THESIS_API_BASE + '/thesis/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-API-Key': key },
+        body: JSON.stringify(payload),
+      });
+      if (r.status === 409) {
+        let d = null;
+        try { d = await r.json(); } catch (e) { /* malformed conflict body — still a conflict */ }
+        return { ok: false, conflict: true, liveVersion: d && d.thesis_version };
+      }
+      if (!r.ok) {
+        const txt = await r.text();
+        console.warn('[thesis] POST /thesis/update HTTP ' + r.status + ':', txt.slice(0, 200));
+        return { ok: false, conflict: false };
+      }
+      return { ok: true, conflict: false };
+    } catch (e) {
+      console.warn('[thesis] POST /thesis/update (versioned) failed:', e.message);
+      return { ok: false, conflict: false };
+    }
+  }
+
   // POST /pool/event ([C2-D100]) — append a deposit/withdrawal to the lifetime pool
   // ledger. Optimistic: append a provisional event to F.pool.events, recompute
   // F.poolNetCapitalDeposited, and dispatch fincr:thesis-update so BOTH derived figures
@@ -308,6 +355,7 @@
   window.addPoolEvent = addPoolEvent;
   window.loadThesisGrid = loadThesisGrid;
   window.loadThesisFull = loadThesisFull;
+  window.saveThesisVersioned = saveThesisVersioned;
   // Exposed for reuse/testing (parity with window.f2ParseTranches); store2.jsx reads
   // the already-computed F.poolNetCapitalDeposited, not this function directly.
   window.f2ComputePoolNetCapital = f2ComputePoolNetCapital;
