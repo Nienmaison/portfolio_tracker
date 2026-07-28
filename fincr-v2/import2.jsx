@@ -143,7 +143,19 @@ function f2ValidTicker(ticker, type) {
    [C2-D118] for why this stays curated, not fuzzy-matched). When adding an
    entry, pick the canonical symbol by checking which one actually resolves on
    the live price feed (/stock-price) — same check used for the original NOK
-   rename (C2-D111) — don't guess. */
+   rename (C2-D111) — don't guess.
+
+   [C2-D133] Exposed on window so store2.jsx's SnapTrade sync reconciliation
+   (f2MergeBrokerPositions/f2MergeBrokerActivities) reads the SAME table, not
+   a duplicated copy that could drift — this is shared DATA, not just shared
+   behavior (the __fincrGuardedThreadReplace precedent, agent2.jsx), so
+   drift here is worse: an alias added for CSV-import purposes but not
+   mirrored elsewhere would silently reproduce this exact duplicate-holding
+   bug class for a future ticker. index.html loads store2.jsx (line 53)
+   before import2.jsx (line 64) — safe regardless, since store2.jsx's merge
+   functions only ever call window.f2ResolveAlias at sync-time (a mount
+   effect or a button click), long after every script tag, including this
+   one, has already run. */
 const CROSS_BROKER_ALIASES = {
   NOK: 'NOK',
   NOKIA: 'NOK',
@@ -151,6 +163,8 @@ const CROSS_BROKER_ALIASES = {
 function f2ResolveAlias(ticker) {
   return CROSS_BROKER_ALIASES[ticker] || ticker;
 }
+window.CROSS_BROKER_ALIASES = CROSS_BROKER_ALIASES;
+window.f2ResolveAlias = f2ResolveAlias;
 
 /* ── Broker auto-detection profiles ───────────────────────────────────────
    ORDER MATTERS: Trading 212 exports also contain an ISIN column, so it must

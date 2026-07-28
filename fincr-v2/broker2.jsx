@@ -89,6 +89,13 @@ function BrokerConnect2() {
 
   // skipped is [{ticker, reason}] — group by reason for a readable line.
   const SKIP_LABEL = { manual: 'kept manual', history_incomplete: 'skipped — incomplete history', history_managed: 'kept — history-managed' };
+  // [C2-D133] aliasedFolds is [{raw, canonical, outcome}] — a broker-native
+  // symbol (e.g. "NOKIA") that resolved to an already-known canonical ticker
+  // ("NOK") instead of being counted as a new holding. Surfaced as its own
+  // clause, distinct from the plain synced/new/skipped counts above, so an
+  // aliased match is visible as exactly that — not indistinguishable from an
+  // ordinary sync or silently folded into a bare count.
+  const ALIAS_OUTCOME_LABEL = { replaced: 'synced', manual: 'kept manual', history_managed: 'kept — history-managed', history_incomplete: 'skipped — incomplete history' };
   const summarize = (label, res, extra) => {
     const n = res.added.length + res.replaced.length;
     const parts = [n + ' ' + label + (n === 1 ? '' : 's') + ' synced'];
@@ -96,6 +103,7 @@ function BrokerConnect2() {
     const byReason = {};
     (res.skipped || []).forEach((s) => { const r = s.reason || 'skipped'; (byReason[r] = byReason[r] || []).push(s.ticker); });
     Object.keys(byReason).forEach((r) => parts.push(byReason[r].length + ' ' + (SKIP_LABEL[r] || r) + ' (' + byReason[r].join(', ') + ')'));
+    (res.aliasedFolds || []).forEach((f) => parts.push(f.raw + ' → ' + f.canonical + ' (aliased, ' + (ALIAS_OUTCOME_LABEL[f.outcome] || f.outcome) + ')'));
     if (extra) parts.push(extra);
     return parts.join(' · ');
   };

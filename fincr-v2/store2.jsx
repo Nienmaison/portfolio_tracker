@@ -460,30 +460,46 @@ function f2SeedFromSample() {
 function f2MergeBrokerPositions(holdings, positions) {
   var today = new Date().toISOString().slice(0, 10);
   var next = holdings.slice();
-  var added = [], replaced = [], skipped = [];
+  var added = [], replaced = [], skipped = [], aliasedFolds = [];
   var idxOf = function (tk) { for (var i = 0; i < next.length; i++) { if (next[i].ticker === tk) return i; } return -1; };
   // Guard 2 ([C2-D88]): a ticker whose ledger holds activity-replay txns (id 'st_...')
   // has date-accurate per-txn cost basis — a snapshot single-rate update must not
   // clobber it. Detect via the 'st_' id prefix ('stpos_'/'tx_' are NOT history).
   var isHistoryEstablished = function (h) { return (h.txns || []).some(function (t) { return String(t.id || '').indexOf('st_') === 0; }); };
+  var resolveAlias = window.f2ResolveAlias || function (t) { return t; };
   (positions || []).forEach(function (p) {
-    var tk = String(p.ticker || '').toUpperCase();
-    if (!tk) return;
+    var rawTk = String(p.ticker || '').toUpperCase();
+    if (!rawTk) return;
+    // [C2-D133] Resolve a known cross-broker alias (window.CROSS_BROKER_ALIASES,
+    // import2.jsx — e.g. SnapTrade's native "NOKIA" -> our canonical "NOK")
+    // BEFORE checking whether this ticker is already known. Without this, a
+    // renamed holding's original broker-native symbol resurfaces as a brand
+    // new duplicate on every future sync, forever — exactly what happened to
+    // NOK/NOKIA (decisions.md [C2-D111]/[C2-D132]).
+    var tk = resolveAlias(rawTk);
+    var aliased = tk !== rawTk;
     var qty = +p.quantity, price = +p.avg_buy_price;
     var synthTx = { id: 'stpos_' + tk, kind: 'buy', date: today, qty: qty, price: price, source: 'snaptrade' };
     var i = idxOf(tk);
     if (i >= 0) {
       if (next[i].source === 'snaptrade') {
         if (isHistoryEstablished(next[i])) {
+          if (aliased) { aliasedFolds.push({ raw: rawTk, canonical: tk, outcome: 'history_managed' }); }
           skipped.push({ ticker: tk, reason: 'history_managed' }); // cost basis from history wins; refresh via Sync history
         } else {
           next[i] = Object.assign({}, next[i], { source: 'snaptrade', type: p.type || next[i].type || 'stock', txns: [synthTx] });
+          if (aliased) { aliasedFolds.push({ raw: rawTk, canonical: tk, outcome: 'replaced' }); }
           replaced.push(tk);
         }
       } else {
+        if (aliased) { aliasedFolds.push({ raw: rawTk, canonical: tk, outcome: 'manual' }); }
         skipped.push({ ticker: tk, reason: 'manual' }); // untagged — protected ([C2-D82])
       }
     } else {
+      // No existing holding under the canonical ticker either — a genuinely
+      // new position, correctly created under the canonical name, not the
+      // raw incoming one. Not an "aliased fold" (nothing existed to fold
+      // into), so tracked as a normal addition.
       next.push({
         ticker: tk, name: tk, type: p.type || 'stock', source: 'snaptrade',
         price: 0, color: F2_PALETTE[next.length % F2_PALETTE.length],
@@ -492,7 +508,7 @@ function f2MergeBrokerPositions(holdings, positions) {
       added.push(tk);
     }
   });
-  return { next: next, added: added, replaced: replaced, skipped: skipped };
+  return { next: next, added: added, replaced: replaced, skipped: skipped, aliasedFolds: aliasedFolds };
 }
 
 /* ── Spec C2 ([C2-D85]) — source-aware replay of broker ACTIVITY history into
@@ -502,17 +518,36 @@ function f2MergeBrokerPositions(holdings, positions) {
    as [C2-D82] positions); new tickers are added with full history. Pure + unit-
    tested. For real cost basis, run "Sync history" after "Sync brokers". */
 function f2MergeBrokerActivities(holdings, activities, positions) {
+  var resolveAlias = window.f2ResolveAlias || function (t) { return t; };
   var posQty = {};
-  (positions || []).forEach(function (p) { posQty[String(p.ticker || '').toUpperCase()] = +p.quantity; });
+  (positions || []).forEach(function (p) {
+    // [C2-D133] Resolve through the alias so a position reported under its
+    // broker-native symbol (e.g. "NOKIA") reconciles against the SAME
+    // canonical ticker ("NOK") the activities below get grouped under —
+    // otherwise Guard 1 just below would compare against nothing (cur ===
+    // undefined) and wrongly skip as 'history_incomplete', or double-count
+    // if the same underlying position is ever reported under two native
+    // symbols simultaneously (summed here, not overwritten, against exactly
+    // that case).
+    var tk = resolveAlias(String(p.ticker || '').toUpperCase());
+    posQty[tk] = (posQty[tk] || 0) + (+p.quantity || 0);
+  });
   var byT = {};
+  var aliasedRaw = {}; // canonical ticker -> [raw broker-native symbols folded into it, this sync]
   (activities || []).forEach(function (a) {
-    var tk = String(a.ticker || '').toUpperCase(); if (!tk) return;
+    var raw = String(a.ticker || '').toUpperCase(); if (!raw) return;
+    var tk = resolveAlias(raw);
+    if (tk !== raw) {
+      aliasedRaw[tk] = aliasedRaw[tk] || [];
+      if (aliasedRaw[tk].indexOf(raw) === -1) aliasedRaw[tk].push(raw);
+    }
     (byT[tk] = byT[tk] || []).push({ id: a.id, kind: a.kind, date: a.date, qty: +a.qty, price: +a.price, source: 'snaptrade' });
   });
   var next = holdings.slice();
-  var added = [], replaced = [], skipped = [];
+  var added = [], replaced = [], skipped = [], aliasedFolds = [];
   var idxOf = function (tk) { for (var i = 0; i < next.length; i++) { if (next[i].ticker === tk) return i; } return -1; };
   Object.keys(byT).forEach(function (tk) {
+    var aliasedFrom = aliasedRaw[tk]; // undefined if every activity for this ticker already used the canonical symbol
     var txns = byT[tk].slice().sort(function (a, b) { return a.date < b.date ? -1 : (a.date > b.date ? 1 : 0); });
     // Guard 1 ([C2-D87]): only merge when replayed net qty matches the CURRENT
     // reported position. A missing disposal (feed gap) or an unheld ticker would
@@ -520,21 +555,31 @@ function f2MergeBrokerActivities(holdings, activities, positions) {
     var net = txns.reduce(function (s, t) { return s + (t.kind === 'buy' ? t.qty : -t.qty); }, 0);
     var cur = posQty[tk];
     var tol = Math.max(0.01, Math.abs(cur || 0) * 0.001);
-    if (cur === undefined || Math.abs(net - cur) > tol) { skipped.push({ ticker: tk, reason: 'history_incomplete' }); return; }
+    if (cur === undefined || Math.abs(net - cur) > tol) {
+      if (aliasedFrom) { aliasedFolds.push({ raw: aliasedFrom.join('/'), canonical: tk, outcome: 'history_incomplete' }); }
+      skipped.push({ ticker: tk, reason: 'history_incomplete' }); return;
+    }
     var i = idxOf(tk);
     if (i >= 0) {
       var h = next[i];
       var hasManual = (h.txns || []).some(function (t) { return t.source !== 'snaptrade'; });
-      if (h.source !== 'snaptrade' || hasManual) { skipped.push({ ticker: tk, reason: 'manual' }); return; } // protect manual
+      if (h.source !== 'snaptrade' || hasManual) {
+        if (aliasedFrom) { aliasedFolds.push({ raw: aliasedFrom.join('/'), canonical: tk, outcome: 'manual' }); }
+        skipped.push({ ticker: tk, reason: 'manual' }); return; // protect manual
+      }
       next[i] = Object.assign({}, h, { source: 'snaptrade', txns: txns });
+      if (aliasedFrom) { aliasedFolds.push({ raw: aliasedFrom.join('/'), canonical: tk, outcome: 'replaced' }); }
       replaced.push(tk);
     } else {
+      // No existing holding under the canonical ticker — a genuinely new
+      // position, correctly created under the canonical name. Not an
+      // "aliased fold" (nothing existed to fold into).
       next.push({ ticker: tk, name: tk, type: 'stock', source: 'snaptrade', price: 0,
         color: F2_PALETTE[next.length % F2_PALETTE.length], seed: (next.length * 7 + 3) % 97, dayPct: 0, txns: txns });
       added.push(tk);
     }
   });
-  return { next: next, added: added, replaced: replaced, skipped: skipped };
+  return { next: next, added: added, replaced: replaced, skipped: skipped, aliasedFolds: aliasedFolds };
 }
 
 function f2HoldingsFromApi(data) {
@@ -823,14 +868,18 @@ function FincrProvider({ children }) {
       const merged = f2MergeBrokerPositions(holdings, positions || []);
       const priced = await f2FetchPrices(merged.next); // re-price so P&L/true-return are correct
       setHoldings(priced); // triggers the single POST /holdings sync
-      return { added: merged.added, replaced: merged.replaced, skipped: merged.skipped };
+      // [C2-D133] aliasedFolds forwarded alongside added/replaced/skipped —
+      // a narrow {added,replaced,skipped} reconstruction here would silently
+      // drop it, the same field-stripping bug class already fixed twice
+      // elsewhere in this codebase (C2-D128).
+      return { added: merged.added, replaced: merged.replaced, skipped: merged.skipped, aliasedFolds: merged.aliasedFolds };
     },
 
     syncBrokerActivities: async (activities, positions) => {
       const merged = f2MergeBrokerActivities(holdings, activities || [], positions || []);
       const priced = await f2FetchPrices(merged.next); // re-price so true-return is correct
       setHoldings(priced); // triggers the single POST /holdings sync
-      return { added: merged.added, replaced: merged.replaced, skipped: merged.skipped };
+      return { added: merged.added, replaced: merged.replaced, skipped: merged.skipped, aliasedFolds: merged.aliasedFolds };
     },
 
     // C2-D97: for a SELL, materialize gross proceeds + realized gain ON the txn at
