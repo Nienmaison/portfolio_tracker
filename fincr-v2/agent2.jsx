@@ -556,7 +556,7 @@ function UnifiedThesisProposalCard2({ ticker, proposals }) {
 
 // ── Conversation rail item ────────────────────────────────────────────────────
 // One row in the sidebar thread list. Inline rename on double-click of the title.
-function ConvRailItem2({ conv, active, t, onOpen, onRename }) {
+function ConvRailItem2({ conv, active, t, onOpen, onRename, onDelete }) {
   const [editing, setEditing] = React.useState(false);
   const [editTitle, setEditTitle] = React.useState(conv.title || 'New conversation');
   const inputRef = React.useRef(null);
@@ -574,6 +574,15 @@ function ConvRailItem2({ conv, active, t, onOpen, onRename }) {
       await onRename(conv.id, trimmed);
     } else {
       setEditTitle(conv.title || 'New conversation');
+    }
+  }
+
+  // Hard delete, no undo — matches this app's existing native-confirm() pattern
+  // for destructive actions (closedpositions2.jsx, drawer2.jsx, thesisoverlay2.jsx).
+  function handleDelete(e) {
+    e.stopPropagation();
+    if (confirm('Delete "' + (conv.title || 'New conversation') + '"?\n\nThis permanently removes the conversation. This cannot be undone.')) {
+      onDelete(conv.id);
     }
   }
 
@@ -636,6 +645,15 @@ function ConvRailItem2({ conv, active, t, onOpen, onRename }) {
               opacity: active ? 0.6 : 0,
             }}
           >{'✎'}</button>
+          <button
+            onClick={handleDelete}
+            title="Delete conversation"
+            style={{
+              position: 'absolute', top: 8, right: 24, background: 'none', border: 'none',
+              color: t.faint, fontSize: 11, cursor: 'pointer', padding: 0,
+              opacity: active ? 0.6 : 0,
+            }}
+          >{'🗑'}</button>
         </React.Fragment>
       )}
     </div>
@@ -709,6 +727,8 @@ function AgentTab2() {
 
   const [convId, setConvId] = React.useState(null);      // null = lazy start on first send
   const [conversations, setConversations] = React.useState([]);
+  const [hasMoreConversations, setHasMoreConversations] = React.useState(false);
+  const [loadingMoreConversations, setLoadingMoreConversations] = React.useState(false);
   const [inputText, setInputText] = React.useState('');
   const [sending, setSending] = React.useState(false);
 
@@ -766,14 +786,71 @@ function AgentTab2() {
   // ── API helpers ──────────────────────────────────────────────────────────────
   function apiKey() { return localStorage.getItem('fincr-api-key') || ''; }
 
+  // First page (20 most recent). Replaces the list wholesale — used on mount
+  // and after any action that should reset pagination to the top (rename,
+  // delete of the active conversation's neighbors, etc.).
   async function loadConversationList() {
     var key = apiKey();
     if (!key) return;
     try {
       var r = await fetch(AGENT_API_BASE + '/conversations', { headers: { 'X-API-Key': key } });
       var d = await r.json();
-      if (d.status === 'ok') setConversations(d.conversations || []);
+      if (d.status === 'ok') {
+        setConversations(d.conversations || []);
+        setHasMoreConversations(!!d.has_more);
+      }
     } catch(e) { console.warn('[agent] loadConversationList failed:', e.message); }
+  }
+
+  // Scroll-triggered next page: cursors off the oldest thread currently
+  // rendered and appends, so already-rendered rows and scroll position are
+  // untouched. Guarded by loadingMoreConversations against overlapping fetches
+  // from repeated scroll events, and stops for good once has_more is false.
+  async function loadMoreConversations() {
+    var key = apiKey();
+    if (!key || loadingMoreConversations || !hasMoreConversations || conversations.length === 0) return;
+    var oldest = conversations[conversations.length - 1];
+    setLoadingMoreConversations(true);
+    try {
+      var r = await fetch(AGENT_API_BASE + '/conversations?before=' + encodeURIComponent(oldest.started_at), { headers: { 'X-API-Key': key } });
+      var d = await r.json();
+      if (d.status === 'ok') {
+        setConversations(function(prev) { return prev.concat(d.conversations || []); });
+        setHasMoreConversations(!!d.has_more);
+      }
+    } catch(e) {
+      console.warn('[agent] loadMoreConversations failed:', e.message);
+    } finally {
+      setLoadingMoreConversations(false);
+    }
+  }
+
+  // Rail onScroll handler — fetches the next page once the rail is scrolled
+  // near its bottom.
+  function handleRailScroll(e) {
+    var el = e.target;
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < 80) loadMoreConversations();
+  }
+
+  // Hard delete (no archive/soft-delete — deliberate, see decisions.md). Confirm
+  // step lives in ConvRailItem2; by the time this runs the owner has confirmed.
+  async function deleteConversation(id) {
+    var key = apiKey();
+    if (!key) return;
+    try {
+      var r = await fetch(AGENT_API_BASE + '/conversations/' + id, {
+        method: 'DELETE',
+        headers: { 'X-API-Key': key },
+      });
+      var d = await r.json();
+      if (d.status !== 'ok') { console.warn('[agent] deleteConversation failed:', d.error); return; }
+      setConversations(function(prev) { return prev.filter(function(c) { return c.id !== id; }); });
+      if (convId === id) {
+        setConvId(null);
+        setThread([]);
+        convMsgsRef.current = [];
+      }
+    } catch(e) { console.warn('[agent] deleteConversation failed:', e.message); }
   }
 
   // Lazy: called on first send if convId is null. Returns new conversation_id or null.
@@ -1033,7 +1110,11 @@ function AgentTab2() {
     <div style={{ display: 'grid', gridTemplateColumns: '220px minmax(0,1fr)', gap: 0, border: '1px solid ' + t.cardBorder, borderRadius: 16, overflow: 'hidden', background: t.card, backdropFilter: t.blur, WebkitBackdropFilter: t.blur, boxShadow: t.cardShadow, minHeight: 560 }}>
 
       {/* ── Sidebar rail ─────────────────────────────────────────────────── */}
-      <div style={{ borderRight: '1px solid ' + t.hair, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
+      {/* maxHeight added so overflowY:auto actually engages instead of the grid
+          row just growing taller as threads accumulate — same fixed-height +
+          overflow pattern as guardrails2.jsx/palette2.jsx. onScroll drives
+          scroll-triggered pagination (loadMoreConversations). */}
+      <div onScroll={handleRailScroll} style={{ borderRight: '1px solid ' + t.hair, display: 'flex', flexDirection: 'column', overflowY: 'auto', maxHeight: 560 }}>
         <div style={{ padding: '14px 14px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
           <MonoTxt size={10} color={t.faint} style={{ letterSpacing: '0.16em' }}>THREADS</MonoTxt>
           <button
@@ -1067,12 +1148,16 @@ function AgentTab2() {
                         t={t}
                         onOpen={openConversation}
                         onRename={renameConversation}
+                        onDelete={deleteConversation}
                       />
                     );
                   })}
                 </React.Fragment>
               );
             })}
+            {loadingMoreConversations ? (
+              <div style={{ padding: '8px 8px', fontSize: 10.5, color: t.faint, fontFamily: t.mono, textAlign: 'center' }}>Loading…</div>
+            ) : null}
           </div>
         )}
       </div>
