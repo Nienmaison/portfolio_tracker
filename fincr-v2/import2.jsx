@@ -752,18 +752,21 @@ function ImportTab2({ go }) {
     setSel(positions.map((p) => (p.valid ? target : false)));
   };
 
-  /* ── Live price (EUR) for a single ticker — public endpoints, no key ── */
+  /* ── Live price (EUR) for a single ticker — now requires X-API-Key (C2-Dxxx);
+     /crypto-prices and /stock-price were public, closed once live dashboard
+     polling meant hitting them far more often than a one-time preview call ── */
   const fetchLivePrice = async (ticker, type) => {
     const base = 'https://fincr.duckdns.org';
+    const key = (typeof localStorage !== 'undefined' && localStorage.getItem('fincr-api-key')) || '';
     try {
       if (type === 'crypto') {
-        const r = await fetch(base + '/crypto-prices?tickers=' + encodeURIComponent(ticker));
+        const r = await fetch(base + '/crypto-prices?tickers=' + encodeURIComponent(ticker), { headers: { 'X-API-Key': key } });
         if (!r.ok) return null;
         const m = await r.json();
         const p = m && m[ticker.toUpperCase()];
         return typeof p === 'number' ? p : null;
       }
-      const r = await fetch(base + '/stock-price?ticker=' + encodeURIComponent(ticker));
+      const r = await fetch(base + '/stock-price?ticker=' + encodeURIComponent(ticker), { headers: { 'X-API-Key': key } });
       if (!r.ok) return null;
       const d = await r.json();
       return d && typeof d.price === 'number' ? d.price : null;

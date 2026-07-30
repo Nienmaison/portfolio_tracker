@@ -627,18 +627,20 @@ function f2HoldingsFromApi(data) {
 }
 
 /* ── Task 1 (C2) §2.3 — Phase 3: live prices in EUR. Crypto via /crypto-prices
-   (one batch), stocks via /stock-price (parallel). Both endpoints are public
-   (no key) and return EUR. holdings.json has no `type` until the first POST, so
-   unknown-type tickers are tried as crypto first, then as stocks — a typeless
-   book still prices. Unresolved tickers keep price 0 (store renders cost basis,
-   zero live value). ── */
+   (one batch), stocks via /stock-price (parallel). Both endpoints now require
+   X-API-Key (C2-Dxxx — were public; closed once live polling meant hitting
+   them far more often than a one-time page load). holdings.json has no `type`
+   until the first POST, so unknown-type tickers are tried as crypto first,
+   then as stocks — a typeless book still prices. Unresolved tickers keep
+   price 0 (store renders cost basis, zero live value). ── */
 async function f2FetchPrices(holdings) {
+  const key = f2ApiKey();
   const priceByTicker = {};
   const changeByTicker = {}; // C2-S12 — daily % change, keyed exactly like priceByTicker
   const cryptoCands = holdings.filter((h) => h.type === 'crypto' || !h.type).map((h) => h.ticker);
   if (cryptoCands.length) {
     try {
-      const r = await fetch(F2_API_BASE + '/crypto-prices?tickers=' + encodeURIComponent([...new Set(cryptoCands)].join(',')));
+      const r = await fetch(F2_API_BASE + '/crypto-prices?tickers=' + encodeURIComponent([...new Set(cryptoCands)].join(',')), { headers: { 'X-API-Key': key } });
       if (r.ok) {
         const m = await r.json();
         // Response carries bare price keys plus additive "<TICKER>_24h_change" siblings
@@ -662,7 +664,7 @@ async function f2FetchPrices(holdings) {
     return true;
   }).map((h) => h.ticker);
   await Promise.all([...new Set(stockCands)].map((t) =>
-    fetch(F2_API_BASE + '/stock-price?ticker=' + encodeURIComponent(t))
+    fetch(F2_API_BASE + '/stock-price?ticker=' + encodeURIComponent(t), { headers: { 'X-API-Key': key } })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => { if (d && typeof d.price === 'number') { priceByTicker[t] = d.price; if (typeof d.change_pct === 'number') changeByTicker[t] = d.change_pct; } })
       .catch(() => {})
@@ -1467,6 +1469,61 @@ function FincrProvider({ children }) {
     }
     fetchFxRate();
     const interval = setInterval(fetchFxRate, 5 * 60 * 1000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, []);
+
+  // Live price poller (C2-Dxxx) — re-prices the CURRENT book every 30s so
+  // dashboard P&L stays current without a manual reload. Follows the FX-
+  // poller's pattern immediately above (silent-fail keeps last good values,
+  // cleaned up on unmount) with three deliberate differences:
+  //   1. No fetch-on-mount here — f2HydrateHoldings (above) already fetches
+  //      prices once as part of its own initial GET /holdings + f2FetchPrices
+  //      call; firing again immediately on mount would double the very first
+  //      price fetch for no benefit. The first real poll fires after the
+  //      first interval tick.
+  //   2. holdingsRef mirrors `holdings` state so this effect can stay
+  //      mount-only ([] deps, matching the FX-poller and never resetting the
+  //      30s clock on every holdings change) while still re-pricing whatever
+  //      the book actually looks like at poll time, not a stale mount-time copy.
+  //   3. f2SuppressHoldingsSync is stamped before setHoldings, same as every
+  //      other "this is a re-price/hydration commit, not a real mutation"
+  //      call site in this file (f2HydrateHoldings above, etc.) — without it,
+  //      every 30s poll would echo a POST /holdings back to the server as if
+  //      the owner had actually changed their book.
+  //
+  // Per-ticker zero-price fallback (found and fixed during this build's own
+  // verification, not assumed): f2FetchPrices defaults an UNRESOLVED ticker's
+  // price to 0 — correct for its other two callers (initial load / post-
+  // mutation re-price, where 0 legitimately means "no price data exists yet"),
+  // but wrong for a recurring poll, where a single transient per-ticker
+  // failure would otherwise flash that holding's price/value to €0 on screen —
+  // exactly the "flash of blank/error state" this spec explicitly rules out.
+  // Confirmed live: injecting a failed /stock-price response and calling
+  // f2FetchPrices directly returned {price: 0}, not the previous price.
+  // Fixed here, at the poller call site, rather than in f2FetchPrices itself
+  // (which stays untouched, preserving its existing contract for its other
+  // callers) — any ticker priced back as 0 falls back to the price it had
+  // going into this poll instead.
+  const holdingsRef = React.useRef(holdings);
+  React.useEffect(() => { holdingsRef.current = holdings; }, [holdings]);
+  React.useEffect(() => {
+    let cancelled = false;
+    async function pollPrices() {
+      if (!f2ApiKey()) return; // no key — nothing to poll, matches f2HydrateHoldings's own guard
+      if (!holdingsRef.current.length) return;
+      try {
+        const before = holdingsRef.current;
+        const priced = await f2FetchPrices(before);
+        if (cancelled) return;
+        const withFallback = priced.map((h, i) => {
+          const prevPrice = before[i] && before[i].price;
+          return h.price === 0 && prevPrice ? { ...h, price: prevPrice, dayPct: before[i].dayPct } : h;
+        });
+        f2SuppressHoldingsSync.current = true; // price refresh, not a real mutation
+        setHoldings(withFallback);
+      } catch (e) { /* silent — keep last known prices */ }
+    }
+    const interval = setInterval(pollPrices, 30 * 1000);
     return () => { cancelled = true; clearInterval(interval); };
   }, []);
 
