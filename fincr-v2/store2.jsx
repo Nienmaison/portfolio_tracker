@@ -1457,7 +1457,7 @@ function FincrProvider({ children }) {
     let cancelled = false;
     async function fetchFxRate() {
       try {
-        const r = await fetch(F2_API_BASE + '/fx-rate?pair=EURUSD');
+        const r = await fetch(F2_API_BASE + '/fx-rate?pair=EURUSD', { headers: { 'X-API-Key': f2ApiKey() } });
         if (!r.ok) return; // keep last known rate
         const d = await r.json();
         if (cancelled) return;

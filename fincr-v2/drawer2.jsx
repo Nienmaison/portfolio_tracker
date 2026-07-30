@@ -266,7 +266,7 @@ function AddTxnForm2({ ticker, maxSell, onDone }) {
     if (curr !== 'EUR') {
       setSaving(true);
       try {
-        const res = await fetch('https://fincr.duckdns.org/fx-rate?pair=EUR' + curr + '&date=' + d.date);
+        const res = await fetch('https://fincr.duckdns.org/fx-rate?pair=EUR' + curr + '&date=' + d.date, { headers: { 'X-API-Key': f2ApiKey() } });
         const j = await res.json();
         const rate = j && (j.rate || j.fx_rate);
         if (!(rate > 0.1 && rate < 50)) throw new Error('bad rate');
