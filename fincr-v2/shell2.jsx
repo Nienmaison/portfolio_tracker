@@ -256,10 +256,21 @@ function Shell2() {
           .f2-row { transition: background 0.15s; }
           .f2-row:hover { background: ${t.hover}; }
           .f2-press:hover { background: ${t.hover} !important; }
-          /* C2-D136 — new hover-reveal convention (no prior precedent in this
-             app before this). Layered on top of the active-selection inline
-             opacity below, not a replacement — click/tap access is unaffected. */
-          .f2-rail-item:hover .f2-rail-actions { opacity: 0.6 !important; }
+          /* C2-D136 — hover-reveal convention (no prior precedent in this app
+             before that). Layered on top of the active-selection inline
+             opacity below, not a replacement — click/tap access is unaffected.
+             C2-D139 — rest opacity raised from fully-hidden to 0.42 (icons
+             discoverable without hunting, per the glass rail spec) and hover
+             now reaches full opacity (was capped at 0.6); :focus-within added
+             so Tab-focusing an action button (a real <button>, so naturally
+             focusable even at low opacity) reveals it too — there was no
+             keyboard-focus visibility at all before this. */
+          .f2-rail-item:hover .f2-rail-actions,
+          .f2-rail-item:focus-within .f2-rail-actions { opacity: 1 !important; }
+          /* C2-D139 — glass icon-button hover states (rail row actions). Generic
+             ring for rename; red ring + tint for the destructive delete action. */
+          .f2-icon-btn2:hover { border-color: ${t.hairStrong} !important; background: ${t.dark ? 'rgba(255,255,255,0.13)' : 'rgba(255,255,255,0.92)'} !important; box-shadow: 0 0 0 2.5px ${t.press}; color: ${t.ink} !important; transform: scale(1.05); }
+          .f2-icon-btn2-danger:hover { border-color: ${t.red} !important; background: ${t.dark ? 'rgba(226,97,92,0.18)' : 'rgba(205,74,70,0.10)'} !important; box-shadow: 0 0 0 2.5px ${t.redSoft}; color: ${t.red} !important; }
           .f2-discrete .f2-money { filter: blur(8px); user-select: none; }
           .f2-money, .f2-row, kbd { transition: filter 0.2s; }
           input::placeholder { color: ${t.ghost}; }

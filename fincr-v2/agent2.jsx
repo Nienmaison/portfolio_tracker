@@ -766,15 +766,46 @@ function ConvRailItem2({ conv, active, t, onOpen, onRename, onDelete }) {
     }
   }
 
+  // C2-D139 glass icon SVGs — 16x16 viewBox, displayed at 22px, stroke-width
+  // 1.35, round caps/joins, currentColor. Bin: lid line + handle, tapered
+  // body outline, two ribs. Pencil: body outline + a nib line near the tip.
+  // "do not shrink these" per the design doc — legibility at 22px/100% zoom
+  // was the whole point of this icon size, unlike the emoji glyphs before.
+  var binIcon = (
+    <svg width="22" height="22" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 5h10M6.5 5V3.2a1 1 0 011-1h1a1 1 0 011 1V5"></path>
+      <path d="M4.2 5l.6 8.3a1 1 0 001 .9h4.4a1 1 0 001-.9L11.8 5"></path>
+      <path d="M6.7 7.2v5M9.3 7.2v5"></path>
+    </svg>
+  );
+  var pencilIcon = (
+    <svg width="22" height="22" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M11 2.5l2.5 2.5-7.8 7.8-3.2.8.8-3.2z"></path>
+      <path d="M9.7 3.8l2.5 2.5"></path>
+    </svg>
+  );
+  // Corrected pending-proposals dot: proposal open/applied/dismissed status is
+  // ephemeral React state (Spec 1, C2-D138), never persisted — the backend has
+  // no way to know a proposal is still "pending" for a closed thread. The only
+  // real, already-fetched signal is thesis_updates (conversation_meta, written
+  // only on a successful /thesis/update commit) — repurposed here as "this
+  // thread has committed updates," not "pending," since that's what the data
+  // actually means. See decisions.md for why the literal spec (an accurate
+  // pending count) isn't buildable without a backend change.
+  var updateCount = (conv.thesis_updates || []).length;
+
   return (
     <div
       onClick={function() { if (!editing) onOpen(conv.id); }}
       className="f2-press f2-rail-item"
       style={{
         textAlign: 'left', cursor: 'pointer',
-        padding: '9px 10px', borderRadius: 8,
-        background: active ? t.press : 'transparent',
-        position: 'relative', marginBottom: 1,
+        padding: '10px 12px', borderRadius: 14,
+        background: active ? (t.dark ? 'rgba(255,255,255,0.09)' : 'rgba(255,255,255,0.72)') : 'transparent',
+        border: '1px solid ' + (active ? (t.dark ? 'rgba(255,255,255,0.09)' : 'rgba(255,255,255,0.85)') : 'transparent'),
+        backdropFilter: active ? 'blur(14px)' : 'none',
+        WebkitBackdropFilter: active ? 'blur(14px)' : 'none',
+        position: 'relative',
       }}
     >
       {editing ? (
@@ -796,13 +827,12 @@ function ConvRailItem2({ conv, active, t, onOpen, onRename, onDelete }) {
         />
       ) : (
         <React.Fragment>
-          {/* C2-D136 layout fix: title is a shrinking flex column (minWidth:0 is
-              what actually lets it truncate inside a flex row) and the icons are
-              a fixed-width sibling group, rather than the old paddingRight-tuned-
-              for-one-icon + position:absolute pair that only cleared the rename
-              icon and let the delete icon's wider inset overlap the ellipsized
-              title. Sibling layout generalizes to any future icon count without
-              re-tuning a padding number. */}
+          {/* C2-D136's flex-sibling layout (title flex:1/minWidth:0 + a fixed-
+              width icon-group sibling) is kept rather than reverting to the
+              design doc's padding-right:72px reservation model — the flex
+              approach already generalizes past any icon count without a magic
+              padding number, which is exactly the bug class the reservation
+              model is prone to (that's what C2-D136 fixed in the first place). */}
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 4 }}>
             <div style={{
               flex: 1, minWidth: 0,
@@ -812,35 +842,42 @@ function ConvRailItem2({ conv, active, t, onOpen, onRename, onDelete }) {
             }}>
               {conv.title || 'New conversation'}
             </div>
-            {/* Reveal on hover (new interaction convention, no prior precedent in
-                this app — see architecture.md) via .f2-rail-item:hover in
-                shell2.jsx's shared stylesheet; the active-selection reveal below
-                stays as the inline fallback so click/tap access (touch, keyboard-
-                selected row) is never lost. */}
-            <div className="f2-rail-actions" style={{ display: 'flex', gap: 2, flexShrink: 0, opacity: active ? 0.6 : 0 }}>
-              <button
-                onClick={startEdit}
-                title="Rename"
-                style={{ background: 'none', border: 'none', color: t.faint, fontSize: 11, cursor: 'pointer', padding: 2 }}
-              >{'✎'}</button>
+            {/* C2-D139 — rest opacity raised to 0.42 (discoverable without
+                hunting), reaches 1.0 on row hover, active, or :focus-within
+                (CSS in shell2.jsx). Bin first, so the destructive action never
+                shifts position as other row content changes. */}
+            <div className="f2-rail-actions" style={{ display: 'flex', gap: 3, flexShrink: 0, opacity: active ? 1 : 0.42 }}>
               <button
                 onClick={handleDelete}
-                title="Delete conversation"
-                style={{ background: 'none', border: 'none', color: t.faint, fontSize: 11, cursor: 'pointer', padding: 2 }}
-              >{'🗑'}</button>
+                title="Delete thread"
+                className="f2-icon-btn2 f2-icon-btn2-danger"
+                style={{ ...t.g2Inner, width: 28, height: 28, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', color: t.faint, cursor: 'pointer', transition: 'all 0.13s' }}
+              >{binIcon}</button>
+              <button
+                onClick={startEdit}
+                title="Rename thread"
+                className="f2-icon-btn2"
+                style={{ ...t.g2Inner, width: 28, height: 28, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', color: t.faint, cursor: 'pointer', transition: 'all 0.13s' }}
+              >{pencilIcon}</button>
             </div>
           </div>
-          <div style={{ display: 'flex', gap: 5, marginTop: 3, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 6, marginTop: 5, alignItems: 'center', flexWrap: 'wrap' }}>
             <MonoTxt size={9.5} color={t.faint}>
               {conv.started_at ? new Date(conv.started_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : ''}
             </MonoTxt>
             {(conv.tickers_mentioned || []).slice(0, 3).map(function(tk) {
               return (
-                <span key={tk} style={{ fontFamily: t.mono, fontSize: 9, color: t.faint, border: '1px solid ' + t.hair, borderRadius: 3, padding: '1px 4px' }}>
+                <span key={tk} style={{ ...t.g2Inner, fontFamily: t.mono, fontSize: 9, color: t.faint, borderRadius: 999, padding: '1.5px 6px' }}>
                   {tk}
                 </span>
               );
             })}
+            {updateCount > 0 && (
+              <span
+                title={updateCount + ' thesis update' + (updateCount === 1 ? '' : 's') + ' logged from this thread'}
+                style={{ width: 4, height: 4, borderRadius: 999, background: t.accent, flexShrink: 0 }}
+              ></span>
+            )}
           </div>
         </React.Fragment>
       )}
@@ -1303,36 +1340,43 @@ function AgentTab2() {
   var activeConvTitle = convId ? (conversations.find(function(c) { return c.id === convId; }) || {}).title : null;
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '220px minmax(0,1fr)', gap: 0, border: '1px solid ' + t.cardBorder, borderRadius: 16, overflow: 'hidden', background: t.card, backdropFilter: t.blur, WebkitBackdropFilter: t.blur, boxShadow: t.cardShadow, minHeight: 560 }}>
+    // C2-D139 — two independent floating glass plates (rail + thread), no
+    // outer unifying card. The design doc's rail-plate ask ("give the rail
+    // G2.plate") only makes sense as its own floating box — a shared border
+    // wrapping two independent plates isn't a thing. The thread pane below
+    // gets the same G2.plate treatment for the same reason: once the shared
+    // outer card is gone, it needs its own edge or it renders with none at
+    // all. Its INSIDE (header/messages/composer, all Spec-1 work) is untouched.
+    <div style={{ display: 'grid', gridTemplateColumns: '248px minmax(0,1fr)', gap: 14, minHeight: 560 }}>
 
-      {/* ── Sidebar rail ─────────────────────────────────────────────────── */}
-      {/* maxHeight added so overflowY:auto actually engages instead of the grid
-          row just growing taller as threads accumulate — same fixed-height +
-          overflow pattern as guardrails2.jsx/palette2.jsx. onScroll drives
+      {/* ── Sidebar rail — its own glass plate ──────────────────────────────── */}
+      {/* maxHeight so overflowY:auto actually engages instead of the plate just
+          growing taller as threads accumulate — same fixed-height + overflow
+          pattern as guardrails2.jsx/palette2.jsx. onScroll drives
           scroll-triggered pagination (loadMoreConversations). */}
-      <div onScroll={handleRailScroll} style={{ borderRight: '1px solid ' + t.hair, display: 'flex', flexDirection: 'column', overflowY: 'auto', maxHeight: 560 }}>
-        <div style={{ padding: '14px 14px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+      <div onScroll={handleRailScroll} style={{ ...t.g2Plate, borderRadius: 22, padding: 8, alignSelf: 'start', display: 'flex', flexDirection: 'column', overflowY: 'auto', maxHeight: 560 }}>
+        <div style={{ padding: '6px 6px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
           <MonoTxt size={10} color={t.faint} style={{ letterSpacing: '0.16em' }}>THREADS</MonoTxt>
           <button
             onClick={startNewConversation}
             className="f2-press"
-            title="New conversation"
-            style={{ width: 24, height: 24, borderRadius: 6, border: '1px solid ' + t.hair, background: 'none', color: t.dim, cursor: 'pointer', fontSize: 15, lineHeight: 1 }}
+            title="New thread"
+            style={{ ...t.g2Inner, width: 26, height: 26, borderRadius: 999, color: t.dim, cursor: 'pointer', fontSize: 15, lineHeight: 1 }}
           >{'+'}</button>
         </div>
 
         {!hasKey ? (
-          <button onClick={() => window.dispatchEvent(new CustomEvent('fincr:go-tab', { detail: { tab: 'settings' } }))} className="f2-press" style={{ padding: '6px 14px', fontSize: 11, color: t.accent, fontFamily: t.mono, background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left' }}>Set API key in Settings →</button>
+          <button onClick={() => window.dispatchEvent(new CustomEvent('fincr:go-tab', { detail: { tab: 'settings' } }))} className="f2-press" style={{ padding: '6px 6px', fontSize: 11, color: t.accent, fontFamily: t.mono, background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left' }}>Set API key in Settings →</button>
         ) : conversations.length === 0 ? (
-          <div style={{ padding: '6px 14px', fontSize: 11, color: t.faint, fontFamily: t.mono }}>No conversations yet.</div>
+          <div style={{ padding: '6px 6px', fontSize: 11, color: t.faint, fontFamily: t.mono }}>No conversations yet.</div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', padding: '0 6px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             {Object.entries(groups).map(function(entry) {
               var label = entry[0];
               var convs = entry[1];
               return (
                 <React.Fragment key={label}>
-                  <div style={{ fontFamily: t.mono, fontSize: 9.5, color: t.faint, letterSpacing: '0.1em', textTransform: 'uppercase', padding: '8px 8px 2px' }}>
+                  <div style={{ fontFamily: t.mono, fontSize: 9.5, color: t.faint, letterSpacing: '0.1em', textTransform: 'uppercase', padding: '8px 6px 2px' }}>
                     {label}
                   </div>
                   {convs.map(function(conv) {
@@ -1352,14 +1396,14 @@ function AgentTab2() {
               );
             })}
             {loadingMoreConversations ? (
-              <div style={{ padding: '8px 8px', fontSize: 10.5, color: t.faint, fontFamily: t.mono, textAlign: 'center' }}>Loading…</div>
+              <div style={{ padding: '8px 6px', fontSize: 10.5, color: t.faint, fontFamily: t.mono, textAlign: 'center' }}>Loading…</div>
             ) : null}
           </div>
         )}
       </div>
 
-      {/* ── Main chat area ────────────────────────────────────────────────── */}
-      <div style={{ display: 'flex', flexDirection: 'column', background: t.dark ? 'rgba(0,0,0,0.16)' : 'rgba(255,255,255,0.38)' }}>
+      {/* ── Main chat area — its own glass plate ─────────────────────────────── */}
+      <div style={{ ...t.g2Plate, borderRadius: 22, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
 
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '13px 22px', borderBottom: '1px solid ' + t.hair, flexShrink: 0 }}>
