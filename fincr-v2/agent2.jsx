@@ -166,16 +166,148 @@ function parseAgentResponse(text) {
   return { prose: prose, proposals: proposals };
 }
 
-// ── Proposal card component ───────────────────────────────────────────────────
+// ── Markdown prose parser (C2-D138) ───────────────────────────────────────────
+// Scoped to markdown ONLY — THESIS_PROPOSAL blocks are already fully parsed
+// and stripped above, well before this redesign (confirmed via the Researcher
+// pass against real stored replies); this parser never sees them. Input here
+// is always already-stripped prose (parseAgentResponse's `prose` field).
+// Splits on blank lines, classifies each block, renders inline **bold**/`code`
+// within paragraph/list/heading/verdict text. Falls back to plain paragraph
+// for anything unclassified — there is no path that produces a blank message
+// for non-empty input, satisfying "malformed markdown degrades to prose."
+function f2ParseProse(text) {
+  if (!text || !text.trim()) return [];
+  var blocks = text.split(/\n{2,}/).map(function(b) { return b.trim(); }).filter(Boolean);
+  return blocks.map(function(b, i) {
+    if (/^(-{3,}|_{3,}|\*{3,})$/.test(b)) return { type: 'rule', key: 'b' + i };
+    if (b.indexOf('## ') === 0) return { type: 'h2', text: b.slice(3).trim(), key: 'b' + i };
+    if (b.indexOf('### ') === 0) return { type: 'h3', text: b.slice(4).trim(), key: 'b' + i };
+    var strippedBold = b.replace(/^\*\*/, '').replace(/\*\*$/, '');
+    if (/^Verdict:\s*/i.test(strippedBold)) {
+      return { type: 'verdict', text: strippedBold.replace(/^Verdict:\s*/i, '').trim(), key: 'b' + i };
+    }
+    var lines = b.split('\n').map(function(l) { return l.trim(); }).filter(Boolean);
+    var isList = lines.length > 0 && lines.every(function(l) { return /^(-|\*|•|\d+\.)\s+/.test(l); });
+    if (isList) {
+      return { type: 'list', items: lines.map(function(l) { return l.replace(/^(-|\*|•|\d+\.)\s+/, ''); }), key: 'b' + i };
+    }
+    return { type: 'p', text: b.replace(/\n/g, ' '), key: 'b' + i };
+  });
+}
+
+// Leading emoji stripped per the design doc (⚠️ ✅ 🚩 etc.) — tone carries
+// through color, not emoji. \p{Extended_Pictographic} covers the real emoji
+// blocks; ️ (variation selector) and ‍ (ZWJ) ride along with them.
+function f2StripLeadingEmoji(s) {
+  return s.replace(/^[\p{Extended_Pictographic}️‍]+\s*/u, '');
+}
+
+// Renders **bold** as semibold ink and `code` as a mono chip, in order, as an
+// array of strings/elements (safe to drop straight into JSX children).
+function f2RenderInline(str, t, keyPrefix) {
+  str = f2StripLeadingEmoji(str);
+  var parts = [];
+  var re = /(\*\*[^*]+\*\*|`[^`]+`)/g;
+  var lastIndex = 0;
+  var m;
+  var i = 0;
+  while ((m = re.exec(str)) !== null) {
+    if (m.index > lastIndex) parts.push(str.slice(lastIndex, m.index));
+    var token = m[0];
+    if (token.charAt(0) === '*') {
+      parts.push(<strong key={keyPrefix + '_b' + i} style={{ fontWeight: 650, color: t.ink }}>{token.slice(2, -2)}</strong>);
+    } else {
+      parts.push(<code key={keyPrefix + '_c' + i} style={{ fontFamily: t.mono, fontSize: '0.92em', background: t.press, padding: '1px 5px', borderRadius: 4 }}>{token.slice(1, -1)}</code>);
+    }
+    i++;
+    lastIndex = re.lastIndex;
+  }
+  if (lastIndex < str.length) parts.push(str.slice(lastIndex));
+  return parts;
+}
+
+// Shared prose renderer for an agent reply's already-stripped markdown text.
+// Falls back to the raw text (still never blank, never raw block syntax —
+// there is none left to leak by this point) if parsing somehow yields nothing.
+function AgentProse2({ text, t }) {
+  var blocks = f2ParseProse(text);
+  if (blocks.length === 0) {
+    return text ? <div style={{ fontSize: 13, color: t.dim, lineHeight: 1.66 }}>{text}</div> : null;
+  }
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
+      {blocks.map(function(blk) {
+        if (blk.type === 'rule') {
+          return <div key={blk.key} style={{ height: 1, background: t.hair }} />;
+        }
+        if (blk.type === 'h2') {
+          return <div key={blk.key} style={{ fontSize: 13, fontWeight: 700, color: t.ink }}>{f2RenderInline(blk.text, t, blk.key)}</div>;
+        }
+        if (blk.type === 'h3') {
+          return (
+            <div key={blk.key} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ width: 3, height: 13, borderRadius: 2, background: t.accent, flexShrink: 0 }}></span>
+              <span style={{ fontSize: 12.5, fontWeight: 650, color: t.ink }}>{f2RenderInline(blk.text, t, blk.key)}</span>
+            </div>
+          );
+        }
+        if (blk.type === 'verdict') {
+          return (
+            <div key={blk.key} style={{ background: t.press, border: '1px solid ' + t.hair, borderRadius: 10, padding: '11px 13px' }}>
+              <div style={{ fontFamily: t.mono, fontSize: 9, color: t.accent, letterSpacing: '0.14em', marginBottom: 4 }}>VERDICT</div>
+              <div style={{ fontSize: 12.5, color: t.ink, lineHeight: 1.5 }}>{f2RenderInline(blk.text, t, blk.key)}</div>
+            </div>
+          );
+        }
+        if (blk.type === 'list') {
+          return (
+            <div key={blk.key} style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
+              {blk.items.map(function(item, ii) {
+                return (
+                  <div key={blk.key + '_' + ii} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                    <span style={{ width: 4, height: 4, borderRadius: 999, background: t.ghost, marginTop: 7, flexShrink: 0 }}></span>
+                    <span style={{ fontSize: 12.5, color: t.dim, lineHeight: 1.6 }}>{f2RenderInline(item, t, blk.key + '_' + ii)}</span>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        }
+        // paragraph — the default for anything unclassified, including any
+        // malformed/half-written markdown the model produces.
+        return <div key={blk.key} style={{ fontSize: 13, color: t.dim, lineHeight: 1.66 }}>{f2RenderInline(blk.text, t, blk.key)}</div>;
+      })}
+    </div>
+  );
+}
+
+// ── Proposal card component (glass redesign, C2-D138) ─────────────────────────
 // Renders one card per conviction/stance proposal below the assistant bubble
-// that emitted it. Card is session-local state — resets on reload. Commit
-// reuses window.saveThesis from Spec 3 (thesis-adapter.js), so no new write
-// path. core_argument / target_price / thesis_indicators never reach this
-// component (C2-D126) — those three render as one UnifiedThesisProposalCard2
-// instead (below), grouped by ticker at the call site.
+// that emitted it. Card is session-local state — resets on reload; keyed by
+// proposal identity (ticker+field+index) at the call site, not list index, so
+// re-renders of the surrounding list don't remount and reset an open card.
+// Commit reuses window.saveThesis from Spec 3 (thesis-adapter.js), relabeled
+// "Apply to thesis" per the design handoff — same write, new label only.
+// core_argument / target_price / thesis_indicators never reach this component
+// (C2-D126) — those three render as one UnifiedThesisProposalCard2 instead
+// (below), grouped by ticker at the call site.
+//
+// Deviation from the design doc, flagged rather than silently applied: the
+// doc's footer lists only "Apply to thesis" / "Dismiss" / "LOGS TO HISTORY" —
+// no third action. The existing "Edit" button (opens the position drawer
+// prefilled with the proposed value) was kept rather than dropped, since
+// removing it would be an undiscussed functional regression the spec never
+// asked for; styled to match as a plain glass text button alongside Dismiss.
+//
+// No "Undo" after Apply: confirmed during this spec's Builder pass that
+// window.saveThesis / POST /thesis/update has no revert path (no
+// saveThesisVersioned rollback, no undo endpoint) — per this spec's own
+// instruction, Undo is dropped from the applied state rather than offered
+// speculatively. Dismiss IS undoable (no write ever happened, so reverting to
+// pending is always safe).
 function ProposalCard2({ proposal, onCommit, onEdit }) {
   const t = useTheme2();
-  const [status, setStatus] = React.useState('pending'); // pending | committed | dismissed
+  const [status, setStatus] = React.useState('pending'); // pending | applied | dismissed
   const [cardError, setCardError] = React.useState(null);
   const [busy, setBusy] = React.useState(false);
 
@@ -185,7 +317,7 @@ function ProposalCard2({ proposal, onCommit, onEdit }) {
     var ok = await onCommit(proposal);
     setBusy(false);
     if (ok) {
-      setStatus('committed');
+      setStatus('applied');
     } else {
       setCardError('Failed to save — try again');
     }
@@ -197,69 +329,70 @@ function ProposalCard2({ proposal, onCommit, onEdit }) {
     onEdit(proposal);
   }
 
-  function handleDismiss() {
-    setStatus('dismissed');
-  }
+  function handleDismiss() { setStatus('dismissed'); }
+  function handleUndoDismiss() { setStatus('pending'); }
 
-  if (status === 'dismissed') {
-    return null; // fade handled via null render
-  }
+  var fieldLabel = proposal.field === 'stance' ? 'STANCE' : 'CONVICTION';
+  var chip = status === 'applied'
+    ? { text: 'APPLIED', color: t.green, bg: t.greenSoft }
+    : status === 'dismissed'
+      ? { text: 'DISMISSED', color: t.faint, bg: t.press }
+      : { text: 'THESIS CHANGE', color: t.accent, bg: t.accentSoft };
 
   return (
-    <div style={{
-      borderLeft: '3px solid ' + t.amber,
-      background: status === 'committed' ? t.press : t.raise,
-      border: '1px solid ' + t.cardBorder,
-      borderLeft: '3px solid ' + t.amber,
-      borderRadius: 8,
-      padding: '10px 12px',
-      marginTop: 8,
-      opacity: status === 'committed' ? 0.7 : 1,
-      transition: 'opacity 0.2s, background 0.2s',
-    }}>
-      {/* ticker · field · current → proposed */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}>
-        <span style={{ fontFamily: t.mono, fontSize: 11, fontWeight: 600, color: t.ink, letterSpacing: '0.04em' }}>
-          {proposal.ticker}
-        </span>
-        <span style={{ fontFamily: t.mono, fontSize: 10, color: t.dim }}>{proposal.field}</span>
-        <span style={{ fontFamily: t.mono, fontSize: 10, color: t.dim }}>{proposal.current}</span>
-        <span style={{ fontFamily: t.mono, fontSize: 10, color: t.faint }}>{'→'}</span>
-        <span style={{ fontFamily: t.mono, fontSize: 11, fontWeight: 600, color: t.ink }}>{proposal.proposed}</span>
+    <div style={{ ...t.g2Plate, maxWidth: 540, borderRadius: 20, padding: 6, marginTop: 8, opacity: status === 'dismissed' ? 0.55 : 1, transition: 'opacity 0.2s' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px 11px' }}>
+        <span style={{ fontFamily: t.mono, fontSize: 11.5, fontWeight: 600, color: t.ink }}>{proposal.ticker}</span>
+        <span style={{ fontFamily: t.mono, fontSize: 9.5, color: t.faint, letterSpacing: '0.13em' }}>{fieldLabel}</span>
+        <span style={{ flex: 1 }}></span>
+        <span style={{ fontFamily: t.mono, fontSize: 9, fontWeight: 600, letterSpacing: '0.08em', color: chip.color, background: chip.bg, borderRadius: 999, padding: '2px 8px' }}>{chip.text}</span>
       </div>
 
-      {/* reasoning — max 2 lines */}
-      <div style={{
-        fontSize: 12, color: t.dim, fontStyle: 'italic', lineHeight: 1.5,
-        overflow: 'hidden', display: '-webkit-box',
-        WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
-        marginBottom: 8,
-      }}>
-        {proposal.reasoning}
+      <div style={{ ...t.g2Inner, borderRadius: 15, padding: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <span style={{ fontSize: 14, color: t.faint }}>{proposal.current}</span>
+          <svg width="18" height="10" viewBox="0 0 18 10" fill="none" stroke={t.ghost} strokeWidth="1.4" strokeLinecap="round"><path d="M1 5h15M12 1l4 4-4 4"></path></svg>
+          <span style={{ fontSize: 14, fontWeight: 650, color: t.ink }}>{proposal.proposed}</span>
+        </div>
       </div>
 
-      {cardError && (
-        <div style={{ fontSize: 11, color: t.red, marginBottom: 6 }}>{cardError}</div>
-      )}
-
-      {status === 'committed' ? (
-        <div style={{ fontFamily: t.mono, fontSize: 11, color: t.dim }}>{'✓ Saved'}</div>
-      ) : (
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <Btn2 primary style={{ fontSize: 11, padding: '5px 12px' }} onClick={handleCommit} disabled={busy}>
-            {busy ? '…' : 'Commit'}
-          </Btn2>
-          <Btn2 style={{ fontSize: 11, padding: '5px 12px' }} onClick={handleEdit}>
-            Edit
-          </Btn2>
-          <button onClick={handleDismiss} style={{
-            background: 'none', border: 'none', cursor: 'pointer',
-            fontFamily: t.mono, fontSize: 11, color: t.dim, padding: '5px 8px',
-          }}>
-            Dismiss
-          </button>
+      {proposal.reasoning && (
+        <div style={{ padding: '12px 12px 4px', display: 'flex', gap: 8, alignItems: 'baseline' }}>
+          <span style={{ fontFamily: t.mono, fontSize: 9, color: t.ghost, flexShrink: 0 }}>WHY</span>
+          <span style={{ fontSize: 12, color: t.dim, lineHeight: 1.5 }}>{proposal.reasoning}</span>
         </div>
       )}
+
+      {cardError && <div style={{ padding: '0 12px', fontSize: 11, color: t.red }}>{cardError}</div>}
+
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, rowGap: 6, padding: '10px 12px 8px' }}>
+        {status === 'pending' && (
+          <React.Fragment>
+            <Btn2 primary style={{ fontSize: 12, padding: '7px 16px', borderRadius: 999, whiteSpace: 'nowrap', boxShadow: '0 6px 16px -8px rgba(0,0,0,0.6)' }} onClick={handleCommit} disabled={busy}>
+              {busy ? '…' : 'Apply to thesis'}
+            </Btn2>
+            <button onClick={handleDismiss} style={{ ...t.g2Inner, borderRadius: 999, padding: '7px 14px', fontFamily: t.sans, fontSize: 12, fontWeight: 600, color: t.dim, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+              Dismiss
+            </button>
+            <button onClick={handleEdit} style={{ background: 'none', border: 'none', cursor: 'pointer', fontFamily: t.mono, fontSize: 11, color: t.faint, padding: '5px 8px', whiteSpace: 'nowrap' }}>
+              Edit
+            </button>
+            <span style={{ flex: 1 }}></span>
+            <span style={{ fontFamily: t.mono, fontSize: 9.5, color: t.ghost, whiteSpace: 'nowrap' }}>LOGS TO HISTORY</span>
+          </React.Fragment>
+        )}
+        {status === 'applied' && (
+          <span style={{ fontFamily: t.mono, fontSize: 10, color: t.dim }}>Written to thesis</span>
+        )}
+        {status === 'dismissed' && (
+          <React.Fragment>
+            <span style={{ fontFamily: t.mono, fontSize: 10, color: t.dim }}>Dismissed</span>
+            <button onClick={handleUndoDismiss} style={{ background: 'none', border: 'none', cursor: 'pointer', fontFamily: t.mono, fontSize: 10, color: t.accent, padding: '2px 6px' }}>
+              Undo
+            </button>
+          </React.Fragment>
+        )}
+      </div>
     </div>
   );
 }
@@ -308,6 +441,7 @@ function UnifiedThesisProposalCard2({ ticker, proposals }) {
 
   const [text, setText] = React.useState(coreArgProposal ? coreArgProposal.proposed : null);
   const [targetStr, setTargetStr] = React.useState(targetProposal ? String(targetProposal.proposed) : '');
+  const [showFullArg, setShowFullArg] = React.useState(false); // C2-D138 — NOW-block truncation toggle
   // C2-D127 — each proposed indicator is matched against the ticker's REAL
   // current indicators (F.thesis, read once at mount) by `revisesId`:
   //   - revisesId present + matches an existing id -> matchStatus 'revision',
@@ -431,17 +565,26 @@ function UnifiedThesisProposalCard2({ ticker, proposals }) {
 
   function handleCancel() { setStatus('dismissed'); }
 
+  // C2-D138 — no Undo-from-dismissed here (unlike the simpler ProposalCard2
+  // below): this card participates in window.__fincrPendingUnifiedProposals
+  // (the shared guardedSetTab/thread-switch guard), which only removes a
+  // dismissed card's pending-registration, it never re-adds one if the card
+  // goes back to 'pending'. Adding Undo would let a card silently drop out of
+  // that guard's tracking — deferred rather than risk that under time
+  // pressure; behavior here is otherwise unchanged from before this phase.
   if (status === 'dismissed') return null;
 
   var F = window.FINCR;
   var h = (F.holdings || []).find(function(x) { return x.ticker === ticker; });
   var th = (F.thesis || []).find(function(x) { return x.ticker === ticker; });
   var combinedReasoning = Array.from(new Set(proposals.map(function(p) { return p.reasoning; }).filter(Boolean))).join(' ');
+  var chip = status === 'committed' ? { text: 'APPLIED', color: t.green, bg: t.greenSoft } : { text: 'THESIS CHANGE', color: t.accent, bg: t.accentSoft };
+  // Mirrors handleCommit's own origArg computation above, for display only.
+  var origArgDisplay = (th && th.argument && th.argument !== THESIS_SENTINEL) ? th.argument : '';
 
   return (
     <div style={{
-      background: t.card, backdropFilter: t.blur, WebkitBackdropFilter: t.blur, boxShadow: t.cardShadow,
-      border: '1px solid ' + t.amber, borderRadius: 16, padding: '16px 18px',
+      ...t.g2Plate, borderRadius: 20, padding: '16px 18px',
       display: 'flex', flexDirection: 'column', gap: 12, marginTop: 8,
       opacity: status === 'committed' ? 0.7 : 1, transition: 'opacity 0.2s',
     }}>
@@ -451,11 +594,11 @@ function UnifiedThesisProposalCard2({ ticker, proposals }) {
           <div style={{ fontSize: 14.5, fontWeight: 700, color: t.ink, lineHeight: 1.15 }}>{ticker}</div>
           {th && <div style={{ fontSize: 11.5, color: t.faint }}>{th.name}</div>}
         </div>
-        <MonoTxt size={9.5} color={t.amber} style={{ letterSpacing: '0.1em' }}>PROPOSED</MonoTxt>
+        <span style={{ fontFamily: t.mono, fontSize: 9, fontWeight: 600, letterSpacing: '0.08em', color: chip.color, background: chip.bg, borderRadius: 999, padding: '2px 8px' }}>{chip.text}</span>
       </div>
 
       {status === 'committed' ? (
-        <div style={{ fontFamily: t.mono, fontSize: 11, color: t.dim }}>{'✓ Saved'}</div>
+        <div style={{ fontFamily: t.mono, fontSize: 11, color: t.dim }}>Written to thesis</div>
       ) : (
         <React.Fragment>
           {combinedReasoning && (
@@ -468,12 +611,35 @@ function UnifiedThesisProposalCard2({ ticker, proposals }) {
           )}
 
           {coreArgProposal && (
-            <textarea
-              value={text}
-              onChange={function(e) { setText(e.target.value); }}
-              rows={3}
-              style={Object.assign({}, window.f2InputStyle(t), { resize: 'vertical', minHeight: 60, lineHeight: 1.5, fontSize: 12.5 })}
-            />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {/* C2-D138 — NOW/PROPOSED long-variant per the design handoff.
+                  The card previously showed only the editable proposed text,
+                  with no comparison against the real current argument at all
+                  — this adds that read-only NOW context (truncated at 240
+                  chars past a 260-char threshold, toggle to expand) above the
+                  unchanged editable PROPOSED textarea. */}
+              {origArgDisplay && (
+                <div>
+                  <MonoTxt size={9} color={t.ghost} style={{ letterSpacing: '0.16em', display: 'block', marginBottom: 4 }}>NOW</MonoTxt>
+                  <div style={{ fontSize: 12.5, color: t.faint, lineHeight: 1.62 }}>
+                    {showFullArg || origArgDisplay.length <= 260 ? origArgDisplay : origArgDisplay.slice(0, 240) + '…'}
+                  </div>
+                  {origArgDisplay.length > 260 && (
+                    <button onClick={function() { setShowFullArg(function(v) { return !v; }); }} style={{ background: 'none', border: 'none', cursor: 'pointer', fontFamily: t.mono, fontSize: 10, color: t.accent, padding: '4px 0' }}>
+                      {showFullArg ? 'Show less' : 'Read full argument'}
+                    </button>
+                  )}
+                  <div style={{ height: 1, background: t.hair, marginTop: 8 }}></div>
+                </div>
+              )}
+              <MonoTxt size={9} color={t.accent} style={{ letterSpacing: '0.16em' }}>PROPOSED</MonoTxt>
+              <textarea
+                value={text}
+                onChange={function(e) { setText(e.target.value); }}
+                rows={3}
+                style={Object.assign({}, window.f2InputStyle(t), { resize: 'vertical', minHeight: 60, lineHeight: 1.5, fontSize: 12.5 })}
+              />
+            </div>
           )}
 
           {indicatorProposals.length > 0 && (
@@ -537,16 +703,15 @@ function UnifiedThesisProposalCard2({ ticker, proposals }) {
 
           {cardError && <div style={{ fontSize: 11, color: t.red }}>{cardError}</div>}
 
-          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-            <button onClick={handleCancel} style={{
-              background: 'none', border: 'none', cursor: 'pointer',
-              fontFamily: t.mono, fontSize: 11, color: t.dim, padding: '5px 8px',
-            }}>
-              Cancel
-            </button>
-            <Btn2 primary style={{ fontSize: 11, padding: '5px 14px' }} onClick={handleCommit} disabled={busy}>
-              {busy ? '…' : 'Commit'}
+          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, rowGap: 6 }}>
+            <Btn2 primary style={{ fontSize: 12, padding: '7px 16px', borderRadius: 999, whiteSpace: 'nowrap', boxShadow: '0 6px 16px -8px rgba(0,0,0,0.6)' }} onClick={handleCommit} disabled={busy}>
+              {busy ? '…' : 'Apply to thesis'}
             </Btn2>
+            <button onClick={handleCancel} style={{ ...t.g2Inner, borderRadius: 999, padding: '7px 14px', fontFamily: t.sans, fontSize: 12, fontWeight: 600, color: t.dim, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+              Dismiss
+            </button>
+            <span style={{ flex: 1 }}></span>
+            <span style={{ fontFamily: t.mono, fontSize: 9.5, color: t.ghost, whiteSpace: 'nowrap' }}>LOGS TO HISTORY</span>
           </div>
         </React.Fragment>
       )}
@@ -761,6 +926,7 @@ function AgentTab2() {
   const [loadingMoreConversations, setLoadingMoreConversations] = React.useState(false);
   const [inputText, setInputText] = React.useState('');
   const [sending, setSending] = React.useState(false);
+  const [composerFocused, setComposerFocused] = React.useState(false); // C2-D138 glass composer focus ring
 
   const threadEndRef = React.useRef(null);
   const inputRef = React.useRef(null);
@@ -1201,7 +1367,9 @@ function AgentTab2() {
           <span style={{ fontSize: 13, fontWeight: 700, color: t.ink, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {activeConvTitle || (convId ? 'Conversation' : 'New conversation')}
           </span>
-          <MonoTxt size={10} color={t.faint} style={{ flexShrink: 0 }}>CONTEXT: BOOK · THESIS · RULES</MonoTxt>
+          <div style={{ ...t.g2Inner, borderRadius: 999, padding: '4px 11px', flexShrink: 0 }}>
+            <MonoTxt size={9.5} color={t.faint}>CONTEXT: BOOK · THESIS · RULES</MonoTxt>
+          </div>
         </div>
 
         {/* Thread */}
@@ -1226,21 +1394,40 @@ function AgentTab2() {
               );
             }
 
-            // User bubble
+            // User bubble — glass gradient recipe from the design handoff
             if (msg.role === 'user') {
               return (
-                <div key={msg.id} style={{ alignSelf: 'flex-end', maxWidth: 440, background: t.press, border: '1px solid ' + t.hair, borderRadius: '12px 12px 3px 12px', padding: '10px 14px', fontSize: 13, color: t.ink, lineHeight: 1.5 }}>
+                <div key={msg.id} style={{
+                  alignSelf: 'flex-end', maxWidth: 430,
+                  background: t.dark
+                    ? 'linear-gradient(150deg, rgba(126,164,248,0.34), rgba(74,110,206,0.26))'
+                    : 'linear-gradient(150deg, rgba(120,158,246,0.30), rgba(72,110,214,0.20))',
+                  border: '1px solid ' + (t.dark ? 'rgba(160,190,255,0.26)' : 'rgba(255,255,255,0.8)'),
+                  backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
+                  boxShadow: '0 10px 26px -18px rgba(20,40,90,0.7)',
+                  borderRadius: '20px 20px 6px 20px', padding: '11px 16px',
+                  fontSize: 13, color: t.ink, lineHeight: 1.55,
+                }}>
                   {msg.text}
                 </div>
               );
             }
 
-            // Agent bubble + optional proposal cards below
+            // Agent bubble + optional proposal cards below. Prose plate (glass
+            // tokens, C2-D138) replaces the old bare pre-line text div; content
+            // is rendered through AgentProse2's markdown parser rather than as
+            // literal text. No per-message timestamp is shown here — confirmed
+            // during this spec's Builder pass that stored messages carry no
+            // per-message time at all (only conversation-level started_at/
+            // ended_at), so the design doc's HH:MM/day-divider pieces are not
+            // buildable without a backend schema change; out of scope here,
+            // flagged in decisions.md rather than faked with client-side-only
+            // send times that would be wrong for any reloaded conversation.
             return (
-              <div key={msg.id} style={{ alignSelf: 'flex-start', maxWidth: 560 }}>
+              <div key={msg.id} style={{ alignSelf: 'flex-start', maxWidth: 620 }}>
                 <MonoTxt size={9.5} color={t.faint} style={{ display: 'block', letterSpacing: '0.16em', marginBottom: 5 }}>FINCR</MonoTxt>
-                <div style={{ fontSize: 13, color: t.ink, lineHeight: 1.62, whiteSpace: 'pre-line' }}>
-                  {msg.text}
+                <div style={{ ...t.g2Plate, maxWidth: 560, borderRadius: '20px 20px 20px 6px', padding: '14px 18px' }}>
+                  <AgentProse2 text={msg.text} t={t} />
                 </div>
                 {(function() {
                   // C2-D126 — conviction/stance keep their existing per-proposal
@@ -1289,23 +1476,46 @@ function AgentTab2() {
           <div ref={threadEndRef} />
         </div>
 
-        {/* Input row */}
-        <div style={{ padding: '12px 22px 18px', flexShrink: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: t.inputBg, border: '1px solid ' + t.inputBorder, borderRadius: 10, padding: '4px 6px 4px 14px' }}>
+        {/* Composer — suggestion chips + glass input (C2-D138) */}
+        <div style={{ padding: '12px 20px 18px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {['Create a thesis card proposal', 'Are there holdings not backed by my thesis?', 'Summarise this chat'].map(function(chip) {
+              return (
+                <button
+                  key={chip}
+                  onClick={function() { setInputText(chip); if (inputRef.current) inputRef.current.focus(); }}
+                  className="f2-press"
+                  style={{ ...t.g2Inner, borderRadius: 999, padding: '5px 11px', fontFamily: t.mono, fontSize: 10, color: t.faint, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                >
+                  {chip}
+                </button>
+              );
+            })}
+          </div>
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 10, borderRadius: 999, padding: '6px 7px 6px 18px',
+            background: t.dark ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.72)',
+            backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
+            border: '1px solid ' + (composerFocused ? t.accent : (t.dark ? 'rgba(255,255,255,0.13)' : 'rgba(255,255,255,0.95)')),
+            boxShadow: composerFocused ? '0 0 0 4px ' + t.accentSoft : '0 8px 22px -18px rgba(0,0,0,0.6)',
+            transition: 'border-color 0.13s, box-shadow 0.13s',
+          }}>
             <input
               ref={inputRef}
               value={inputText}
               onChange={function(e) { setInputText(e.target.value); }}
               onKeyDown={handleKeyDown}
+              onFocus={function() { setComposerFocused(true); }}
+              onBlur={function() { setComposerFocused(false); }}
               placeholder="Ask about your portfolio…"
               disabled={sending}
               style={{ flex: 1, background: 'none', border: 'none', outline: 'none', fontFamily: t.sans, fontSize: 13, color: t.ink, padding: '8px 0' }}
             />
-            <Btn2 primary style={{ fontSize: 12, padding: '7px 14px' }} onClick={sendMessage} disabled={sending || !inputText.trim()}>
+            <Btn2 primary style={{ fontSize: 12, padding: '8px 18px', borderRadius: 999 }} onClick={sendMessage} disabled={sending || !inputText.trim()}>
               {sending ? '…' : 'Send'}
             </Btn2>
           </div>
-          <div style={{ fontSize: 10.5, color: t.ghost, marginTop: 7, fontFamily: t.mono }}>Answers are grounded in your book — not advice.</div>
+          <div style={{ fontSize: 10, color: t.ghost, fontFamily: t.mono }}>Grounded in your book — not advice. Thesis edits need your approval.</div>
         </div>
       </div>
     </div>

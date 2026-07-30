@@ -61,6 +61,27 @@
 
       rowPadY: compact ? 7 : 11,
       pad: compact ? 18 : 24,
+
+      // C2-D138 — promoted from the "glass" design handoff's G2.plate/G2.inner
+      // recipes (agentglass2.jsx prototype). Style-object tokens (not single
+      // CSS-value strings like cardShadow/railGrad above) so a consumer spreads
+      // them directly: style={{...t.g2Plate, ...}}. Kept flat as two more
+      // top-level keys — the token file has no category structure to fit into.
+      g2Plate: {
+        background: dark ? 'rgba(28,34,52,0.42)' : 'rgba(255,255,255,0.52)',
+        border: '1px solid ' + (dark ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.70)'),
+        backdropFilter: 'blur(26px) saturate(150%)',
+        WebkitBackdropFilter: 'blur(26px) saturate(150%)',
+        boxShadow: dark
+          ? '0 1px 0 rgba(255,255,255,0.07) inset, 0 30px 70px -34px rgba(0,0,0,0.85)'
+          : '0 1px 0 rgba(255,255,255,0.90) inset, 0 26px 60px -34px rgba(40,44,60,0.35)',
+      },
+      g2Inner: {
+        background: dark ? 'rgba(255,255,255,0.055)' : 'rgba(255,255,255,0.60)',
+        border: '1px solid ' + (dark ? 'rgba(255,255,255,0.09)' : 'rgba(255,255,255,0.85)'),
+        backdropFilter: 'blur(14px)',
+        WebkitBackdropFilter: 'blur(14px)',
+      },
     };
   };
   window.Theme2Ctx = React.createContext(window.makeTheme2('ink', 'comfortable'));
