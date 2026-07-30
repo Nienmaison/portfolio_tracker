@@ -303,8 +303,8 @@ function Shell2() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 28px 0', maxWidth: 1180, width: '100%', margin: '0 auto' }}>
             <div style={{ fontSize: 13, color: t.dim }}>Good {partOfDay}, {acctName}</div>
             <div style={{ flex: 1 }}></div>
-            <button onClick={() => setPalette(true)} className="f2-press" style={{ display: 'flex', alignItems: 'center', gap: 22, fontFamily: t.sans, fontSize: 12.5, color: t.faint, background: t.inputBg, border: `1px solid ${t.hair}`, borderRadius: 8, padding: '6px 8px 6px 12px', cursor: 'pointer' }}>
-              Search or command… <Kbd2>⌘K</Kbd2>
+            <button onClick={() => setPalette(true)} className="f2-press" style={{ display: 'flex', alignItems: 'center', fontFamily: t.sans, fontSize: 12.5, color: t.faint, background: t.inputBg, border: `1px solid ${t.hair}`, borderRadius: 8, padding: '6px 8px 6px 12px', cursor: 'pointer' }}>
+              Search or command…
             </button>
             <IconBtn2 onClick={() => setDiscrete((d) => !d)} title="Discrete mode" active={discrete}>
               {discrete ?
