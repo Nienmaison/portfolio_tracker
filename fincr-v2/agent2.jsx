@@ -577,11 +577,26 @@ function ConvRailItem2({ conv, active, t, onOpen, onRename, onDelete }) {
     }
   }
 
-  // Hard delete, no undo — now routed through the app-wide Confirm2 modal
-  // (C2-D136) rather than a native confirm() call, same message text unchanged.
+  // Hard delete, no undo — routed through the app-wide Confirm2 modal
+  // (C2-D136). C2-D137: this site's copy/content was replaced with the
+  // owner-supplied design (title/sub/GONE-KEPT detail rows/footer labels) —
+  // a one-time, explicit exception to C2-D136's "message text unchanged"
+  // rule for this call site only, not a reversal of it (see decisions.md).
+  // The other 4 Confirm2 call sites still call it with a bare message string
+  // and are unaffected.
   async function handleDelete(e) {
     e.stopPropagation();
-    if (await window.confirm2('Delete "' + (conv.title || 'New conversation') + '"?\n\nThis permanently removes the conversation. This cannot be undone.')) {
+    var confirmed = await window.confirm2('', {
+      title: 'Delete “' + (conv.title || 'New conversation') + '”?',
+      sub: 'This thread and its messages leave your history for good.',
+      detail: [
+        { label: 'GONE', tone: 'danger', text: 'Every message in the thread, plus the context the agent built up while answering.' },
+        { label: 'KEPT', tone: 'faint', text: 'Decisions you already logged, and any thesis edits committed from this thread.' },
+      ],
+      confirmLabel: 'Delete permanently',
+      cancelLabel: 'Keep thread',
+    });
+    if (confirmed) {
       onDelete(conv.id);
     }
   }

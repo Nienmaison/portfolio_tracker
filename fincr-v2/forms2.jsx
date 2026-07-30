@@ -163,7 +163,7 @@ function TextBtn2({ children, onClick, tone, style }) {
 
 /* Confirm2 — styled destructive-confirm dialog replacing native confirm()
    (C2-D136). Built on Modal2, not a new overlay/backdrop. Imperative
-   Promise-based API — window.confirm2(message[, title]) — so each existing
+   Promise-based API — window.confirm2(message[, opts]) — so each existing
    `if (confirm(msg)) {...}` call site converts with a minimal, uniform diff:
    make the enclosing function async and swap the condition to
    `if (await window.confirm2(msg)) {...}`. whiteSpace:'pre-line' preserves
@@ -171,15 +171,40 @@ function TextBtn2({ children, onClick, tone, style }) {
    text is re-authored or split into a separate title, this is a mechanism
    swap only. Title defaults to a fixed generic string rather than parsing
    one out of the message, since messages don't share a consistent shape to
-   split on. Host is mounted once at the app root (shell2.jsx). */
+   split on. Host is mounted once at the app root (shell2.jsx).
+
+   C2-D137 — optional richer body, additive only. `opts` may carry:
+     - title, sub: passed straight to Modal2 (sub only renders when truthy,
+       same as Modal2 always did — old callers never pass it, so nothing
+       changes for them)
+     - detail: [{label, tone, text}] — when present, renders as hairline-
+       divided mono-label rows INSTEAD of the plain message (tone 'danger'
+       colors the label t.red, anything else t.faint)
+     - confirmLabel, cancelLabel: swap the footer buttons from the original
+       plain TextBtn2 Cancel/OK to Btn2 (this codebase's existing bordered
+       modal-footer button, e.g. ClosedReviewModal2's own Cancel/Save) with
+       custom text and a red border/background on the affirmative button —
+       only engages when these are actually passed; a bare
+       `window.confirm2(msg)` call renders exactly as it did before this
+       phase, byte-for-byte. Every existing call site keeps calling it that
+       way — this extension is for the thread-delete site only. */
 function Confirm2Host() {
   const t = useTheme2();
-  const [state, setState] = React.useState(null); // {message, title, resolve}
+  const [state, setState] = React.useState(null); // {message, title, sub, detail, confirmLabel, cancelLabel, resolve}
 
   React.useEffect(function () {
-    window.confirm2 = function (message, title) {
+    window.confirm2 = function (message, opts) {
+      opts = opts || {};
       return new Promise(function (resolve) {
-        setState({ message: message, title: title || 'Confirm', resolve: resolve });
+        setState({
+          message: message,
+          title: opts.title || 'Confirm',
+          sub: opts.sub,
+          detail: opts.detail,
+          confirmLabel: opts.confirmLabel,
+          cancelLabel: opts.cancelLabel,
+          resolve: resolve,
+        });
       });
     };
     return function () { delete window.confirm2; };
@@ -192,20 +217,43 @@ function Confirm2Host() {
     });
   }
 
+  var richFooter = !!(state && (state.confirmLabel || state.cancelLabel));
+
   return (
     <Modal2
       open={!!state}
       onClose={function () { settle(false); }}
       title={state ? state.title : ''}
-      width={400}
+      sub={state ? state.sub : undefined}
+      width={state && state.detail ? 420 : 400}
       footer={
-        <React.Fragment>
-          <TextBtn2 onClick={function () { settle(false); }}>Cancel</TextBtn2>
-          <TextBtn2 tone="danger" onClick={function () { settle(true); }}>OK</TextBtn2>
-        </React.Fragment>
+        richFooter ? (
+          <React.Fragment>
+            <Btn2 onClick={function () { settle(false); }}>{state.cancelLabel || 'Cancel'}</Btn2>
+            <Btn2 onClick={function () { settle(true); }} style={{ borderColor: t.red, color: t.red, background: t.dark ? 'rgba(226,97,92,0.10)' : 'rgba(205,74,70,0.07)' }}>{state.confirmLabel || 'OK'}</Btn2>
+          </React.Fragment>
+        ) : (
+          <React.Fragment>
+            <TextBtn2 onClick={function () { settle(false); }}>Cancel</TextBtn2>
+            <TextBtn2 tone="danger" onClick={function () { settle(true); }}>OK</TextBtn2>
+          </React.Fragment>
+        )
       }
     >
-      <div style={{ fontSize: 13.5, color: t.dim, lineHeight: 1.55, whiteSpace: 'pre-line' }}>{state ? state.message : ''}</div>
+      {state && state.detail ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {state.detail.map(function (row, i) {
+            return (
+              <div key={i} style={i === 0 ? { display: 'flex', gap: 9, alignItems: 'baseline' } : { display: 'flex', gap: 9, alignItems: 'baseline', borderTop: '1px solid ' + t.hair, paddingTop: 10 }}>
+                <MonoTxt size={9.5} color={row.tone === 'danger' ? t.red : t.faint} style={{ letterSpacing: '0.16em', flexShrink: 0, paddingTop: 2 }}>{row.label}</MonoTxt>
+                <span style={{ fontSize: 12.5, color: t.dim, lineHeight: 1.55 }}>{row.text}</span>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div style={{ fontSize: 13.5, color: t.dim, lineHeight: 1.55, whiteSpace: 'pre-line' }}>{state ? state.message : ''}</div>
+      )}
     </Modal2>
   );
 }
