@@ -1412,7 +1412,7 @@ function AgentTab2() {
             {activeConvTitle || (convId ? 'Conversation' : 'New conversation')}
           </span>
           <div style={{ ...t.g2Inner, borderRadius: 999, padding: '4px 11px', flexShrink: 0 }}>
-            <MonoTxt size={9.5} color={t.faint}>CONTEXT: BOOK · THESIS · RULES</MonoTxt>
+            <MonoTxt size={9.5} color={t.faint}>AGENT CONTEXT: BOOK · THESIS · RULES</MonoTxt>
           </div>
         </div>
 
