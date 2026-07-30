@@ -1020,8 +1020,10 @@ function AgentTab2() {
   function apiKey() { return localStorage.getItem('fincr-api-key') || ''; }
 
   // First page (20 most recent). Replaces the list wholesale — used on mount
-  // and after any action that should reset pagination to the top (rename,
-  // delete of the active conversation's neighbors, etc.).
+  // and after starting a new conversation (title only appears once the first
+  // turn completes, so the sidebar needs a real refetch to pick it up).
+  // Rename and delete do NOT use this (C2-Dxxx) — both patch local state
+  // directly instead now, no reason to reset pagination for either.
   async function loadConversationList() {
     var key = apiKey();
     if (!key) return;
@@ -1301,16 +1303,32 @@ function AgentTab2() {
   }
 
   // ── Rename conversation ───────────────────────────────────────────────────────
+  // C2-Dxxx: patches the renamed thread's title directly in local state on
+  // success, same pattern as deleteConversation's setConversations(filter...)
+  // — previously this refetched the entire list via loadConversationList(),
+  // the one outlier the Add Position Researcher pass found against this
+  // codebase's otherwise-consistent "update local state directly on success"
+  // convention (addPosition, editClosedPosition, deleteConversation). Not a
+  // functional bug (the refetch always eventually showed the right title),
+  // just heavier and inconsistent with its sibling. Gated on the PATCH's own
+  // reported success (checked explicitly here, unlike before) — a failed
+  // rename must not locally show a title that was never actually persisted;
+  // silently doing nothing on failure matches this function's prior behavior
+  // (no error surfaced to the user either way).
   async function renameConversation(id, newTitle) {
     var key = apiKey();
     if (!key || !newTitle.trim()) return;
     try {
-      await fetch(AGENT_API_BASE + '/conversations/' + id + '/title', {
+      var r = await fetch(AGENT_API_BASE + '/conversations/' + id + '/title', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'X-API-Key': key },
         body: JSON.stringify({ title: newTitle }),
       });
-      await loadConversationList();
+      var d = await r.json();
+      if (d.status !== 'ok') { console.warn('[agent] renameConversation failed:', d.error); return; }
+      setConversations(function(prev) {
+        return prev.map(function(c) { return c.id === id ? Object.assign({}, c, { title: d.title || newTitle }) : c; });
+      });
     } catch(e) { /* non-fatal */ }
   }
 
