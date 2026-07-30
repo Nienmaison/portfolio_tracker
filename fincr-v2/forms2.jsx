@@ -161,4 +161,53 @@ function TextBtn2({ children, onClick, tone, style }) {
 
 }
 
-Object.assign(window, { Modal2, Drawer2, Field2, TextField2, NumberField2, Seg2, DrawerSec2, TextBtn2, f2InputStyle });
+/* Confirm2 — styled destructive-confirm dialog replacing native confirm()
+   (C2-D136). Built on Modal2, not a new overlay/backdrop. Imperative
+   Promise-based API — window.confirm2(message[, title]) — so each existing
+   `if (confirm(msg)) {...}` call site converts with a minimal, uniform diff:
+   make the enclosing function async and swap the condition to
+   `if (await window.confirm2(msg)) {...}`. whiteSpace:'pre-line' preserves
+   each message's own existing \n\n paragraph breaks verbatim — no message
+   text is re-authored or split into a separate title, this is a mechanism
+   swap only. Title defaults to a fixed generic string rather than parsing
+   one out of the message, since messages don't share a consistent shape to
+   split on. Host is mounted once at the app root (shell2.jsx). */
+function Confirm2Host() {
+  const t = useTheme2();
+  const [state, setState] = React.useState(null); // {message, title, resolve}
+
+  React.useEffect(function () {
+    window.confirm2 = function (message, title) {
+      return new Promise(function (resolve) {
+        setState({ message: message, title: title || 'Confirm', resolve: resolve });
+      });
+    };
+    return function () { delete window.confirm2; };
+  }, []);
+
+  function settle(result) {
+    setState(function (prev) {
+      if (prev && prev.resolve) prev.resolve(result);
+      return null;
+    });
+  }
+
+  return (
+    <Modal2
+      open={!!state}
+      onClose={function () { settle(false); }}
+      title={state ? state.title : ''}
+      width={400}
+      footer={
+        <React.Fragment>
+          <TextBtn2 onClick={function () { settle(false); }}>Cancel</TextBtn2>
+          <TextBtn2 tone="danger" onClick={function () { settle(true); }}>OK</TextBtn2>
+        </React.Fragment>
+      }
+    >
+      <div style={{ fontSize: 13.5, color: t.dim, lineHeight: 1.55, whiteSpace: 'pre-line' }}>{state ? state.message : ''}</div>
+    </Modal2>
+  );
+}
+
+Object.assign(window, { Modal2, Drawer2, Field2, TextField2, NumberField2, Seg2, DrawerSec2, TextBtn2, f2InputStyle, Confirm2Host });

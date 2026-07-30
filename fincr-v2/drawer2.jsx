@@ -654,7 +654,8 @@ function PositionDrawer2() {
               ? <CloseForm2 h={h} onCancel={() => setMode('detail')} />
               : (
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-                  <TextBtn2 tone="danger" onClick={() => { if (confirm('Delete ' + h.ticker + ' and its whole ledger? This cannot be undone.')) actions.deletePosition(h.ticker); }}>Delete position</TextBtn2>
+                  {/* C2-D136: was native confirm(), now the app-wide Confirm2 modal — message text unchanged. */}
+                  <TextBtn2 tone="danger" onClick={async () => { if (await window.confirm2('Delete ' + h.ticker + ' and its whole ledger? This cannot be undone.')) actions.deletePosition(h.ticker); }}>Delete position</TextBtn2>
                   <Btn2 onClick={() => setMode('close')} style={{ borderColor: t.red, color: t.red }}>Close position →</Btn2>
                 </div>
               )}

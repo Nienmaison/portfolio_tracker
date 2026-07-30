@@ -175,7 +175,13 @@ function Shell2() {
     toggleRail: () => setRailOpen((r) => !r),
     addPosition: () => window.__fincrStore && window.__fincrStore.actions.openAdd(),
     openTicker: (tk) => window.__fincrStore && window.__fincrStore.actions.openDrawer(tk),
-    focusTicker: (tk) => {if (!guardedSetTab('positions')) return;setHighlight(tk);setTimeout(() => setHighlight(null), 2600);}
+    // C2-D136: guardedSetTab can now return a Promise (when window.__fincrGuardedThreadReplace's
+    // confirm is actually shown) instead of always resolving synchronously to a boolean —
+    // `if (!guardedSetTab(...))` would break here, since a Promise is always truthy and the
+    // early-return would never fire regardless of what the owner chose. Must await it; `await`
+    // on the plain `true` returned by the fast (no-confirm-needed) path still resolves
+    // immediately, so this is correct for both paths, not just the async one.
+    focusTicker: async (tk) => {if (!(await guardedSetTab('positions'))) return;setHighlight(tk);setTimeout(() => setHighlight(null), 2600);}
   }), [guardedSetTab]);
 
   React.useEffect(() => {
@@ -250,6 +256,10 @@ function Shell2() {
           .f2-row { transition: background 0.15s; }
           .f2-row:hover { background: ${t.hover}; }
           .f2-press:hover { background: ${t.hover} !important; }
+          /* C2-D136 — new hover-reveal convention (no prior precedent in this
+             app before this). Layered on top of the active-selection inline
+             opacity below, not a replacement — click/tap access is unaffected. */
+          .f2-rail-item:hover .f2-rail-actions { opacity: 0.6 !important; }
           .f2-discrete .f2-money { filter: blur(8px); user-select: none; }
           .f2-money, .f2-row, kbd { transition: filter 0.2s; }
           input::placeholder { color: ${t.ghost}; }
@@ -325,6 +335,9 @@ function Shell2() {
         <AddPosition2 />
         <PositionDrawer2 />
         <ThesisOverlay2 />
+        {/* C2-D136 — mounted once here so window.confirm2(...) is available app-wide,
+            same convention as the other always-mounted overlays above. */}
+        <Confirm2Host />
       </div>
       </window.FincrProvider>
     </window.Theme2Ctx.Provider>);

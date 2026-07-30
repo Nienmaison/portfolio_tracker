@@ -363,9 +363,10 @@ function ClosedReviewModal2({ entry, onClose }) {
       footer={
         <>
           {/* C2-D108 — Delete this closed record. Bottom-left (marginRight:auto) against
-              Modal2's flex-end footer; native confirm() mirrors the open-position delete. */}
-          <TextBtn2 tone="danger" style={{ marginRight: 'auto' }} onClick={() => {
-            if (confirm('Delete this closed ' + entry.ticker + ' record?\n\nThis removes its realized P&L from your since-inception total. It does not affect True Return, total value, or idle cash.\n\nThis cannot be undone.')) {
+              Modal2's flex-end footer. C2-D136: was native confirm(), now the app-wide
+              Confirm2 modal — message text unchanged. */}
+          <TextBtn2 tone="danger" style={{ marginRight: 'auto' }} onClick={async () => {
+            if (await window.confirm2('Delete this closed ' + entry.ticker + ' record?\n\nThis removes its realized P&L from your since-inception total. It does not affect True Return, total value, or idle cash.\n\nThis cannot be undone.')) {
               store.actions.deleteClosedPosition(entry.ticker, entry.closedAt, entry.id);
               onClose();
             }

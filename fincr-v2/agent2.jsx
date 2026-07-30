@@ -577,11 +577,11 @@ function ConvRailItem2({ conv, active, t, onOpen, onRename, onDelete }) {
     }
   }
 
-  // Hard delete, no undo — matches this app's existing native-confirm() pattern
-  // for destructive actions (closedpositions2.jsx, drawer2.jsx, thesisoverlay2.jsx).
-  function handleDelete(e) {
+  // Hard delete, no undo — now routed through the app-wide Confirm2 modal
+  // (C2-D136) rather than a native confirm() call, same message text unchanged.
+  async function handleDelete(e) {
     e.stopPropagation();
-    if (confirm('Delete "' + (conv.title || 'New conversation') + '"?\n\nThis permanently removes the conversation. This cannot be undone.')) {
+    if (await window.confirm2('Delete "' + (conv.title || 'New conversation') + '"?\n\nThis permanently removes the conversation. This cannot be undone.')) {
       onDelete(conv.id);
     }
   }
@@ -589,7 +589,7 @@ function ConvRailItem2({ conv, active, t, onOpen, onRename, onDelete }) {
   return (
     <div
       onClick={function() { if (!editing) onOpen(conv.id); }}
-      className="f2-press"
+      className="f2-press f2-rail-item"
       style={{
         textAlign: 'left', cursor: 'pointer',
         padding: '9px 10px', borderRadius: 8,
@@ -616,13 +616,39 @@ function ConvRailItem2({ conv, active, t, onOpen, onRename, onDelete }) {
         />
       ) : (
         <React.Fragment>
-          <div style={{
-            fontSize: 12.5, fontWeight: 600,
-            color: active ? t.ink : t.dim,
-            lineHeight: 1.35, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-            paddingRight: 18,
-          }}>
-            {conv.title || 'New conversation'}
+          {/* C2-D136 layout fix: title is a shrinking flex column (minWidth:0 is
+              what actually lets it truncate inside a flex row) and the icons are
+              a fixed-width sibling group, rather than the old paddingRight-tuned-
+              for-one-icon + position:absolute pair that only cleared the rename
+              icon and let the delete icon's wider inset overlap the ellipsized
+              title. Sibling layout generalizes to any future icon count without
+              re-tuning a padding number. */}
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 4 }}>
+            <div style={{
+              flex: 1, minWidth: 0,
+              fontSize: 12.5, fontWeight: 600,
+              color: active ? t.ink : t.dim,
+              lineHeight: 1.35, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+            }}>
+              {conv.title || 'New conversation'}
+            </div>
+            {/* Reveal on hover (new interaction convention, no prior precedent in
+                this app — see architecture.md) via .f2-rail-item:hover in
+                shell2.jsx's shared stylesheet; the active-selection reveal below
+                stays as the inline fallback so click/tap access (touch, keyboard-
+                selected row) is never lost. */}
+            <div className="f2-rail-actions" style={{ display: 'flex', gap: 2, flexShrink: 0, opacity: active ? 0.6 : 0 }}>
+              <button
+                onClick={startEdit}
+                title="Rename"
+                style={{ background: 'none', border: 'none', color: t.faint, fontSize: 11, cursor: 'pointer', padding: 2 }}
+              >{'✎'}</button>
+              <button
+                onClick={handleDelete}
+                title="Delete conversation"
+                style={{ background: 'none', border: 'none', color: t.faint, fontSize: 11, cursor: 'pointer', padding: 2 }}
+              >{'🗑'}</button>
+            </div>
           </div>
           <div style={{ display: 'flex', gap: 5, marginTop: 3, alignItems: 'center', flexWrap: 'wrap' }}>
             <MonoTxt size={9.5} color={t.faint}>
@@ -636,24 +662,6 @@ function ConvRailItem2({ conv, active, t, onOpen, onRename, onDelete }) {
               );
             })}
           </div>
-          <button
-            onClick={startEdit}
-            title="Rename"
-            style={{
-              position: 'absolute', top: 8, right: 6, background: 'none', border: 'none',
-              color: t.faint, fontSize: 11, cursor: 'pointer', padding: 0,
-              opacity: active ? 0.6 : 0,
-            }}
-          >{'✎'}</button>
-          <button
-            onClick={handleDelete}
-            title="Delete conversation"
-            style={{
-              position: 'absolute', top: 8, right: 24, background: 'none', border: 'none',
-              color: t.faint, fontSize: 11, cursor: 'pointer', padding: 0,
-              opacity: active ? 0.6 : 0,
-            }}
-          >{'🗑'}</button>
         </React.Fragment>
       )}
     </div>
@@ -700,14 +708,21 @@ function ConvRailItem2({ conv, active, t, onOpen, onRename, onDelete }) {
 //   shipped call sites keeps its EXACT prior copy verbatim (no visible copy
 //   regression from this refactor).
 // Returns true if actionFn ran (or wasn't gated), false if the owner canceled.
-window.__fincrGuardedThreadReplace = function(actionFn, actionPhrase, closeQuestion) {
+// C2-D136: now async (routes the confirm through window.confirm2 instead of
+// native confirm()) — every caller either doesn't use the return value at all
+// (openConversation, startNewConversation: bare statement calls, safe as-is)
+// or has been updated to await it (guardedSetTab in shell2.jsx, whose own
+// caller focusTicker synchronously branched on the old boolean return — see
+// that file's comments for the fix). Do not add a new synchronous caller of
+// this function without checking that chain first.
+window.__fincrGuardedThreadReplace = async function(actionFn, actionPhrase, closeQuestion) {
   var pending = window.__fincrPendingUnifiedProposals;
   var count = pending ? pending.size : 0;
   if (count > 0) {
     var msg = 'You have ' + count + ' uncommitted thesis proposal' + (count === 1 ? '' : 's') +
       ". " + actionPhrase + ' will lose ' + (count === 1 ? 'it' : 'them') +
       ' permanently. ' + closeQuestion;
-    if (!confirm(msg)) return false; // Cancel — nothing runs, state untouched
+    if (!(await window.confirm2(msg))) return false; // Cancel — nothing runs, state untouched
   }
   actionFn();
   return true;
@@ -894,7 +909,7 @@ function AgentTab2() {
       var restoredThread = msgs.map(function(m) {
         return { id: 'h_' + Math.random().toString(36).slice(2, 8), role: m.role === 'user' ? 'user' : 'agent', text: m.content, proposals: [] };
       });
-      window.__fincrGuardedThreadReplace(function() {
+      await window.__fincrGuardedThreadReplace(function() {
         setThread(restoredThread);
         convMsgsRef.current = msgs.map(function(m) { return { role: m.role, content: m.content }; });
         setConvId(id);

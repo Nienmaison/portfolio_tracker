@@ -615,9 +615,13 @@ function ThesisOverlay2() {
   // extra confirm on a genuinely untouched edit session is a much smaller
   // cost than a subtly-wrong dirty comparison silently skipping the confirm
   // when it shouldn't.
-  function requestClose() {
+  // C2-D136: was native confirm(), now the app-wide Confirm2 modal. Made async;
+  // safe because every caller (Escape handler, backdrop mousedown, both footer
+  // onClick sites below) invokes this as a bare statement and never inspects
+  // its return value.
+  async function requestClose() {
     if (isEditing) {
-      if (!confirm('Discard unsaved changes?')) return;
+      if (!(await window.confirm2('Discard unsaved changes?'))) return;
       setIsEditing(false); setConflict(null); setSaveError(null);
     }
     store.actions.closeThesisOverlay();
