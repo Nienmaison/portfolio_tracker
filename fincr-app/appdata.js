@@ -16,18 +16,18 @@
   // fincr-v2/thesis-adapter.js (Spec C2-S2, C2-D60). The old 4-item sample
   // (NVDA/BTC/ETH/VOO) is removed from the startup path; default to [] so the
   // Positions tab always has a valid array before the adapter resolves and on
-  // no-key devices. F.watchlist / F.rules below stay sample (rules wiring deferred).
+  // no-key devices. F.watchlist below stays sample (still fixture-only — out of
+  // scope for C2-D145, which only rewired the Decision Rules card). F.rules
+  // (the old decision-rules fixture) is removed here: C2-D145 repointed
+  // positions2.jsx's Decision Rules card to the real F.decisionRules
+  // (thesis-adapter.js / thesis.json decision_rules), and F.rules had no other
+  // reader in the codebase.
   F.thesis = [];
 
   F.watchlist = [
     { ticker: 'AMD',  name: 'Advanced Micro Devices', conviction: 'Medium', note: 'Second-source AI compute. Waiting for a better entry below €130.', color: '#ED1C24' },
     { ticker: 'SOL',  name: 'Solana',                 conviction: 'Medium', note: 'High beta to crypto risk-on. Would start a position on a market-wide flush.', color: '#14F195' },
     { ticker: 'MSFT', name: 'Microsoft',              conviction: 'Low',    note: 'Quality compounder but fully valued. No edge here yet.', color: '#5BB4E5' },
-  ];
-
-  F.rules = [
-    { title: 'Position sizing', lines: ['No single name above 35% of book', 'New positions start at 2–4%', 'Crypto sleeve capped at 45%'] },
-    { title: 'Selling discipline', lines: ['Trim into strength, never panic-sell', 'Take profits in tranches of 20–25%', 'Tax-loss harvest in December'] },
   ];
 
   F.conversations = []; // C2-S4b: agent2.jsx is now live

@@ -157,20 +157,28 @@ function PositionsTab2({ highlight }) {
         </div>
       </section>
 
+      {/* C2-D145 — was F.rules, a hardcoded appdata.js fixture whose own comment
+          admitted "rules wiring deferred". Now reads the real, live F.decisionRules
+          (thesis.json's decision_rules, exposed by thesis-adapter.js — same global
+          triggerdistance2.jsx already reads). f2RulesBlock is thesisoverlay2.jsx's
+          existing grouping/formatting for the real four decision_rules sub-keys
+          (tranche_selling/rebalancing/value_gap/trailing_stops) — reused as-is here
+          rather than inventing a second convention for the same data. It's a plain
+          top-level function (no IIFE in either file), so it's callable globally by
+          the time this renders even though thesisoverlay2.jsx loads after this file
+          in index.html — component bodies only run after every script has executed.
+          Read-only: no edit mechanism exists for decision_rules anywhere yet (no API
+          route, no editor UI) — see decisions.md [C2-D145]. */}
       <section>
         <SecHead n="03">Decision rules</SecHead>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 16, marginTop: 16 }}>
-          {F.rules.map((r) => (
-            <div key={r.title} style={{ background: t.card, backdropFilter: t.blur, WebkitBackdropFilter: t.blur, boxShadow: t.cardShadow, border: `1px solid ${t.cardBorder}`, borderRadius: 16, padding: '16px 20px' }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: t.ink, marginBottom: 6 }}>{r.title}</div>
-              {r.lines.map((l, i) => (
-                <div key={i} style={{ display: 'flex', gap: 9, alignItems: 'baseline', padding: '6px 0', borderTop: i ? `1px solid ${t.hair}` : 'none' }}>
-                  <span style={{ fontFamily: t.mono, fontSize: 9.5, color: t.ghost }}>R{i + 1}</span>
-                  <span style={{ fontSize: 12.5, color: t.dim }}>{l}</span>
-                </div>
-              ))}
+        <div style={{ marginTop: 16 }}>
+          {F.decisionRules ? (
+            <div style={{ background: t.card, backdropFilter: t.blur, WebkitBackdropFilter: t.blur, boxShadow: t.cardShadow, border: `1px solid ${t.cardBorder}`, borderRadius: 16, padding: '18px 20px', maxWidth: 560 }}>
+              {f2RulesBlock(F.decisionRules, t)}
             </div>
-          ))}
+          ) : (
+            <div style={{ fontSize: 12.5, color: t.faint }}>No decision rules on record.</div>
+          )}
         </div>
       </section>
 
