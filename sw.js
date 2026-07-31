@@ -8,7 +8,7 @@
 // Bump CACHE_VERSION after any significant frontend change to force a full
 // cache flush on all clients.
 
-const CACHE_VERSION = 'fincr-v67'; // C2-D133: cross-broker alias check wired into SnapTrade sync reconciliation (prevents renamed-ticker resurrection)
+const CACHE_VERSION = 'fincr-v68'; // C2-D145: Positions-tab Decision Rules card repointed from F.rules fixture to real F.decisionRules
 
 const SHELL_ASSETS = [
   './index.html',
