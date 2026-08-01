@@ -157,51 +157,60 @@ function PositionsTab2({ highlight }) {
         </div>
       </section>
 
-      {/* C2-D146 — split off Card A (tranche_selling only) from what C2-D145
-          shipped as one combined card. Owner feedback: tranche_selling is the
-          ACTIVELY ENFORCED rule (triggerdistance2.jsx and the morning briefing
-          agent both read and act on it) — it stays full-prominence, unchanged
-          formatting, on its own. rebalancing/value_gap/trailing_stops (Card B,
-          below) are currently just declared intent in thesis.json with nothing
-          checking them, so they're split out rather than sharing this card's
-          weight. Both cards read the same F.decisionRules and call f2RulesBlock()
-          unmodified — it already only renders a group when that key is present
-          on the object passed in, so each card just passes its own subset
-          instead of needing a second formatting path. */}
+      {/* C2-D146 split Card A (tranche_selling) from Card B ("Rulebook":
+          rebalancing/value_gap/trailing_stops) — see those comments (preserved
+          below) for why the split exists. C2-D147 (this change): the two cards
+          stacked vertically with a full "04 RULEBOOK" section header between
+          them, which the owner found too long/heavy for what's meant to read as
+          one paired unit. Reused this file's own existing side-by-side-card
+          convention (the "01 Thesis on record" grid above, line ~113 —
+          `repeat(auto-fill, minmax(Npx, 1fr))`) instead of inventing a new
+          layout: it's the same grid CSS this exact card pair used pre-C2-D145,
+          before the fixture was replaced with real data. auto-fill/minmax is
+          why no explicit mobile breakpoint is needed — a track collapses to a
+          single column on its own once the viewport can't fit two 320px+
+          cards side by side, same as the Thesis-on-record grid already relies
+          on. Per the reused precedent (a shared section header over a card
+          grid, not a header per card), Card B's standalone "04 Rulebook"
+          SecHead is dropped — the single "03 Decision rules" header above now
+          covers both. closedpositions2.jsx's SecHead stays "05" unchanged (out
+          of scope here) even though "04" is no longer used by any header —
+          per this spec, not to be renumbered back. Neither card's content,
+          f2RulesBlock() call, nor the seed button changed — container only. */}
       <section>
         <SecHead n="03">Decision rules</SecHead>
-        <div style={{ marginTop: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 16, marginTop: 16 }}>
+          {/* Card A — tranche_selling, the ACTIVELY ENFORCED rule
+              (triggerdistance2.jsx + the morning briefing agent both read and
+              act on it) — unchanged formatting, on its own. */}
           {F.decisionRules && F.decisionRules.tranche_selling ? (
-            <div style={{ background: t.card, backdropFilter: t.blur, WebkitBackdropFilter: t.blur, boxShadow: t.cardShadow, border: `1px solid ${t.cardBorder}`, borderRadius: 16, padding: '18px 20px', maxWidth: 560 }}>
+            <div style={{ background: t.card, backdropFilter: t.blur, WebkitBackdropFilter: t.blur, boxShadow: t.cardShadow, border: `1px solid ${t.cardBorder}`, borderRadius: 16, padding: '18px 20px' }}>
               {f2RulesBlock({ tranche_selling: F.decisionRules.tranche_selling }, t)}
             </div>
           ) : (
             <div style={{ fontSize: 12.5, color: t.faint }}>No decision rules on record.</div>
           )}
-        </div>
-      </section>
 
-      {/* Card B — "Rulebook": rebalancing/value_gap/trailing_stops, named to read
-          as declared-but-not-yet-enforced (unlike Card A, nothing currently reads
-          or acts on these). "Set up with agent" reuses the exact one-shot seed
-          mechanism as the "Write one with the agent" button above and drawer2.jsx's
-          thesis-formulation entry points (window.__fincrAgentSeed + the fincr:go-tab
-          event, C2-D123/C2-D127) — agent2.jsx's seed consumer only ever reads
-          seed.text (seed.ticker in the button above is unused there too), so this
-          seed carries text only; decision_rules has no ticker to scope it to anyway
-          (a single global object, per thesisoverlay2.jsx's own comment). Per the
-          C2-D123 auto-send correction, this only populates the agent input and
-          focuses it — it does NOT send; the owner reviews and hits Send themselves.
-          This button starts a conversation only — no new agent capability or
-          write-back path for decision_rules exists yet (deferred to Part B, see
-          decisions.md [C2-D146]). Button lives on Card B only, not Card A:
-          tranche_selling is already live-enforced elsewhere, so there's nothing to
-          "set up" for it yet. */}
-      <section>
-        <SecHead n="04">Rulebook</SecHead>
-        <div style={{ marginTop: 16 }}>
+          {/* Card B — "Rulebook": rebalancing/value_gap/trailing_stops, named to
+              read as declared-but-not-yet-enforced (unlike Card A, nothing
+              currently reads or acts on these). "Set up with agent" reuses the
+              exact one-shot seed mechanism as the "Write one with the agent"
+              button above and drawer2.jsx's thesis-formulation entry points
+              (window.__fincrAgentSeed + the fincr:go-tab event, C2-D123/
+              C2-D127) — agent2.jsx's seed consumer only ever reads seed.text
+              (seed.ticker in the button above is unused there too), so this
+              seed carries text only; decision_rules has no ticker to scope it
+              to anyway (a single global object, per thesisoverlay2.jsx's own
+              comment). Per the C2-D123 auto-send correction, this only
+              populates the agent input and focuses it — it does NOT send; the
+              owner reviews and hits Send themselves. This button starts a
+              conversation only — no new agent capability or write-back path
+              for decision_rules exists yet (deferred to Part B, see
+              decisions.md [C2-D146]). Button lives on Card B only, not Card A:
+              tranche_selling is already live-enforced elsewhere, so there's
+              nothing to "set up" for it yet. */}
           {F.decisionRules && (F.decisionRules.rebalancing || F.decisionRules.value_gap || F.decisionRules.trailing_stops) ? (
-            <div style={{ background: t.card, backdropFilter: t.blur, WebkitBackdropFilter: t.blur, boxShadow: t.cardShadow, border: `1px solid ${t.cardBorder}`, borderRadius: 16, padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: 14, maxWidth: 560 }}>
+            <div style={{ background: t.card, backdropFilter: t.blur, WebkitBackdropFilter: t.blur, boxShadow: t.cardShadow, border: `1px solid ${t.cardBorder}`, borderRadius: 16, padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
               {f2RulesBlock({ rebalancing: F.decisionRules.rebalancing, value_gap: F.decisionRules.value_gap, trailing_stops: F.decisionRules.trailing_stops }, t)}
               <button
                 className="f2-press"
