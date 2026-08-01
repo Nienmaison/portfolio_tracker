@@ -8,7 +8,7 @@
 // Bump CACHE_VERSION after any significant frontend change to force a full
 // cache flush on all clients.
 
-const CACHE_VERSION = 'fincr-v70'; // C2-D147: Decision Rules cards A+B laid out side-by-side (repeat(auto-fill, minmax(320px,1fr)) grid)
+const CACHE_VERSION = 'fincr-v71'; // C2-D148: whole-card fold (collapsed by default) on both Decision Rules cards + Card B "Not yet enforced" badge
 
 const SHELL_ASSETS = [
   './index.html',

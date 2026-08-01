@@ -86,6 +86,24 @@ function ThesisCard2({ th, highlight }) {
 function PositionsTab2({ highlight }) {
   const t = useTheme2();
   const F = window.FINCR;
+  // C2-D148 — whole-card fold for both Decision Rules cards, collapsed by
+  // default so the tab loads compact (owner feedback: Card B was still too
+  // long even side by side with Card A). Reuses closedpositions2.jsx's live
+  // Show/Hide text-button convention (className="f2-press", plain mono
+  // button, no chevron/animation) — the only whole-SECTION fold still live in
+  // this codebase. (ThesisCard2 briefly had its own whole-card fold, C2-D126,
+  // same plain-text-button styling, but it was fully retired by C2-D129 once
+  // the grid became server-capped — dead code now, not something to extend;
+  // its styling choice is corroborating evidence for reusing the plain-text
+  // convention here rather than inventing a chevron.) Per-card state (not
+  // one shared toggle) since the spec calls for independent whole-card fold,
+  // not a per-subsection accordion. No persistence across reloads — like
+  // closedpositions2.jsx's own `collapsed` state, this resets to its default
+  // (folded) on every remount; ASSUMPTION: fine since the spec only asks for
+  // fresh-collapsed-on-load behavior, not persistence, and no existing
+  // fold convention in this codebase persists across reloads either.
+  const [collapsedA, setCollapsedA] = React.useState(true);
+  const [collapsedB, setCollapsedB] = React.useState(true);
   // C2-D129 — grid data lives on F.thesisGrid (GET /thesis/grid, C2-D128), a
   // second, independent fetch from F.thesis/loadThesis. Fetched per Positions-
   // tab mount (this component remounts on every tab switch via shell2.jsx's
@@ -182,10 +200,22 @@ function PositionsTab2({ highlight }) {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 16, marginTop: 16 }}>
           {/* Card A — tranche_selling, the ACTIVELY ENFORCED rule
               (triggerdistance2.jsx + the morning briefing agent both read and
-              act on it) — unchanged formatting, on its own. */}
+              act on it) — unchanged formatting/data, on its own. C2-D148:
+              header row (title + fold toggle) is new; f2RulesBlock() call
+              and its content are untouched, just conditionally shown below
+              the header instead of always. No badge here — Card A is the
+              enforced side, nothing to distinguish it from. */}
           {F.decisionRules && F.decisionRules.tranche_selling ? (
-            <div style={{ background: t.card, backdropFilter: t.blur, WebkitBackdropFilter: t.blur, boxShadow: t.cardShadow, border: `1px solid ${t.cardBorder}`, borderRadius: 16, padding: '18px 20px' }}>
-              {f2RulesBlock({ tranche_selling: F.decisionRules.tranche_selling }, t)}
+            <div style={{ background: t.card, backdropFilter: t.blur, WebkitBackdropFilter: t.blur, boxShadow: t.cardShadow, border: `1px solid ${t.cardBorder}`, borderRadius: 16, padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: collapsedA ? 0 : 14 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                <MonoTxt size={10.5} color={t.faint} style={{ letterSpacing: '0.08em', textTransform: 'uppercase' }}>Tranche selling</MonoTxt>
+                <button
+                  className="f2-press"
+                  onClick={() => setCollapsedA((c) => !c)}
+                  style={{ fontFamily: t.mono, fontSize: 10.5, fontWeight: 600, letterSpacing: '0.06em', color: t.accent, background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px' }}
+                >{collapsedA ? 'Show' : 'Hide'}</button>
+              </div>
+              {!collapsedA && f2RulesBlock({ tranche_selling: F.decisionRules.tranche_selling }, t)}
             </div>
           ) : (
             <div style={{ fontSize: 12.5, color: t.faint }}>No decision rules on record.</div>
@@ -208,18 +238,45 @@ function PositionsTab2({ highlight }) {
               for decision_rules exists yet (deferred to Part B, see
               decisions.md [C2-D146]). Button lives on Card B only, not Card A:
               tranche_selling is already live-enforced elsewhere, so there's
-              nothing to "set up" for it yet. */}
+              nothing to "set up" for it yet.
+
+              C2-D148 — header row (title + badge + fold toggle) is new,
+              collapsed by default. The "Not yet enforced" badge reuses Chip2
+              (ui2.jsx) — the same tag component ThesisCard2/watchlist already
+              use for stance/conviction — tone="mute" (dim/neutral, not an
+              alert color) since this is a factual state, not a warning.
+              Restores the active-vs-declared distinction the old standalone
+              "04 Rulebook" header used to carry before C2-D147 merged both
+              cards under one shared section header. Badge stays visible even
+              collapsed (per spec); f2RulesBlock() call and the seed button
+              are unchanged, just hidden behind the fold along with everything
+              else in the card body. */}
           {F.decisionRules && (F.decisionRules.rebalancing || F.decisionRules.value_gap || F.decisionRules.trailing_stops) ? (
-            <div style={{ background: t.card, backdropFilter: t.blur, WebkitBackdropFilter: t.blur, boxShadow: t.cardShadow, border: `1px solid ${t.cardBorder}`, borderRadius: 16, padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-              {f2RulesBlock({ rebalancing: F.decisionRules.rebalancing, value_gap: F.decisionRules.value_gap, trailing_stops: F.decisionRules.trailing_stops }, t)}
-              <button
-                className="f2-press"
-                onClick={() => {
-                  window.__fincrAgentSeed = { text: "Let's set up my rebalancing, value gap, and trailing-stop rules." };
-                  window.dispatchEvent(new CustomEvent('fincr:go-tab', { detail: { tab: 'agent' } }));
-                }}
-                style={{ alignSelf: 'flex-start', fontFamily: t.sans, fontSize: 12, fontWeight: 600, color: t.accent, background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
-              >Set up with agent →</button>
+            <div style={{ background: t.card, backdropFilter: t.blur, WebkitBackdropFilter: t.blur, boxShadow: t.cardShadow, border: `1px solid ${t.cardBorder}`, borderRadius: 16, padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: collapsedB ? 0 : 14 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <MonoTxt size={10.5} color={t.faint} style={{ letterSpacing: '0.08em', textTransform: 'uppercase' }}>Rulebook</MonoTxt>
+                  <Chip2 tone="mute">Not yet enforced</Chip2>
+                </div>
+                <button
+                  className="f2-press"
+                  onClick={() => setCollapsedB((c) => !c)}
+                  style={{ fontFamily: t.mono, fontSize: 10.5, fontWeight: 600, letterSpacing: '0.06em', color: t.accent, background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px' }}
+                >{collapsedB ? 'Show' : 'Hide'}</button>
+              </div>
+              {!collapsedB && (
+                <React.Fragment>
+                  {f2RulesBlock({ rebalancing: F.decisionRules.rebalancing, value_gap: F.decisionRules.value_gap, trailing_stops: F.decisionRules.trailing_stops }, t)}
+                  <button
+                    className="f2-press"
+                    onClick={() => {
+                      window.__fincrAgentSeed = { text: "Let's set up my rebalancing, value gap, and trailing-stop rules." };
+                      window.dispatchEvent(new CustomEvent('fincr:go-tab', { detail: { tab: 'agent' } }));
+                    }}
+                    style={{ alignSelf: 'flex-start', fontFamily: t.sans, fontSize: 12, fontWeight: 600, color: t.accent, background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+                  >Set up with agent →</button>
+                </React.Fragment>
+              )}
             </div>
           ) : (
             <div style={{ fontSize: 12.5, color: t.faint }}>No rulebook on record.</div>
