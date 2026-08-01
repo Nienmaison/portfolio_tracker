@@ -480,8 +480,10 @@ function ClosedPositionsList2() {
 
   return (
     <Card2 pad="22px 26px 18px">
+      {/* n bumped 04->05 (C2-D146): positions2.jsx inserted a new n="04" "Rulebook"
+          section above this one on the Positions tab. */}
       <SecHead
-        n="04"
+        n="05"
         right={
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
             <MonoTxt size={10.5} color={t.faint}>{closed.length} CLOSED</MonoTxt>

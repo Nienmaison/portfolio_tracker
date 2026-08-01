@@ -8,7 +8,7 @@
 // Bump CACHE_VERSION after any significant frontend change to force a full
 // cache flush on all clients.
 
-const CACHE_VERSION = 'fincr-v68'; // C2-D145: Positions-tab Decision Rules card repointed from F.rules fixture to real F.decisionRules
+const CACHE_VERSION = 'fincr-v69'; // C2-D146: Decision Rules card split into two (tranche selling / Rulebook) + "Set up with agent" seed button
 
 const SHELL_ASSETS = [
   './index.html',

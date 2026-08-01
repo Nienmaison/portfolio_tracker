@@ -157,27 +157,63 @@ function PositionsTab2({ highlight }) {
         </div>
       </section>
 
-      {/* C2-D145 — was F.rules, a hardcoded appdata.js fixture whose own comment
-          admitted "rules wiring deferred". Now reads the real, live F.decisionRules
-          (thesis.json's decision_rules, exposed by thesis-adapter.js — same global
-          triggerdistance2.jsx already reads). f2RulesBlock is thesisoverlay2.jsx's
-          existing grouping/formatting for the real four decision_rules sub-keys
-          (tranche_selling/rebalancing/value_gap/trailing_stops) — reused as-is here
-          rather than inventing a second convention for the same data. It's a plain
-          top-level function (no IIFE in either file), so it's callable globally by
-          the time this renders even though thesisoverlay2.jsx loads after this file
-          in index.html — component bodies only run after every script has executed.
-          Read-only: no edit mechanism exists for decision_rules anywhere yet (no API
-          route, no editor UI) — see decisions.md [C2-D145]. */}
+      {/* C2-D146 — split off Card A (tranche_selling only) from what C2-D145
+          shipped as one combined card. Owner feedback: tranche_selling is the
+          ACTIVELY ENFORCED rule (triggerdistance2.jsx and the morning briefing
+          agent both read and act on it) — it stays full-prominence, unchanged
+          formatting, on its own. rebalancing/value_gap/trailing_stops (Card B,
+          below) are currently just declared intent in thesis.json with nothing
+          checking them, so they're split out rather than sharing this card's
+          weight. Both cards read the same F.decisionRules and call f2RulesBlock()
+          unmodified — it already only renders a group when that key is present
+          on the object passed in, so each card just passes its own subset
+          instead of needing a second formatting path. */}
       <section>
         <SecHead n="03">Decision rules</SecHead>
         <div style={{ marginTop: 16 }}>
-          {F.decisionRules ? (
+          {F.decisionRules && F.decisionRules.tranche_selling ? (
             <div style={{ background: t.card, backdropFilter: t.blur, WebkitBackdropFilter: t.blur, boxShadow: t.cardShadow, border: `1px solid ${t.cardBorder}`, borderRadius: 16, padding: '18px 20px', maxWidth: 560 }}>
-              {f2RulesBlock(F.decisionRules, t)}
+              {f2RulesBlock({ tranche_selling: F.decisionRules.tranche_selling }, t)}
             </div>
           ) : (
             <div style={{ fontSize: 12.5, color: t.faint }}>No decision rules on record.</div>
+          )}
+        </div>
+      </section>
+
+      {/* Card B — "Rulebook": rebalancing/value_gap/trailing_stops, named to read
+          as declared-but-not-yet-enforced (unlike Card A, nothing currently reads
+          or acts on these). "Set up with agent" reuses the exact one-shot seed
+          mechanism as the "Write one with the agent" button above and drawer2.jsx's
+          thesis-formulation entry points (window.__fincrAgentSeed + the fincr:go-tab
+          event, C2-D123/C2-D127) — agent2.jsx's seed consumer only ever reads
+          seed.text (seed.ticker in the button above is unused there too), so this
+          seed carries text only; decision_rules has no ticker to scope it to anyway
+          (a single global object, per thesisoverlay2.jsx's own comment). Per the
+          C2-D123 auto-send correction, this only populates the agent input and
+          focuses it — it does NOT send; the owner reviews and hits Send themselves.
+          This button starts a conversation only — no new agent capability or
+          write-back path for decision_rules exists yet (deferred to Part B, see
+          decisions.md [C2-D146]). Button lives on Card B only, not Card A:
+          tranche_selling is already live-enforced elsewhere, so there's nothing to
+          "set up" for it yet. */}
+      <section>
+        <SecHead n="04">Rulebook</SecHead>
+        <div style={{ marginTop: 16 }}>
+          {F.decisionRules && (F.decisionRules.rebalancing || F.decisionRules.value_gap || F.decisionRules.trailing_stops) ? (
+            <div style={{ background: t.card, backdropFilter: t.blur, WebkitBackdropFilter: t.blur, boxShadow: t.cardShadow, border: `1px solid ${t.cardBorder}`, borderRadius: 16, padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: 14, maxWidth: 560 }}>
+              {f2RulesBlock({ rebalancing: F.decisionRules.rebalancing, value_gap: F.decisionRules.value_gap, trailing_stops: F.decisionRules.trailing_stops }, t)}
+              <button
+                className="f2-press"
+                onClick={() => {
+                  window.__fincrAgentSeed = { text: "Let's set up my rebalancing, value gap, and trailing-stop rules." };
+                  window.dispatchEvent(new CustomEvent('fincr:go-tab', { detail: { tab: 'agent' } }));
+                }}
+                style={{ alignSelf: 'flex-start', fontFamily: t.sans, fontSize: 12, fontWeight: 600, color: t.accent, background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+              >Set up with agent →</button>
+            </div>
+          ) : (
+            <div style={{ fontSize: 12.5, color: t.faint }}>No rulebook on record.</div>
           )}
         </div>
       </section>
