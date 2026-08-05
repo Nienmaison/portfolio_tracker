@@ -161,8 +161,88 @@ function parseAgentResponse(text) {
     proposals.push({ ticker: ticker.toUpperCase(), field: field, current: current, proposed: proposed, reasoning: reasoning });
   }
 
+  // ── DECISION_RULES_PROPOSAL parser (C2-D155) ────────────────────────────────
+  // A SEPARATE marker and a SEPARATE loop, not a fifth field value handled
+  // inside the THESIS_PROPOSAL loop above. Every THESIS_PROPOSAL block is
+  // gated on ticker (checked at the very top of that loop, before any
+  // field-specific logic runs — see "ticker must be a current holding"
+  // above); decision_rules is a single global object with no ticker at all
+  // (confirmed repeatedly elsewhere in this codebase, e.g. thesisoverlay2.jsx's
+  // own f2RulesBlock comment), so a decision_rules block would be silently
+  // discarded there — not for anything decision_rules-specific, simply
+  // because it has nothing to satisfy that gate with. This parses
+  // independently and never touches that gate.
+  //
+  // Granularity (owner-approved, matches the backend's C2-D154 endpoint
+  // shape exactly): one block per tranche level for tranche_selling
+  // (item_key + a plain string new_value) — mirrors thesis_indicators' own
+  // one-block-per-item pattern above almost exactly. One block per WHOLE
+  // section for rebalancing/value_gap/trailing_stops — new_value is that
+  // section's complete proposed object, sent as compact single-line JSON so
+  // it survives this parser's line-by-line "first colon splits key from
+  // value" splitting (block.new_value's own internal colons are all AFTER
+  // the split point, so this works unmodified — confirmed by testing, not
+  // assumed) — the system prompt below instructs the model to emit it this
+  // way.
+  const VALID_DR_SECTIONS = new Set(['tranche_selling', 'rebalancing', 'value_gap', 'trailing_stops']);
+  const drBlockRe = /<<<DECISION_RULES_PROPOSAL\s*\n([\s\S]*?)>>>/g;
+  let drMatch;
+  while ((drMatch = drBlockRe.exec(text)) !== null) {
+    const drBlock = {};
+    drMatch[1].split('\n').forEach(function(line) {
+      var ci = line.indexOf(':');
+      if (ci === -1) return;
+      var k = line.substring(0, ci).trim();
+      var v = line.substring(ci + 1).trim();
+      if (k) drBlock[k] = v;
+    });
+
+    var drSection = drBlock.section;
+    if (!VALID_DR_SECTIONS.has(drSection)) {
+      console.warn('[agent] discarding decision_rules proposal: invalid section:', drSection);
+      continue;
+    }
+    var drReasoning = drBlock.reasoning;
+    if (!drReasoning || !drReasoning.trim()) {
+      console.warn('[agent] discarding decision_rules proposal: empty reasoning');
+      continue;
+    }
+
+    if (drSection === 'tranche_selling') {
+      var drItemKey = drBlock.item_key;
+      if (!drItemKey || !/^\d+_pct(_plus)?$/.test(drItemKey)) {
+        console.warn('[agent] discarding decision_rules proposal: invalid item_key:', drItemKey);
+        continue;
+      }
+      var drNewValueStr = drBlock.new_value;
+      if (!drNewValueStr || !drNewValueStr.trim()) {
+        console.warn('[agent] discarding decision_rules proposal: empty new_value');
+        continue;
+      }
+      proposals.push({
+        field: 'decision_rules', section: drSection, itemKey: drItemKey,
+        newValue: drNewValueStr.trim(), reasoning: drReasoning,
+      });
+    } else {
+      var drRaw = drBlock.new_value;
+      var drParsed = null;
+      try { drParsed = JSON.parse(drRaw); } catch (e) {
+        console.warn('[agent] discarding decision_rules proposal: new_value is not valid JSON:', drRaw);
+        continue;
+      }
+      if (!drParsed || typeof drParsed !== 'object' || Array.isArray(drParsed)) {
+        console.warn('[agent] discarding decision_rules proposal: new_value must be a JSON object:', drRaw);
+        continue;
+      }
+      proposals.push({
+        field: 'decision_rules', section: drSection, itemKey: null,
+        newValue: drParsed, reasoning: drReasoning,
+      });
+    }
+  }
+
   // Strip all blocks from prose before display
-  var prose = text.replace(/<<<THESIS_PROPOSAL[\s\S]*?>>>/g, '').trim();
+  var prose = text.replace(/<<<THESIS_PROPOSAL[\s\S]*?>>>/g, '').replace(/<<<DECISION_RULES_PROPOSAL[\s\S]*?>>>/g, '').trim();
   return { prose: prose, proposals: proposals };
 }
 
@@ -708,6 +788,176 @@ function UnifiedThesisProposalCard2({ ticker, proposals }) {
               {busy ? '…' : 'Apply to thesis'}
             </Btn2>
             <button onClick={handleCancel} style={{ ...t.g2Inner, borderRadius: 999, padding: '7px 14px', fontFamily: t.sans, fontSize: 12, fontWeight: 600, color: t.dim, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+              Dismiss
+            </button>
+            <span style={{ flex: 1 }}></span>
+            <span style={{ fontFamily: t.mono, fontSize: 9.5, color: t.ghost, whiteSpace: 'nowrap' }}>LOGS TO HISTORY</span>
+          </div>
+        </React.Fragment>
+      )}
+    </div>
+  );
+}
+
+// ── Decision Rules proposal card (C2-D155) ────────────────────────────────────
+// A PARALLEL card to UnifiedThesisProposalCard2 above, not a variant of it —
+// decision_rules is a single global object with no ticker (confirmed
+// repeatedly elsewhere in this codebase), so there's no "group everything
+// for this ticker into one card" unit the way Unified...'s core_argument/
+// target_price/thesis_indicators grouping has. Each decision_rules proposal
+// commits independently: one card per proposal, mirroring ProposalCard2's
+// per-proposal pattern above, NOT Unified...'s per-ticker batching — because
+// the backend (C2-D154's POST /thesis/decision-rules/update) writes one
+// section/item at a time and bumps thesis_version on every write. Batching N
+// proposals into one Commit would need to chain N sequential calls, each
+// depending on the previous call's fresh version, for no real benefit here
+// (unlike core_argument+target_price+thesis_indicators, which genuinely
+// belong together as one holding's thesis and always commit as a unit).
+//
+// Reused from UnifiedThesisProposalCard2: the outer plate/status-chip shell,
+// the visibly-rendered reasoning line (the Researcher pass confirmed both
+// existing proposal cards already show reasoning to the user, not just log
+// it server-side), and — for whole-section proposals — the same "one
+// textarea for a complex value" convention core_argument already uses,
+// rather than inventing N per-field input widgets for rebalancing's mixed
+// scalar+nested shape. Different: no ticker in the header (a "DECISION
+// RULES" label + section name instead); commits via window.saveDecisionRules,
+// never window.saveThesis, which has no path for a ticker-less write at all.
+function DecisionRulesProposalCard2({ proposal }) {
+  const t = useTheme2();
+  const [status, setStatus] = React.useState('pending'); // pending | committed | dismissed
+  const [busy, setBusy] = React.useState(false);
+  const [cardError, setCardError] = React.useState(null);
+
+  const F = window.FINCR;
+  const rules = F.decisionRules || {};
+  const isTranche = proposal.section === 'tranche_selling';
+  const SECTION_LABELS = { tranche_selling: 'Tranche selling', rebalancing: 'Rebalancing', value_gap: 'Value gap', trailing_stops: 'Trailing stops' };
+
+  // Tranche: a plain string, editable as a single text input — matches the
+  // stored shape exactly (thesis.json's tranche_selling values are strings).
+  const [trancheText, setTrancheText] = React.useState(isTranche ? proposal.newValue : '');
+  const trancheCurrent = isTranche ? ((rules.tranche_selling || {})[proposal.itemKey] || '') : '';
+
+  // Whole-section: pretty-printed JSON, editable as one textarea (same
+  // convention as Unified...'s core_argument textarea above — a single
+  // freeform field for a complex value, not a form generated per key).
+  const sectionCurrent = !isTranche ? (rules[proposal.section] || null) : null;
+  const [sectionText, setSectionText] = React.useState(!isTranche ? JSON.stringify(proposal.newValue, null, 2) : '');
+
+  const chip = status === 'committed'
+    ? { text: 'APPLIED', color: t.green, bg: t.greenSoft }
+    : { text: 'DECISION RULES', color: t.accent, bg: t.accentSoft };
+
+  async function handleCommit() {
+    setBusy(true);
+    setCardError(null);
+    var newValue;
+    if (isTranche) {
+      if (!trancheText.trim()) { setBusy(false); setCardError('Value cannot be empty'); return; }
+      newValue = trancheText.trim();
+    } else {
+      try {
+        newValue = JSON.parse(sectionText);
+      } catch (e) {
+        setBusy(false); setCardError('Not valid JSON — fix before committing'); return;
+      }
+      if (!newValue || typeof newValue !== 'object' || Array.isArray(newValue)) {
+        setBusy(false); setCardError('Must be a JSON object'); return;
+      }
+      // C2-D155 safety net — the backend's whole-section write REPLACES the
+      // section outright (confirmed in C2-D154's own code: rules[section] =
+      // new_value, not a merge), so a proposal that omits an existing field
+      // (despite the system prompt instructing the agent to include every
+      // field) would silently delete it on write. The prompt addition can't
+      // guarantee the model always complies — this blocks the commit
+      // client-side instead of trusting that alone, same posture as the
+      // C2-D127 wrong-id flag (never silently paper over a failure mode this
+      // feature must not have).
+      if (sectionCurrent) {
+        var droppedFields = Object.keys(sectionCurrent).filter(function(k) { return !(k in newValue); });
+        if (droppedFields.length) {
+          setBusy(false);
+          setCardError('Proposal is missing existing field(s): ' + droppedFields.join(', ') + ' — would delete them. Add them back to the JSON above before committing.');
+          return;
+        }
+      }
+    }
+    // window.saveDecisionRules reads the current thesis_version itself
+    // (F.thesisVersion) — this card never passes or tracks a version, same
+    // posture as UnifiedThesisProposalCard2 not tracking auth keys itself.
+    var result = await window.saveDecisionRules(proposal.section, proposal.itemKey, newValue, proposal.reasoning);
+    if (result.ok && window.loadThesis) await window.loadThesis(); // canonical refresh, same pattern as handleCommit above
+    setBusy(false);
+    if (result.ok) {
+      setStatus('committed');
+    } else if (result.conflict) {
+      setCardError('Decision rules changed elsewhere since this was proposed — reload and try again');
+    } else {
+      setCardError('Failed to save — try again');
+    }
+  }
+
+  function handleDismiss() { setStatus('dismissed'); }
+
+  if (status === 'dismissed') return null;
+
+  return (
+    <div style={{ ...t.g2Plate, borderRadius: 20, padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 12, marginTop: 8, opacity: status === 'committed' ? 0.7 : 1, transition: 'opacity 0.2s' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <MonoTxt size={9} color={t.ghost} style={{ letterSpacing: '0.16em', display: 'block' }}>DECISION RULES</MonoTxt>
+          <div style={{ fontSize: 14.5, fontWeight: 700, color: t.ink, lineHeight: 1.15 }}>{SECTION_LABELS[proposal.section]}</div>
+        </div>
+        <span style={{ fontFamily: t.mono, fontSize: 9, fontWeight: 600, letterSpacing: '0.08em', color: chip.color, background: chip.bg, borderRadius: 999, padding: '2px 8px' }}>{chip.text}</span>
+      </div>
+
+      {status !== 'committed' && proposal.reasoning && (
+        <div style={{ fontSize: 12, color: t.dim, fontStyle: 'italic', lineHeight: 1.5 }}>{proposal.reasoning}</div>
+      )}
+
+      {status === 'committed' ? (
+        <div style={{ fontFamily: t.mono, fontSize: 11, color: t.dim }}>Written to decision rules</div>
+      ) : (
+        <React.Fragment>
+          {isTranche ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <MonoTxt size={9} color={t.ghost} style={{ letterSpacing: '0.16em' }}>{proposal.itemKey.replace(/_/g, ' ').toUpperCase()}</MonoTxt>
+              {trancheCurrent && (
+                <div>
+                  <MonoTxt size={9} color={t.ghost} style={{ letterSpacing: '0.16em', display: 'block', marginBottom: 4 }}>NOW</MonoTxt>
+                  <div style={{ fontSize: 12.5, color: t.faint, lineHeight: 1.5 }}>{trancheCurrent}</div>
+                </div>
+              )}
+              <MonoTxt size={9} color={t.accent} style={{ letterSpacing: '0.16em' }}>PROPOSED</MonoTxt>
+              <input value={trancheText} onChange={function(e) { setTrancheText(e.target.value); }} style={window.f2InputStyle(t)} />
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {sectionCurrent && (
+                <div>
+                  <MonoTxt size={9} color={t.ghost} style={{ letterSpacing: '0.16em', display: 'block', marginBottom: 4 }}>NOW</MonoTxt>
+                  <pre style={{ fontFamily: t.mono, fontSize: 11, color: t.faint, lineHeight: 1.5, whiteSpace: 'pre-wrap', margin: 0 }}>{JSON.stringify(sectionCurrent, null, 2)}</pre>
+                  <div style={{ height: 1, background: t.hair, marginTop: 8 }}></div>
+                </div>
+              )}
+              <MonoTxt size={9} color={t.accent} style={{ letterSpacing: '0.16em' }}>PROPOSED</MonoTxt>
+              <textarea
+                value={sectionText}
+                onChange={function(e) { setSectionText(e.target.value); }}
+                rows={6}
+                style={Object.assign({}, window.f2InputStyle(t), { fontFamily: t.mono, fontSize: 11, resize: 'vertical', minHeight: 100, lineHeight: 1.5 })}
+              />
+            </div>
+          )}
+
+          {cardError && <div style={{ fontSize: 11, color: t.red }}>{cardError}</div>}
+
+          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, rowGap: 6 }}>
+            <Btn2 primary style={{ fontSize: 12, padding: '7px 16px', borderRadius: 999, whiteSpace: 'nowrap' }} onClick={handleCommit} disabled={busy}>
+              {busy ? '…' : 'Apply to decision rules'}
+            </Btn2>
+            <button onClick={handleDismiss} style={{ ...t.g2Inner, borderRadius: 999, padding: '7px 14px', fontFamily: t.sans, fontSize: 12, fontWeight: 600, color: t.dim, cursor: 'pointer', whiteSpace: 'nowrap' }}>
               Dismiss
             </button>
             <span style={{ flex: 1 }}></span>
@@ -1499,8 +1749,15 @@ function AgentTab2() {
                   // in this message — the whole point of the consolidation is
                   // that text + indicators + target for the same holding commit
                   // together, not as N separate cards.
+                  // C2-D155 — decision_rules proposals render one
+                  // DecisionRulesProposalCard2 PER PROPOSAL, not grouped like
+                  // unifiedByTicker: there is no ticker to group by, and each
+                  // proposal is an independent backend write (see that card's
+                  // own header comment for why batching them wouldn't help
+                  // the way ticker-grouping does for core_argument/etc).
                   var msgProposals = msg.proposals || [];
                   var scalarProposals = msgProposals.filter(function(p) { return p.field === 'conviction' || p.field === 'stance'; });
+                  var decisionRulesProposals = msgProposals.filter(function(p) { return p.field === 'decision_rules'; });
                   var unifiedFieldSet = { core_argument: true, target_price: true, thesis_indicators: true };
                   var unifiedByTicker = {};
                   msgProposals.forEach(function(p) {
@@ -1525,6 +1782,14 @@ function AgentTab2() {
                             key={tk + ':unified'}
                             ticker={tk}
                             proposals={unifiedByTicker[tk]}
+                          />
+                        );
+                      })}
+                      {decisionRulesProposals.map(function(p, pi) {
+                        return (
+                          <DecisionRulesProposalCard2
+                            key={'dr:' + p.section + ':' + (p.itemKey || 'section') + ':' + pi}
+                            proposal={p}
                           />
                         );
                       })}

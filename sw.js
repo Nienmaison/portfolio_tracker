@@ -8,7 +8,7 @@
 // Bump CACHE_VERSION after any significant frontend change to force a full
 // cache flush on all clients.
 
-const CACHE_VERSION = 'fincr-v73'; // C2-D151: Card A gets a seed button + showGroupLabels suppresses its redundant "Tranche selling" group label
+const CACHE_VERSION = 'fincr-v74'; // C2-D155: decision_rules agent-proposal type, DecisionRulesProposalCard2, saveDecisionRules
 
 const SHELL_ASSETS = [
   './index.html',

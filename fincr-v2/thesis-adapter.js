@@ -131,6 +131,18 @@
     // so decision_rules must be exposed separately here.
     F.decisionRules = (data && data.thesis && data.thesis.decision_rules) || null;
 
+    // F.thesisVersion (C2-D155): thesis.meta.version, previously discarded
+    // entirely by this function (only decision_rules was pulled out of the
+    // full response above it). saveDecisionRules below needs this for the
+    // C2-D154 endpoint's required compare-and-swap check — decision_rules
+    // has no per-ticker entry to read a version from the way the full_thesis
+    // overlay flow does (it passes its own `full.thesis_version` from a
+    // different fetch, GET /thesis/<ticker>/full); this is the one write
+    // path that has no ticker-scoped fetch to piggyback a version off of, so
+    // it's read here instead, off the same GET /thesis response that
+    // populates F.decisionRules itself.
+    F.thesisVersion = (data && data.thesis && data.thesis.meta && data.thesis.meta.version) || null;
+
     // F.pool + F.poolNetCapitalDeposited (C2-D96): the raw pool-boundary ledger and
     // its derived Net Capital Deposited. store2.jsx's True Return uses
     // poolNetCapitalDeposited as totalInvested (the pool's real funding base), not
@@ -296,6 +308,52 @@
     }
   }
 
+  // C2-D155 — saveDecisionRules: a PARALLEL save action, not a variant of
+  // saveThesis/saveThesisVersioned. decision_rules has no ticker, so it can't
+  // route through /thesis/update at all (that endpoint requires one at every
+  // step — confirmed by the Researcher pass, not assumed) — this calls the
+  // new C2-D154 POST /thesis/decision-rules/update directly. Reads
+  // F.thesisVersion itself (rather than taking it as a caller-supplied
+  // argument) since that endpoint's compare-and-swap is REQUIRED, not
+  // optional like /thesis/update's — every caller of this function always
+  // needs a fresh version, so there is no case where omitting it is valid.
+  // Same conflict-aware contract as saveThesisVersioned, never throws:
+  //   { ok: true } on 200.
+  //   { ok: false, conflict: true, liveVersion } on 409.
+  //   { ok: false, conflict: false } on any other failure.
+  // Deliberately does NOT optimistically mutate F.decisionRules itself —
+  // matches UnifiedThesisProposalCard2's own handleCommit convention
+  // (agent2.jsx), which calls window.loadThesis() after a successful save
+  // rather than hand-patching local state; the caller (DecisionRulesProposalCard2)
+  // does the same.
+  async function saveDecisionRules(section, itemKey, newValue, reasoning) {
+    const key = localStorage.getItem('fincr-api-key') || '';
+    if (!key) { console.warn('[thesis] saveDecisionRules: no api key — skipped'); return { ok: false, conflict: false }; }
+    const payload = { section: section, new_value: newValue, thesis_version: F.thesisVersion, reasoning: reasoning };
+    if (itemKey != null) payload.item_key = itemKey;
+    try {
+      const r = await fetch(THESIS_API_BASE + '/thesis/decision-rules/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-API-Key': key },
+        body: JSON.stringify(payload),
+      });
+      if (r.status === 409) {
+        let d = null;
+        try { d = await r.json(); } catch (e) { /* malformed conflict body — still a conflict */ }
+        return { ok: false, conflict: true, liveVersion: d && d.thesis_version };
+      }
+      if (!r.ok) {
+        const txt = await r.text();
+        console.warn('[thesis] POST /thesis/decision-rules/update HTTP ' + r.status + ':', txt.slice(0, 200));
+        return { ok: false, conflict: false };
+      }
+      return { ok: true, conflict: false };
+    } catch (e) {
+      console.warn('[thesis] POST /thesis/decision-rules/update failed:', e.message);
+      return { ok: false, conflict: false };
+    }
+  }
+
   // POST /pool/event ([C2-D100]) — append a deposit/withdrawal to the lifetime pool
   // ledger. Optimistic: append a provisional event to F.pool.events, recompute
   // F.poolNetCapitalDeposited, and dispatch fincr:thesis-update so BOTH derived figures
@@ -356,6 +414,7 @@
   window.loadThesisGrid = loadThesisGrid;
   window.loadThesisFull = loadThesisFull;
   window.saveThesisVersioned = saveThesisVersioned;
+  window.saveDecisionRules = saveDecisionRules; // C2-D155
   // Exposed for reuse/testing (parity with window.f2ParseTranches); store2.jsx reads
   // the already-computed F.poolNetCapitalDeposited, not this function directly.
   window.f2ComputePoolNetCapital = f2ComputePoolNetCapital;
