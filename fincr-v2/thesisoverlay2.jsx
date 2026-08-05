@@ -387,7 +387,19 @@ function f2EditBody(full, h, draftSections, setDraftSections, draftIndicators, s
 // C2-D128's Researcher pass) — rendered as its real four sub-keys, not forced
 // into the prototype's per-holding Entry/Exit/Target/Size-cap shape, which
 // has no equivalent in the real schema.
-function f2RulesBlock(decisionRules, t) {
+//
+// C2-D150 — showHeading (default true) lets a caller suppress the inner
+// "Decision rules" heading below without touching group labels or rows. All
+// three overlay call sites (f2EditBody, f2LayoutA, f2LayoutC) rely on this
+// heading as the section's ONLY title — none of them render one of their
+// own — so the default stays true and none of them need to change. Only
+// positions2.jsx's Card A/B (C2-D146/148) pass showHeading: false, since
+// both already render their own title in the card header above this call,
+// and without this flag that heading duplicated verbatim (Card A: its own
+// "Tranche selling" header, then this function's "Decision rules" heading,
+// then a "Tranche selling" group label again).
+function f2RulesBlock(decisionRules, t, showHeading) {
+  if (showHeading == null) showHeading = true;
   if (!decisionRules) return null;
   var groups = [];
   var tr = decisionRules.tranche_selling;
@@ -419,7 +431,7 @@ function f2RulesBlock(decisionRules, t) {
   if (!groups.length) return null;
   return (
     <div>
-      <MonoTxt size={9.5} color={t.ghost} style={{ letterSpacing: '0.14em', textTransform: 'uppercase', display: 'block', marginBottom: 4 }}>Decision rules</MonoTxt>
+      {showHeading && <MonoTxt size={9.5} color={t.ghost} style={{ letterSpacing: '0.14em', textTransform: 'uppercase', display: 'block', marginBottom: 4 }}>Decision rules</MonoTxt>}
       {groups.map(function (g, gi) {
         return (
           <div key={gi} style={{ marginTop: gi ? 14 : 8 }}>

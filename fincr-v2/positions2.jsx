@@ -215,7 +215,11 @@ function PositionsTab2({ highlight }) {
                   style={{ fontFamily: t.mono, fontSize: 10.5, fontWeight: 600, letterSpacing: '0.06em', color: t.accent, background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px' }}
                 >{collapsedA ? 'Show' : 'Hide'}</button>
               </div>
-              {!collapsedA && f2RulesBlock({ tranche_selling: F.decisionRules.tranche_selling }, t)}
+              {/* C2-D150 — showHeading: false. Card header above already shows
+                  "Tranche selling"; without this, f2RulesBlock's own internal
+                  "Decision rules" heading + "Tranche selling" group label
+                  rendered underneath, duplicating this card's title verbatim. */}
+              {!collapsedA && f2RulesBlock({ tranche_selling: F.decisionRules.tranche_selling }, t, false)}
             </div>
           ) : (
             <div style={{ fontSize: 12.5, color: t.faint }}>No decision rules on record.</div>
@@ -266,7 +270,11 @@ function PositionsTab2({ highlight }) {
               </div>
               {!collapsedB && (
                 <React.Fragment>
-                  {f2RulesBlock({ rebalancing: F.decisionRules.rebalancing, value_gap: F.decisionRules.value_gap, trailing_stops: F.decisionRules.trailing_stops }, t)}
+                  {/* C2-D150 — showHeading: false, same reasoning as Card A:
+                      this card's own "Rulebook" header + badge above already
+                      titles the section, so f2RulesBlock's internal
+                      "Decision rules" heading is suppressed here too. */}
+                  {f2RulesBlock({ rebalancing: F.decisionRules.rebalancing, value_gap: F.decisionRules.value_gap, trailing_stops: F.decisionRules.trailing_stops }, t, false)}
                   <button
                     className="f2-press"
                     onClick={() => {
