@@ -8,7 +8,7 @@
 // Bump CACHE_VERSION after any significant frontend change to force a full
 // cache flush on all clients.
 
-const CACHE_VERSION = 'fincr-v72'; // C2-D150: f2RulesBlock showHeading param (fixes duplicate header on Positions-tab cards)
+const CACHE_VERSION = 'fincr-v73'; // C2-D151: Card A gets a seed button + showGroupLabels suppresses its redundant "Tranche selling" group label
 
 const SHELL_ASSETS = [
   './index.html',

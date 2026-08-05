@@ -398,8 +398,20 @@ function f2EditBody(full, h, draftSections, setDraftSections, draftIndicators, s
 // and without this flag that heading duplicated verbatim (Card A: its own
 // "Tranche selling" header, then this function's "Decision rules" heading,
 // then a "Tranche selling" group label again).
-function f2RulesBlock(decisionRules, t, showHeading) {
+//
+// C2-D151 — showGroupLabels (4th arg, default true) separately suppresses
+// each group's own label line (the "Tranche selling"/"Rebalancing"/etc.
+// MonoTxt above a group's rows) without touching showHeading or the rows
+// themselves. Defaults true so all three overlay call sites AND Card B are
+// unaffected — Card B's three group labels (Rebalancing/Value gap/Trailing
+// stops) are distinct from its own "Rulebook" title, so nothing there is
+// redundant. Only Card A passes showGroupLabels: false: it has exactly one
+// group, and that group's label ("Tranche selling") is identical to the
+// card's own header text, so leaving it on repeated the same words twice
+// even after C2-D150 already removed the separate "Decision rules" heading.
+function f2RulesBlock(decisionRules, t, showHeading, showGroupLabels) {
   if (showHeading == null) showHeading = true;
+  if (showGroupLabels == null) showGroupLabels = true;
   if (!decisionRules) return null;
   var groups = [];
   var tr = decisionRules.tranche_selling;
@@ -435,7 +447,7 @@ function f2RulesBlock(decisionRules, t, showHeading) {
       {groups.map(function (g, gi) {
         return (
           <div key={gi} style={{ marginTop: gi ? 14 : 8 }}>
-            <MonoTxt size={9.5} color={t.faint} style={{ letterSpacing: '0.08em', textTransform: 'uppercase', display: 'block', marginBottom: 2 }}>{g.label}</MonoTxt>
+            {showGroupLabels && <MonoTxt size={9.5} color={t.faint} style={{ letterSpacing: '0.08em', textTransform: 'uppercase', display: 'block', marginBottom: 2 }}>{g.label}</MonoTxt>}
             {g.rows.map(function (r, ri) {
               return (
                 <div key={ri} style={{ display: 'flex', gap: 10, alignItems: 'baseline', padding: '9px 0', borderTop: '1px solid ' + t.hair }}>

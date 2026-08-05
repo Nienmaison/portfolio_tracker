@@ -215,11 +215,36 @@ function PositionsTab2({ highlight }) {
                   style={{ fontFamily: t.mono, fontSize: 10.5, fontWeight: 600, letterSpacing: '0.06em', color: t.accent, background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px' }}
                 >{collapsedA ? 'Show' : 'Hide'}</button>
               </div>
-              {/* C2-D150 — showHeading: false. Card header above already shows
-                  "Tranche selling"; without this, f2RulesBlock's own internal
-                  "Decision rules" heading + "Tranche selling" group label
-                  rendered underneath, duplicating this card's title verbatim. */}
-              {!collapsedA && f2RulesBlock({ tranche_selling: F.decisionRules.tranche_selling }, t, false)}
+              {!collapsedA && (
+                <React.Fragment>
+                  {/* C2-D150 — showHeading: false, same reasoning as ever:
+                      card header above already shows "Tranche selling", so
+                      f2RulesBlock's internal "Decision rules" heading is
+                      suppressed. C2-D151 — showGroupLabels: false too: Card A
+                      has exactly one group, and that group's own label is
+                      "Tranche selling" — identical to the card's header text
+                      above — so it repeated the same words twice even after
+                      C2-D150 removed the "Decision rules" heading. Card B
+                      keeps showGroupLabels at its true default: its three
+                      group labels (Rebalancing/Value gap/Trailing stops)
+                      aren't redundant with its "Rulebook" title. */}
+                  {f2RulesBlock({ tranche_selling: F.decisionRules.tranche_selling }, t, false, false)}
+                  {/* C2-D151 — seed button, copy-pasted from Card B's exact
+                      mechanism (window.__fincrAgentSeed + fincr:go-tab, no
+                      auto-send) with tranche-selling-appropriate seed text.
+                      Parity with Card B, per owner request — tranche selling
+                      is already live-enforced elsewhere, but the owner still
+                      wants a way to start a conversation about it here. */}
+                  <button
+                    className="f2-press"
+                    onClick={() => {
+                      window.__fincrAgentSeed = { text: "Let's review my tranche selling rules." };
+                      window.dispatchEvent(new CustomEvent('fincr:go-tab', { detail: { tab: 'agent' } }));
+                    }}
+                    style={{ alignSelf: 'flex-start', fontFamily: t.sans, fontSize: 12, fontWeight: 600, color: t.accent, background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+                  >Set up with agent →</button>
+                </React.Fragment>
+              )}
             </div>
           ) : (
             <div style={{ fontSize: 12.5, color: t.faint }}>No decision rules on record.</div>
