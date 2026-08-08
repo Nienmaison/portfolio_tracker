@@ -215,7 +215,17 @@ function PositionsTab2({ highlight }) {
           f2RulesBlock() call, nor the seed button changed — container only. */}
       <section>
         <SecHead n="03">Decision rules</SecHead>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 16, marginTop: 16 }}>
+        {/* C2-D157 — alignItems: 'start' added. CSS Grid defaults to
+            align-items: stretch, so with C2-D148's fold toggle, a collapsed
+            Card A (short) sat next to an expanded Card B (tall) and grid
+            stretched Card A's box to match Card B's height — it visually
+            looked expanded even though its content was still fully
+            collapsed. Scoped to this grid instance only: this is a separate
+            inline style object from the Thesis-on-record grid above (line
+            ~149, `repeat(auto-fill, minmax(340px, 1fr))`), not a shared
+            class, so this change cannot affect that grid at all — confirmed
+            by inspection, not just assumed, and left untouched. */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 16, marginTop: 16, alignItems: 'start' }}>
           {/* Card A — tranche_selling, the ACTIVELY ENFORCED rule
               (triggerdistance2.jsx + the morning briefing agent both read and
               act on it) — unchanged formatting/data, on its own. C2-D148:
