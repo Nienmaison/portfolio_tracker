@@ -83,6 +83,24 @@ function ThesisCard2({ th, highlight }) {
   );
 }
 
+// C2-D156 — per-section empty-state row for Card B, styled to match
+// f2RulesBlock's own group-label rhythm (a MonoTxt label + one row) so an
+// empty section reads as part of the same visual system, not a bolted-on
+// placeholder. Deliberately PER-SECTION rather than whole-card: the owner
+// cleared rebalancing/value_gap/trailing_stops as never-decided placeholder
+// data, but a future state where e.g. rebalancing gets set for real via
+// Finn while the other two are still empty should show one real section and
+// two empty ones — not fall back to an all-or-nothing empty message that
+// would need revisiting the moment the first real rule lands.
+function DecisionRuleEmptySection({ label, first, t }) {
+  return (
+    <div style={{ marginTop: first ? 8 : 14 }}>
+      <MonoTxt size={9.5} color={t.faint} style={{ letterSpacing: '0.08em', textTransform: 'uppercase', display: 'block', marginBottom: 2 }}>{label}</MonoTxt>
+      <div style={{ padding: '9px 0', borderTop: `1px solid ${t.hair}`, fontSize: 12.5, color: t.faint, fontStyle: 'italic' }}>No rules defined yet.</div>
+    </div>
+  );
+}
+
 function PositionsTab2({ highlight }) {
   const t = useTheme2();
   const F = window.FINCR;
@@ -279,13 +297,31 @@ function PositionsTab2({ highlight }) {
               cards under one shared section header. Badge stays visible even
               collapsed (per spec); f2RulesBlock() call and the seed button
               are unchanged, just hidden behind the fold along with everything
-              else in the card body. */}
-          {F.decisionRules && (F.decisionRules.rebalancing || F.decisionRules.value_gap || F.decisionRules.trailing_stops) ? (
+              else in the card body.
+
+              C2-D156 — rebalancing/value_gap/trailing_stops were cleared as
+              never-decided placeholder data (owner-confirmed; see
+              decisions.md [C2-D156]). The card itself now always renders
+              once F.decisionRules has loaded at all (the outer ternary below
+              only falls back to "No rulebook on record" when the document
+              itself failed to load, e.g. no API key) — emptiness lives
+              PER-SECTION inside the card (DecisionRuleEmptySection above),
+              not as a whole-card replacement, so a future state where only
+              some of the three sections have real Finn-set data renders
+              correctly with no further changes. The badge is hidden when
+              all three sections are empty — there is nothing to badge as
+              "declared but unenforced" when nothing is declared — and
+              reappears automatically the moment any one of them has real
+              data again. The seed button is unconditional: it's the
+              explicit path forward from this empty state, per spec. */}
+          {F.decisionRules ? (
             <div style={{ background: t.card, backdropFilter: t.blur, WebkitBackdropFilter: t.blur, boxShadow: t.cardShadow, border: `1px solid ${t.cardBorder}`, borderRadius: 16, padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: collapsedB ? 0 : 14 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <MonoTxt size={10.5} color={t.faint} style={{ letterSpacing: '0.08em', textTransform: 'uppercase' }}>Rulebook</MonoTxt>
-                  <Chip2 tone="mute">Not yet enforced</Chip2>
+                  {(F.decisionRules.rebalancing || F.decisionRules.value_gap || F.decisionRules.trailing_stops) && (
+                    <Chip2 tone="mute">Not yet enforced</Chip2>
+                  )}
                 </div>
                 <button
                   className="f2-press"
@@ -298,8 +334,21 @@ function PositionsTab2({ highlight }) {
                   {/* C2-D150 — showHeading: false, same reasoning as Card A:
                       this card's own "Rulebook" header + badge above already
                       titles the section, so f2RulesBlock's internal
-                      "Decision rules" heading is suppressed here too. */}
-                  {f2RulesBlock({ rebalancing: F.decisionRules.rebalancing, value_gap: F.decisionRules.value_gap, trailing_stops: F.decisionRules.trailing_stops }, t, false)}
+                      "Decision rules" heading is suppressed here too.
+                      C2-D156 — split into three independent per-section
+                      calls (was one call covering all three) so each section
+                      can fall back to its own empty message instead of only
+                      the whole call disappearing when all three are absent.
+                      f2RulesBlock() itself is unchanged either way. */}
+                  {F.decisionRules.rebalancing
+                    ? f2RulesBlock({ rebalancing: F.decisionRules.rebalancing }, t, false)
+                    : <DecisionRuleEmptySection label="Rebalancing" first t={t} />}
+                  {F.decisionRules.value_gap
+                    ? f2RulesBlock({ value_gap: F.decisionRules.value_gap }, t, false)
+                    : <DecisionRuleEmptySection label="Value gap" t={t} />}
+                  {F.decisionRules.trailing_stops
+                    ? f2RulesBlock({ trailing_stops: F.decisionRules.trailing_stops }, t, false)
+                    : <DecisionRuleEmptySection label="Trailing stops" t={t} />}
                   <button
                     className="f2-press"
                     onClick={() => {
