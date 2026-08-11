@@ -16,19 +16,17 @@
   // fincr-v2/thesis-adapter.js (Spec C2-S2, C2-D60). The old 4-item sample
   // (NVDA/BTC/ETH/VOO) is removed from the startup path; default to [] so the
   // Positions tab always has a valid array before the adapter resolves and on
-  // no-key devices. F.watchlist below stays sample (still fixture-only — out of
-  // scope for C2-D145, which only rewired the Decision Rules card). F.rules
-  // (the old decision-rules fixture) is removed here: C2-D145 repointed
-  // positions2.jsx's Decision Rules card to the real F.decisionRules
-  // (thesis-adapter.js / thesis.json decision_rules), and F.rules had no other
-  // reader in the codebase.
+  // no-key devices. F.rules (the old decision-rules fixture) is removed here:
+  // C2-D145 repointed positions2.jsx's Decision Rules card to the real
+  // F.decisionRules (thesis-adapter.js / thesis.json decision_rules), and
+  // F.rules had no other reader in the codebase. F.watchlist (the AMD/SOL/MSFT
+  // sample below) is removed the same way, for the same reason, as of the
+  // Watchlist Frontend build: thesis-adapter.js now sets F.watchlist for real
+  // from thesis.json's watchlist section (Object.entries -> array, same shape
+  // as this file's own F.thesis pattern above), and F.watchlist had no other
+  // reader in the codebase besides positions2.jsx's Watchlist section, which
+  // is now repointed to the real data.
   F.thesis = [];
-
-  F.watchlist = [
-    { ticker: 'AMD',  name: 'Advanced Micro Devices', conviction: 'Medium', note: 'Second-source AI compute. Waiting for a better entry below €130.', color: '#ED1C24' },
-    { ticker: 'SOL',  name: 'Solana',                 conviction: 'Medium', note: 'High beta to crypto risk-on. Would start a position on a market-wide flush.', color: '#14F195' },
-    { ticker: 'MSFT', name: 'Microsoft',              conviction: 'Low',    note: 'Quality compounder but fully valued. No edge here yet.', color: '#5BB4E5' },
-  ];
 
   F.conversations = []; // C2-S4b: agent2.jsx is now live
   F.chatThread = [];

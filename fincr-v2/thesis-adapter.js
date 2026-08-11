@@ -52,19 +52,21 @@
     const F = (window.FINCR = window.FINCR || {});
     const key = localStorage.getItem('fincr-api-key') || '';
     // Local-only device (no key): nothing to fetch. [] is the honest state —
-    // every holding renders as a gap card.
-    if (!key) { F.thesis = []; return []; }
+    // every holding renders as a gap card. F.watchlist mirrors F.thesis here
+    // (both [] on every early-exit path below) — see the F.watchlist block
+    // further down for why [] (not null) is the right "loaded, empty" state.
+    if (!key) { F.thesis = []; F.watchlist = []; return []; }
 
     // 1. Fetch GET /thesis with the same auth header as the holdings fetch.
     let data;
     try {
       const r = await fetch(THESIS_API_BASE + '/thesis', { headers: { 'X-API-Key': key } });
-      if (!r.ok) { console.warn('[thesis] GET /thesis HTTP ' + r.status); F.thesis = []; return []; }
+      if (!r.ok) { console.warn('[thesis] GET /thesis HTTP ' + r.status); F.thesis = []; F.watchlist = []; return []; }
       data = await r.json();
     } catch (e) {
       // 2. Network error -> log, return [] (do not throw, do not block the UI).
       console.warn('[thesis] GET /thesis failed:', e.message);
-      F.thesis = []; return [];
+      F.thesis = []; F.watchlist = []; return [];
     }
 
     // Backend wraps the file as { status, thesis: {...} }. Guard the shape so a
@@ -130,6 +132,41 @@
     // F.decisionRules.tranche_selling. F.thesis is the transformed holdings ARRAY,
     // so decision_rules must be exposed separately here.
     F.decisionRules = (data && data.thesis && data.thesis.decision_rules) || null;
+
+    // F.watchlist (Watchlist Frontend build, C2-D159): thesis.json's watchlist
+    // dict, transformed the same way F.thesis transforms holdings just above —
+    // Object.entries -> array, ticker joined in as its own field. Unlike
+    // F.thesis's holdings transform, field names are passed through AS-IS
+    // (company/thesis_type/conviction/core_argument/entry_triggers/layer/
+    // trailing_stop_pct/last_updated) rather than renamed/display-cased: there
+    // is no pre-existing display convention for watchlist to preserve. The old
+    // F.watchlist was a fixture-only array in appdata.js (ticker/name/note/
+    // capitalized conviction — a completely different, made-up shape with no
+    // relationship to thesis.json), now removed from that file entirely (it
+    // had exactly one reader, positions2.jsx's Watchlist section, same
+    // "confirm no other reader, then remove outright" discipline C2-D145 used
+    // for F.rules). [] here (and on every early-exit path above) is the
+    // correct "loaded, empty" state — distinct from F.decisionRules' null,
+    // which means "the document itself failed to load" — since positions2.jsx
+    // renders an explicit "No watchlist entries yet" message for a genuinely
+    // empty array, the same way F.thesis's [] renders every holding as a gap
+    // card rather than nothing at all.
+    const watchlist = (data && data.thesis && data.thesis.watchlist) || {};
+    F.watchlist = Object.entries(watchlist).map(function (entry) {
+      const ticker = entry[0];
+      const w = entry[1];
+      return {
+        ticker:             ticker,
+        company:            w.company,
+        layer:              w.layer,
+        thesis_type:        w.thesis_type,
+        conviction:         w.conviction,
+        core_argument:      w.core_argument,
+        entry_triggers:     w.entry_triggers || [],
+        trailing_stop_pct:  w.trailing_stop_pct,
+        last_updated:       w.last_updated,
+      };
+    });
 
     // F.thesisVersion (C2-D155): thesis.meta.version, previously discarded
     // entirely by this function (only decision_rules was pulled out of the
@@ -354,6 +391,65 @@
     }
   }
 
+  // C2-D159 — createWatchlistEntry / archiveWatchlistEntry: watchlist's own
+  // save actions, parallel to saveDecisionRules (C2-D155) for the same
+  // reason — neither create nor archive can route through /thesis/update
+  // (create because the ticker doesn't exist yet to resolve; archive because
+  // it's a section move, not a field edit), so both call the new C2-D158
+  // POST /thesis/watchlist/manage directly via one shared helper.
+  // Deliberately declares its own local `const F` (unlike saveThesis/
+  // saveThesisVersioned/saveDecisionRules above, which read a bare `F` that
+  // only resolves via other scripts' global leakage in this classic-script
+  // setup) — matching loadThesis/loadThesisGrid/addPoolEvent's safer,
+  // self-contained pattern instead, since this is new code with no reason to
+  // inherit that fragility.
+  // Same conflict-aware, never-throws contract as saveThesisVersioned/
+  // saveDecisionRules:
+  //   { ok: true } on 200.
+  //   { ok: false, conflict: true, liveVersion } on 409.
+  //   { ok: false, conflict: false } on any other failure.
+  // Both read F.thesisVersion themselves (same reasoning as saveDecisionRules
+  // — this endpoint's compare-and-swap is required, not optional, so there is
+  // no caller that would ever need to supply a different version). Neither
+  // optimistically mutates F.watchlist — same window.loadThesis() refresh
+  // convention as saveDecisionRules/UnifiedThesisProposalCard2; the caller
+  // (positions2.jsx's Watchlist section) does that after checking `ok`.
+  async function watchlistManage(body) {
+    const F = (window.FINCR = window.FINCR || {});
+    const key = localStorage.getItem('fincr-api-key') || '';
+    if (!key) { console.warn('[thesis] watchlistManage: no api key — skipped'); return { ok: false, conflict: false }; }
+    const payload = Object.assign({}, body, { thesis_version: F.thesisVersion });
+    try {
+      const r = await fetch(THESIS_API_BASE + '/thesis/watchlist/manage', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-API-Key': key },
+        body: JSON.stringify(payload),
+      });
+      if (r.status === 409) {
+        let d = null;
+        try { d = await r.json(); } catch (e) { /* malformed conflict body — still a conflict */ }
+        return { ok: false, conflict: true, liveVersion: d && d.thesis_version };
+      }
+      if (!r.ok) {
+        const txt = await r.text();
+        console.warn('[thesis] POST /thesis/watchlist/manage HTTP ' + r.status + ':', txt.slice(0, 200));
+        return { ok: false, conflict: false };
+      }
+      return { ok: true, conflict: false };
+    } catch (e) {
+      console.warn('[thesis] POST /thesis/watchlist/manage failed:', e.message);
+      return { ok: false, conflict: false };
+    }
+  }
+
+  function createWatchlistEntry(fields) {
+    return watchlistManage(Object.assign({ action: 'create' }, fields));
+  }
+
+  function archiveWatchlistEntry(ticker) {
+    return watchlistManage({ action: 'archive', ticker: ticker });
+  }
+
   // POST /pool/event ([C2-D100]) — append a deposit/withdrawal to the lifetime pool
   // ledger. Optimistic: append a provisional event to F.pool.events, recompute
   // F.poolNetCapitalDeposited, and dispatch fincr:thesis-update so BOTH derived figures
@@ -415,6 +511,8 @@
   window.loadThesisFull = loadThesisFull;
   window.saveThesisVersioned = saveThesisVersioned;
   window.saveDecisionRules = saveDecisionRules; // C2-D155
+  window.createWatchlistEntry = createWatchlistEntry; // C2-D159
+  window.archiveWatchlistEntry = archiveWatchlistEntry; // C2-D159
   // Exposed for reuse/testing (parity with window.f2ParseTranches); store2.jsx reads
   // the already-computed F.poolNetCapitalDeposited, not this function directly.
   window.f2ComputePoolNetCapital = f2ComputePoolNetCapital;

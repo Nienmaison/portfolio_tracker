@@ -8,7 +8,7 @@
 // Bump CACHE_VERSION after any significant frontend change to force a full
 // cache flush on all clients.
 
-const CACHE_VERSION = 'fincr-v76'; // C2-D157: alignItems start on the Decision Rules grid so a collapsed card no longer stretches to match its expanded sibling
+const CACHE_VERSION = 'fincr-v77'; // C2-D159: real Watchlist data (thesis.json) + manual add/edit/archive UI, replacing the dead AMD/SOL/MSFT fixture
 
 const SHELL_ASSETS = [
   './index.html',
