@@ -15,6 +15,10 @@ function CmdPalette2({ open, onClose, actions }) {
       { k: 'go-agent', label: 'Go to Agent', hint: '3', run: () => actions.go('agent') },
       { k: 'go-import', label: 'Add assets — import broker CSVs', hint: '4', run: () => actions.go('import') },
       { k: 'go-settings', label: 'Go to Settings', hint: '5', run: () => actions.go('settings') },
+      // C2-D160 — this list never had a "Go to Rotations" entry either (confirmed
+      // by the Researcher pass, not assumed) — that gap is untouched here, out of
+      // scope for this build. Watchlist gets one since it's the new route.
+      { k: 'go-watchlist', label: 'Go to Watchlist', hint: '6', run: () => actions.go('watchlist') },
       { k: 'add-position', label: 'Add position — record a buy', hint: 'new', run: () => actions.addPosition && actions.addPosition() },
       { k: 'discrete', label: 'Toggle discrete mode', hint: 'blur figures', run: actions.toggleDiscrete },
       { k: 'rail', label: 'Toggle sidebar', hint: 'collapse / expand', run: actions.toggleRail },

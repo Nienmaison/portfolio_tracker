@@ -8,7 +8,7 @@
 // Bump CACHE_VERSION after any significant frontend change to force a full
 // cache flush on all clients.
 
-const CACHE_VERSION = 'fincr-v77'; // C2-D159: real Watchlist data (thesis.json) + manual add/edit/archive UI, replacing the dead AMD/SOL/MSFT fixture
+const CACHE_VERSION = 'fincr-v78'; // C2-D160: Watchlist extracted into its own route (table + row drawer), new watchlist2.jsx
 
 const SHELL_ASSETS = [
   './index.html',

@@ -1,5 +1,13 @@
-/* Fincr 2.0 — Positions: thesis per holding, watchlist, desk rules.
-   The "why I own it" layer that sits under the overview ledger. */
+/* Fincr 2.0 — Positions: thesis per holding, desk rules.
+   The "why I own it" layer that sits under the overview ledger.
+   Watchlist Extraction (C2-D160) — the Watchlist section that used to live
+   here (C2-D159) has moved to its own top-level route: watchlist2.jsx's
+   WatchlistTab2. Owner's own reasoning (see decisions.md [C2-D160]): sharing
+   this page with thesis cards and Decision Rules made Watchlist feel
+   overstimulating rather than calm. WatchlistRow2/WatchlistEntryEdit2/
+   AddWatchlistModal2 all moved with it, verbatim internals — confirmed via
+   the IA-overhaul Researcher pass that each had exactly one reader, all
+   self-contained in this file, so nothing here still depends on them. */
 
 // C2-D129 — permanently-compact card, per the full-thesis-overlay design
 // handoff. Reads window.FINCR.thesisGrid (GET /thesis/grid, C2-D128) — a
@@ -101,252 +109,6 @@ function DecisionRuleEmptySection({ label, first, t }) {
   );
 }
 
-// Watchlist Frontend build (C2-D159) — one row per real F.watchlist entry.
-// Replaces the old ticker/name/note/capitalized-conviction row shape (which
-// only ever rendered appdata.js's AMD/SOL/MSFT fixture, never thesis.json)
-// with the real shape: company/core_argument/entry_triggers[]/lowercase
-// conviction, plus layer/thesis_type/trailing_stop_pct where there's room.
-// "Edit" toggles this row into WatchlistEntryEdit2 in place; "Archive" calls
-// the C2-D158 archive endpoint behind a plain confirm (recoverable, so
-// nothing heavier is warranted per spec).
-function WatchlistRow2({ w, t }) {
-  const [editing, setEditing] = React.useState(false);
-  const [busy, setBusy] = React.useState(false);
-
-  const archive = async () => {
-    if (!window.confirm(`Remove ${w.ticker} from the watchlist? It moves to Archived, not deleted — recoverable later.`)) return;
-    setBusy(true);
-    const res = await window.archiveWatchlistEntry(w.ticker);
-    if (res.ok) {
-      if (window.loadThesis) await window.loadThesis();
-    } else {
-      setBusy(false);
-      window.alert(res.conflict ? 'Watchlist changed elsewhere — reload and try again.' : 'Failed to archive — try again.');
-    }
-  };
-
-  if (editing) {
-    return <WatchlistEntryEdit2 w={w} t={t} onDone={() => setEditing(false)} />;
-  }
-
-  return (
-    <div className="f2-row" style={{ display: 'grid', gridTemplateColumns: '120px 1fr auto', gap: 16, alignItems: 'start', padding: `${t.rowPadY + 2}px 8px`, borderTop: `1px solid ${t.hair}`, borderRadius: 6 }}>
-      <div>
-        <div style={{ fontSize: 13, fontWeight: 700, color: t.ink }}>{w.ticker}</div>
-        <div style={{ fontSize: 11, color: t.faint }}>{w.company}</div>
-        {(w.layer != null || w.thesis_type) && (
-          <div style={{ fontSize: 10, color: t.ghost, marginTop: 2 }}>
-            {w.layer != null ? 'Layer ' + w.layer : ''}{w.layer != null && w.thesis_type ? ' · ' : ''}{w.thesis_type || ''}
-          </div>
-        )}
-      </div>
-      <div>
-        <div style={{ fontSize: 12.5, color: t.dim, lineHeight: 1.5 }}>{w.core_argument}</div>
-        {w.entry_triggers.length > 0 && (
-          <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 2 }}>
-            {w.entry_triggers.map((trig, i) => (
-              <div key={i} style={{ fontSize: 11, color: t.faint, display: 'flex', gap: 6 }}>
-                <span style={{ color: t.ghost, flexShrink: 0 }}>&rsaquo;</span>{trig}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
-        <Chip2 tone={w.conviction === 'high' ? 'ok' : w.conviction === 'medium' ? 'watch' : 'mute'}>{w.conviction}</Chip2>
-        {w.trailing_stop_pct != null && <MonoTxt size={10} color={t.faint}>{w.trailing_stop_pct}% stop</MonoTxt>}
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button className="f2-press" onClick={() => setEditing(true)} style={{ fontFamily: t.mono, fontSize: 10.5, fontWeight: 600, color: t.accent, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>Edit</button>
-          <button className="f2-press" onClick={archive} disabled={busy} style={{ fontFamily: t.mono, fontSize: 10.5, fontWeight: 600, color: t.red, background: 'none', border: 'none', cursor: busy ? 'default' : 'pointer', padding: 0, opacity: busy ? 0.5 : 1 }}>Archive</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// Inline editor for one watchlist row — mirrors drawer2.jsx's ThesisEditor2
-// (diff against originals, send only changed fields via window.saveThesis,
-// then window.loadThesis() to refresh) rather than reusing that drawer
-// component directly: ThesisEditor2 reads/writes via F.thesis, which is
-// holdings-only (thesis-adapter.js's own comment confirms this), so it has
-// no path to a watchlist-only ticker. /thesis/update itself already
-// resolves a watchlist ticker correctly (holdings -> watchlist -> archived,
-// confirmed by the backend Researcher pass) — no new backend path needed.
-function WatchlistEntryEdit2({ w, t, onDone }) {
-  const origArg = w.core_argument || '';
-  const origConv = w.conviction || 'medium';
-  const origType = w.thesis_type || '';
-  const origLayer = w.layer != null ? w.layer : null;
-  const origStop = w.trailing_stop_pct != null ? w.trailing_stop_pct : null;
-  const origTriggers = w.entry_triggers || [];
-
-  const [arg, setArg] = React.useState(origArg);
-  const [conv, setConv] = React.useState(origConv);
-  const [thesisType, setThesisType] = React.useState(origType);
-  const [layerStr, setLayerStr] = React.useState(origLayer != null ? String(origLayer) : '');
-  const [stopStr, setStopStr] = React.useState(origStop != null ? String(origStop) : '');
-  const [triggersStr, setTriggersStr] = React.useState(origTriggers.join('\n'));
-  const [busy, setBusy] = React.useState(false);
-  const [err, setErr] = React.useState(false);
-
-  const save = async () => {
-    setBusy(true); setErr(false);
-    // Diff against originals — only send what changed (avoid needless version bumps),
-    // same discipline as ThesisEditor2's own save().
-    const changes = {};
-    if (arg !== origArg) changes.core_argument = arg;
-    if (conv !== origConv) changes.conviction = conv;
-    if (thesisType !== origType) changes.thesis_type = thesisType;
-    const newLayer = layerStr.trim() === '' ? null : Number(layerStr);
-    if (newLayer !== origLayer) changes.layer = newLayer;
-    const newStop = stopStr.trim() === '' ? null : Number(stopStr);
-    if (newStop !== origStop) changes.trailing_stop_pct = newStop;
-    const newTriggers = triggersStr.split('\n').map((s) => s.trim()).filter(Boolean);
-    if (JSON.stringify(newTriggers) !== JSON.stringify(origTriggers)) changes.entry_triggers = newTriggers;
-    if (Object.keys(changes).length === 0) { onDone(); return; } // no-op — just close
-    const ok = await window.saveThesis(w.ticker, changes, 'Edited via Watchlist manual editor');
-    if (!ok) { setErr(true); setBusy(false); return; }
-    if (window.loadThesis) await window.loadThesis(); // refresh F.watchlist
-    onDone();
-  };
-  const inputStyle = window.f2InputStyle(t);
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '14px 8px', borderTop: `1px solid ${t.hair}` }}>
-      <div style={{ fontFamily: t.mono, fontSize: 11.5, fontWeight: 600, color: t.ink }}>{w.ticker}</div>
-      <Field2 label="Core argument">
-        <textarea value={arg} onChange={(e) => setArg(e.target.value)} rows={3} placeholder="Why is this on the watchlist?"
-          onFocus={(e) => { e.target.style.borderColor = t.accent; }}
-          onBlur={(e) => { e.target.style.borderColor = t.inputBorder; }}
-          style={{ ...inputStyle, resize: 'vertical', minHeight: 60, lineHeight: 1.5 }} />
-      </Field2>
-      <Field2 label="Entry triggers" hint="one per line">
-        <textarea value={triggersStr} onChange={(e) => setTriggersStr(e.target.value)} rows={3} placeholder="DOE license approval progress"
-          onFocus={(e) => { e.target.style.borderColor = t.accent; }}
-          onBlur={(e) => { e.target.style.borderColor = t.inputBorder; }}
-          style={{ ...inputStyle, resize: 'vertical', minHeight: 54, lineHeight: 1.5, fontFamily: t.mono, fontSize: 12.5 }} />
-      </Field2>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-        <Field2 label="Conviction">
-          <Seg2 options={[{ value: 'high', label: 'High', tone: 'ok' }, { value: 'medium', label: 'Medium', tone: 'watch' }, { value: 'low', label: 'Low', tone: 'mute' }]} value={conv} onChange={setConv} />
-        </Field2>
-        <Field2 label="Thesis type">
-          <TextField2 value={thesisType} onChange={setThesisType} placeholder="core_thesis" />
-        </Field2>
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-        <Field2 label="Layer" hint="optional">
-          <NumberField2 value={layerStr} onChange={setLayerStr} placeholder="—" />
-        </Field2>
-        <Field2 label="Trailing stop" hint="optional, %">
-          <NumberField2 value={stopStr} onChange={setStopStr} placeholder="—" />
-        </Field2>
-      </div>
-      {err && <MonoTxt size={11} color={t.red}>Failed to save — try again</MonoTxt>}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-        <Btn2 onClick={onDone}>Cancel</Btn2>
-        <Btn2 primary onClick={save} style={{ opacity: busy ? 0.5 : 1, pointerEvents: busy ? 'none' : 'auto' }}>{busy ? 'Saving…' : 'Save'}</Btn2>
-      </div>
-    </div>
-  );
-}
-
-// Watchlist Frontend build (C2-D159) — "+ Add" modal. Collects the fields the
-// C2-D158 create endpoint requires and calls window.createWatchlistEntry.
-// Client-side duplicate pre-check only covers F.holdings/F.watchlist — the
-// only two ticker lists this page has in memory (F.archived is never exposed
-// to the frontend anywhere). That's a nice-to-have early error, not a
-// substitute for the server's own cross-section check (C2-D158 checks
-// holdings/watchlist/archived), which still runs regardless and is what
-// `err` below surfaces on a 409/other failure.
-function AddWatchlistModal2({ open, onClose, t }) {
-  const F = window.FINCR;
-  const blank = { ticker: '', company: '', thesisType: '', conviction: 'medium', coreArgument: '', triggersStr: '', layerStr: '', stopStr: '' };
-  const [f, setF] = React.useState(blank);
-  const [busy, setBusy] = React.useState(false);
-  const [err, setErr] = React.useState('');
-  React.useEffect(() => { if (open) { setF(blank); setErr(''); } }, [open]);
-  const set = (k) => (v) => setF((s) => ({ ...s, [k]: v }));
-
-  const tickerUp = f.ticker.trim().toUpperCase();
-  const dupe = !!tickerUp && (
-    (F.holdings || []).some((h) => h.ticker === tickerUp) ||
-    (F.watchlist || []).some((wl) => wl.ticker === tickerUp)
-  );
-  const valid = tickerUp && f.company.trim() && f.thesisType.trim() && f.coreArgument.trim() && !dupe;
-
-  const submit = async () => {
-    if (!valid) return;
-    setBusy(true); setErr('');
-    const layer = f.layerStr.trim() === '' ? null : Number(f.layerStr);
-    const trailingStopPct = f.stopStr.trim() === '' ? null : Number(f.stopStr);
-    const entryTriggers = f.triggersStr.split('\n').map((s) => s.trim()).filter(Boolean);
-    const res = await window.createWatchlistEntry({
-      ticker: tickerUp, company: f.company.trim(), thesis_type: f.thesisType.trim(),
-      conviction: f.conviction, core_argument: f.coreArgument.trim(),
-      entry_triggers: entryTriggers, layer: layer, trailing_stop_pct: trailingStopPct,
-    });
-    if (!res.ok) {
-      setBusy(false);
-      setErr(res.conflict ? 'Thesis changed elsewhere — reload the page and try again.' : 'Failed to create — try again.');
-      return;
-    }
-    if (window.loadThesis) await window.loadThesis(); // refresh F.watchlist, appears with no manual refresh
-    setBusy(false);
-    onClose();
-  };
-
-  return (
-    <Modal2 open={open} onClose={onClose}
-      title="Add to watchlist"
-      sub="A name you're tracking but don't yet own. Buying it later promotes it to holdings automatically."
-      footer={<>
-        <Btn2 onClick={onClose}>Cancel</Btn2>
-        <Btn2 primary onClick={submit} style={{ opacity: valid && !busy ? 1 : 0.4, pointerEvents: valid && !busy ? 'auto' : 'none' }}>{busy ? 'Adding…' : 'Add to watchlist'}</Btn2>
-      </>}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <Field2 label="Ticker">
-            <TextField2 value={f.ticker} onChange={(v) => set('ticker')(v.toUpperCase())} placeholder="NVDA" mono autoFocus />
-          </Field2>
-          <Field2 label="Company">
-            <TextField2 value={f.company} onChange={set('company')} placeholder="Nvidia" />
-          </Field2>
-        </div>
-        {dupe && <MonoTxt size={11} color={t.red}>{tickerUp} is already in holdings or watchlist.</MonoTxt>}
-        <Field2 label="Core argument">
-          <textarea value={f.coreArgument} onChange={(e) => set('coreArgument')(e.target.value)} rows={3} placeholder="Why is this interesting?"
-            onFocus={(e) => { e.target.style.borderColor = t.accent; }}
-            onBlur={(e) => { e.target.style.borderColor = t.inputBorder; }}
-            style={{ ...window.f2InputStyle(t), resize: 'vertical', minHeight: 60, lineHeight: 1.5 }} />
-        </Field2>
-        <Field2 label="Entry triggers" hint="one per line, optional">
-          <textarea value={f.triggersStr} onChange={(e) => set('triggersStr')(e.target.value)} rows={3} placeholder="DOE license approval progress"
-            onFocus={(e) => { e.target.style.borderColor = t.accent; }}
-            onBlur={(e) => { e.target.style.borderColor = t.inputBorder; }}
-            style={{ ...window.f2InputStyle(t), resize: 'vertical', minHeight: 54, lineHeight: 1.5, fontFamily: t.mono, fontSize: 12.5 }} />
-        </Field2>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <Field2 label="Conviction">
-            <Seg2 options={[{ value: 'high', label: 'High', tone: 'ok' }, { value: 'medium', label: 'Medium', tone: 'watch' }, { value: 'low', label: 'Low', tone: 'mute' }]} value={f.conviction} onChange={set('conviction')} />
-          </Field2>
-          <Field2 label="Thesis type">
-            <TextField2 value={f.thesisType} onChange={set('thesisType')} placeholder="core_thesis" />
-          </Field2>
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <Field2 label="Layer" hint="optional">
-            <NumberField2 value={f.layerStr} onChange={set('layerStr')} placeholder="—" />
-          </Field2>
-          <Field2 label="Trailing stop" hint="optional, %">
-            <NumberField2 value={f.stopStr} onChange={set('stopStr')} placeholder="—" />
-          </Field2>
-        </div>
-        {err && <MonoTxt size={11} color={t.red}>{err}</MonoTxt>}
-      </div>
-    </Modal2>
-  );
-}
-
 function PositionsTab2({ highlight }) {
   const t = useTheme2();
   const F = window.FINCR;
@@ -368,9 +130,6 @@ function PositionsTab2({ highlight }) {
   // fold convention in this codebase persists across reloads either.
   const [collapsedA, setCollapsedA] = React.useState(true);
   const [collapsedB, setCollapsedB] = React.useState(true);
-  // Watchlist Frontend build (C2-D159) — "+ Add" modal open/close, page-scoped
-  // local state, same convention as collapsedA/collapsedB above.
-  const [addWatchlistOpen, setAddWatchlistOpen] = React.useState(false);
   // C2-D129 — grid data lives on F.thesisGrid (GET /thesis/grid, C2-D128), a
   // second, independent fetch from F.thesis/loadThesis. Fetched per Positions-
   // tab mount (this component remounts on every tab switch via shell2.jsx's
@@ -425,22 +184,13 @@ function PositionsTab2({ highlight }) {
         </div>
       </section>
 
-      <section>
-        <SecHead n="02" right={
-          <button className="f2-press" onClick={() => setAddWatchlistOpen(true)} style={{ fontFamily: t.sans, fontSize: 12, fontWeight: 600, color: t.accent, background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}>+ Add</button>
-        }>Watchlist</SecHead>
-        <div style={{ marginTop: 8 }}>
-          {/* Empty-state discipline mirrors Decision Rules (C2-D157): a
-              genuinely empty F.watchlist (loaded fine, zero real entries)
-              shows an explicit message, not blank space. */}
-          {(!F.watchlist || F.watchlist.length === 0) ? (
-            <div style={{ padding: '9px 0', fontSize: 12.5, color: t.faint, fontStyle: 'italic' }}>No watchlist entries yet.</div>
-          ) : (
-            F.watchlist.map((w) => <WatchlistRow2 key={w.ticker} w={w} t={t} />)
-          )}
-          <div style={{ borderTop: `1px solid ${t.hair}` }}></div>
-        </div>
-      </section>
+      {/* C2-D160 — the "02 Watchlist" section that used to sit here has moved
+          to its own route (watchlist2.jsx). SecHead numbering below is left
+          as-is ("03 Decision rules" stays "03") rather than renumbered to
+          "02" — same "gap tolerance" precedent this file already established
+          when C2-D147 retired "04 Rulebook" as a standalone header and
+          explicitly chose not to renumber closedpositions2.jsx's "05" down
+          to "04" afterward (see that section's own comment below). */}
 
       {/* C2-D146 split Card A (tranche_selling) from Card B ("Rulebook":
           rebalancing/value_gap/trailing_stops) — see those comments (preserved
@@ -626,7 +376,6 @@ function PositionsTab2({ highlight }) {
       </section>
 
       <ClosedPositions2 />
-      <AddWatchlistModal2 open={addWatchlistOpen} onClose={() => setAddWatchlistOpen(false)} t={t} />
     </div>
   );
 }
