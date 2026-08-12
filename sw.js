@@ -8,7 +8,7 @@
 // Bump CACHE_VERSION after any significant frontend change to force a full
 // cache flush on all clients.
 
-const CACHE_VERSION = 'fincr-v83'; // C2-D165: Activity badges spelled out (SELL/CLSD), simplified description text
+const CACHE_VERSION = 'fincr-v84'; // C2-D166: new panelMuted theme token replacing t.card approximation on the triage panels
 
 const SHELL_ASSETS = [
   './index.html',

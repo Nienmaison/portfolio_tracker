@@ -20,6 +20,21 @@
       sunk: dark ? '#0B0D12' : '#EFEDE8',
       card: dark ? 'rgba(26,30,41,0.55)' : 'rgba(255,255,255,0.64)',
       cardBorder: dark ? 'rgba(233,234,236,0.085)' : 'rgba(25,22,36,0.07)',
+      // panelMuted (C2-D166) — a quieter surface than `card`, one step down.
+      // Both values are `raise` (this file's own base surface color, line 19)
+      // at low alpha, not independent estimates: dark is `#171B24` (=raise
+      // dark) at 32% — the exact value the approved design mock specified for
+      // its `.spanel` background, confirmed to be `raise`-derived rather than
+      // an arbitrary rgba(); light is `#FCFBF8` (=raise light) at 42%, the
+      // same "raise-at-low-alpha" logic applied to the Paper side by Claude
+      // Design, since the mock itself is dark-only and never specified a
+      // light value. Introduced to replace C2-D164's `t.card` stand-in
+      // (0.55/0.64 opacity — materially higher than the mock's 0.32, flagged
+      // as an approximation at the time) once the owner asked for pixel
+      // fidelity to the mock instead. Currently has exactly one consumer
+      // (positions2.jsx's three triage panels) — not a general-purpose token
+      // yet, though nothing stops it becoming one.
+      panelMuted: dark ? 'rgba(23,27,36,0.32)' : 'rgba(252,251,248,0.42)',
       cardShadow: dark
         ? '0 1px 0 rgba(255,255,255,0.035) inset, 0 22px 54px -32px rgba(0,0,0,0.8)'
         : '0 1px 0 rgba(255,255,255,0.7) inset, 0 16px 42px -28px rgba(40,34,48,0.28)',

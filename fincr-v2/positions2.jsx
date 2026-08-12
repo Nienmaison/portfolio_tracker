@@ -184,15 +184,17 @@ function DecisionRulesDrawer2({ open, onClose, t }) {
 function TriagePanel2({ missingHoldings, t, F, store }) {
   if (missingHoldings.length === 0) return null;
   const sum = missingHoldings.reduce((s, h) => s + h.value, 0);
-  // C2-D164 — was a hardcoded literal ('rgba(23,27,36,0.32)') transcribed
-  // directly from the design mock's dark-only .spanel CSS; illegible/wrong
-  // in Paper mode since it never adapted. No existing theme2.js token
-  // reproduces this exact value (closest is t.card, at a higher opacity —
-  // 0.55/0.64 dark/light vs. the mock's 0.32 — a real, flagged visual
-  // approximation, not a hidden one) — using it rather than inventing a
-  // new one-off literal, per this build's own instruction.
+  // C2-D164 replaced this panel's original hardcoded mock literal
+  // ('rgba(23,27,36,0.32)') with t.card as a flagged approximation (0.55/0.64
+  // opacity — materially higher than the mock's 0.32). C2-D166 — replaced
+  // that approximation with the new dedicated t.panelMuted token, which
+  // reproduces the mock's exact dark value pixel-for-pixel (both are `raise`
+  // at low alpha; see theme2.js's own comment) and a matching Paper-mode
+  // value derived the same way. No cardShadow to drop here — these panels
+  // were always plain bordered divs, never wrapped in a shadowed card
+  // component, confirmed directly rather than assumed.
   return (
-    <div style={{ border: `1px solid ${t.hair}`, borderRadius: 14, background: t.card, padding: '16px 16px 6px' }}>
+    <div style={{ border: `1px solid ${t.hair}`, borderRadius: 14, background: t.panelMuted, padding: '16px 16px 6px' }}>
       <MonoTxt size={10} color={t.faint} style={{ letterSpacing: '0.16em', textTransform: 'uppercase', fontWeight: 500, display: 'block' }}>Needs a thesis</MonoTxt>
       <div style={{ fontSize: 11.5, color: t.ghost, marginBottom: 10 }}>{missingHoldings.length} holdings · {F.eur(sum)} held without a written reason.</div>
       {missingHoldings.map((h) => (
@@ -239,10 +241,11 @@ function CoveragePanel2({ written, total, authored, t, F, store }) {
       return av - bv;
     })
     .slice(0, 3);
-  // C2-D164 — same literal-background fix as TriagePanel2 above (see its
-  // comment for the full reasoning); was 'rgba(23,27,36,0.32)', now t.card.
+  // C2-D166 — same t.card -> t.panelMuted swap as TriagePanel2 above (see its
+  // comment for the full reasoning); was t.card (C2-D164's approximation),
+  // now the dedicated token that matches the mock exactly.
   return (
-    <div style={{ border: `1px solid ${t.hair}`, borderRadius: 14, background: t.card, padding: '16px 16px 6px' }}>
+    <div style={{ border: `1px solid ${t.hair}`, borderRadius: 14, background: t.panelMuted, padding: '16px 16px 6px' }}>
       <MonoTxt size={10} color={t.faint} style={{ letterSpacing: '0.16em', textTransform: 'uppercase', fontWeight: 500, display: 'block' }}>Thesis coverage</MonoTxt>
       <div style={{ height: 4, borderRadius: 999, background: t.press, overflow: 'hidden', margin: '2px 0 9px' }}>
         <span style={{ display: 'block', height: '100%', background: t.accent, opacity: 0.75, width: pct + '%' }}></span>
@@ -286,10 +289,11 @@ function DeskRulesPanel2({ t, F, onOpenRules }) {
   const trancheActive = !!(F.decisionRules && F.decisionRules.tranche_selling);
   const rulebookSet = !!(F.decisionRules && (F.decisionRules.rebalancing || F.decisionRules.value_gap || F.decisionRules.trailing_stops));
   const note = (trancheActive ? 'Tranche selling active.' : 'Tranche selling not set.') + ' ' + (rulebookSet ? 'Rulebook set.' : 'Rulebook not yet set.');
-  // C2-D164 — same literal-background fix as TriagePanel2 above (see its
-  // comment for the full reasoning); was 'rgba(23,27,36,0.32)', now t.card.
+  // C2-D166 — same t.card -> t.panelMuted swap as TriagePanel2 above (see its
+  // comment for the full reasoning); was t.card (C2-D164's approximation),
+  // now the dedicated token that matches the mock exactly.
   return (
-    <div style={{ border: `1px solid ${t.hair}`, borderRadius: 14, background: t.card, padding: '16px 16px 6px' }}>
+    <div style={{ border: `1px solid ${t.hair}`, borderRadius: 14, background: t.panelMuted, padding: '16px 16px 6px' }}>
       <MonoTxt size={10} color={t.faint} style={{ letterSpacing: '0.16em', textTransform: 'uppercase', fontWeight: 500, display: 'block' }}>Desk rules</MonoTxt>
       <div style={{ fontSize: 11.5, color: t.ghost }}>{note}</div>
       <div style={{ borderTop: `1px solid ${t.hair}`, marginTop: 10, padding: '12px 0 10px' }}>
