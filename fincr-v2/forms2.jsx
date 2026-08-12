@@ -64,6 +64,57 @@ function Drawer2({ open, onClose, width = 480, children }) {
 
 }
 
+/* C2-D161 — generic detail-drawer shell (title + body swap), matching the
+   Claude Design handoff's exact glass/blur/translateX values (Direction B,
+   "Fincr Positions - Calmer.html"). Deliberately a NEW component, not a
+   Drawer2 variant: Drawer2 above is flat/opaque (`background: t.raise`,
+   mount-triggered keyframe animation, full unmount on close) and
+   PositionDrawer2 (drawer2.jsx, money/P&L/ledger) already depends on that
+   exact look — out of scope for this build, so Drawer2 itself is untouched.
+   Investigated first, per the build spec's explicit instruction: C2-D160's
+   WatchlistDrawer2 had NOT extracted a shared shell — it called the plain
+   Drawer2 above directly with its own duplicated inline header markup, no
+   abstraction to reuse. This is that abstraction, generalized now rather
+   than building a third bespoke drawer for Decision Rules. Two consumers as
+   of this build: WatchlistDrawer2 (watchlist2.jsx, refactored to use this
+   instead of raw Drawer2) and DecisionRulesDrawer2 (positions2.jsx, new). A
+   third content type (transaction-row detail, per the handoff's mock) isn't
+   built yet — this shell is ready for it whenever that lands.
+
+   Stays mounted even while closed (no `if (!open) return null`) so the
+   opacity/transform CSS transitions below actually have something to
+   animate — matches the mock's own vanilla-JS drawer, which never clears
+   #dbody on close, only toggles a class. One known minor gap: a caller
+   whose children depend on a prop that goes null on close (WatchlistDrawer2's
+   `w`) will still blank its body slightly before the 280ms slide-out
+   finishes, since React unmounts that conditional content immediately.
+   Accepted as a small, documented rough edge rather than adding a
+   last-known-content cache for a half-second cosmetic gap. */
+function DetailDrawer2({ open, onClose, title, children }) {
+  const t = useTheme2();
+  React.useEffect(() => {
+    if (!open) return;
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
+  return ReactDOM.createPortal(
+    <div onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      style={{ position: 'fixed', inset: 0, zIndex: 94, background: 'rgba(6,9,18,0.5)', backdropFilter: 'blur(2px)', WebkitBackdropFilter: 'blur(2px)', opacity: open ? 1 : 0, pointerEvents: open ? 'auto' : 'none', transition: 'opacity 0.22s' }}>
+      <div style={{ position: 'absolute', top: 0, right: 0, height: '100%', width: 420, maxWidth: '92vw', background: 'rgba(19,23,33,0.92)', backdropFilter: 'blur(26px) saturate(150%)', WebkitBackdropFilter: 'blur(26px) saturate(150%)', borderLeft: '1px solid rgba(255,255,255,0.10)', boxShadow: '-30px 0 70px -34px rgba(0,0,0,0.85)', transform: open ? 'translateX(0)' : 'translateX(100%)', transition: 'transform 0.28s cubic-bezier(.2,.7,.3,1)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '20px 22px 16px', borderBottom: `1px solid ${t.hair}`, flexShrink: 0 }}>
+          <div style={{ flex: 1, minWidth: 0, fontSize: 15, fontWeight: 600, color: t.ink }}>{title}</div>
+          <button onClick={onClose} className="f2-press" style={{ width: 28, height: 28, borderRadius: 7, border: `1px solid ${t.hair}`, background: 'transparent', color: t.dim, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><path d="M3 3l8 8M11 3l-8 8"></path></svg>
+          </button>
+        </div>
+        <div style={{ padding: '18px 22px 40px', overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 24 }}>
+          {children}
+        </div>
+      </div>
+    </div>, document.body);
+}
+
 /* Labeled field wrapper. */
 function Field2({ label, hint, children, style }) {
   const t = useTheme2();

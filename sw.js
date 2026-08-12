@@ -8,7 +8,7 @@
 // Bump CACHE_VERSION after any significant frontend change to force a full
 // cache flush on all clients.
 
-const CACHE_VERSION = 'fincr-v78'; // C2-D160: Watchlist extracted into its own route (table + row drawer), new watchlist2.jsx
+const CACHE_VERSION = 'fincr-v79'; // C2-D161: Decision Rules moved into a drawer (shared DetailDrawer2), Positions triage column + header
 
 const SHELL_ASSETS = [
   './index.html',

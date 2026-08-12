@@ -191,13 +191,21 @@ function AddWatchlistModal2({ open, onClose, t }) {
 // would mean overloading drawerTicker to sometimes mean "watchlist ticker" or
 // adding a parallel piece of store state, for a body that shares none of
 // PositionDrawer2's actual content (money/ledger) with what a watchlist
-// entry needs to show (argument/triggers/settings). Confirmed not reusable;
-// building on the shared Drawer2 primitive instead is the right-sized reuse.
+// entry needs to show (argument/triggers/settings). Confirmed not reusable.
 // Archive lives here (not in the table row) — the handoff's own mock
 // (drawerContent for kind:'watch') shows only "Edit entry →" and omits an
 // archive action, but the spec is explicit that create/edit/archive
 // behavior must not change from C2-D158/159, so Archive is kept, placed
 // next to "Edit entry →" as the drawer's second action.
+//
+// C2-D161 update — this component originally called the plain Drawer2
+// primitive directly, with its own duplicated header markup (title + close
+// button) below. The Decision Rules drawer build found no shared shell to
+// reuse and generalized this into DetailDrawer2 (forms2.jsx) instead of
+// building a third bespoke drawer — refactored here to consume that shared
+// shell rather than duplicating its own header/body chrome a second time.
+// Only the wrapper changed; the body content (core argument / entry
+// triggers / settings / edit-toggle / archive) is untouched.
 function WatchlistDrawer2({ w, onClose, t }) {
   const [editing, setEditing] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
@@ -221,54 +229,42 @@ function WatchlistDrawer2({ w, onClose, t }) {
   };
 
   return (
-    <Drawer2 open={!!w} onClose={onClose} width={420}>
+    <DetailDrawer2 open={!!w} onClose={onClose} title={w ? w.ticker + ' · watchlist' : ''}>
       {w && (
-        <div style={{ display: 'flex', flexDirection: 'column' }}>
-          <div style={{ padding: '20px 22px 16px', borderBottom: `1px solid ${t.hair}`, display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 15, fontWeight: 600, color: t.ink }}>{w.ticker} · watchlist</div>
+        editing ? (
+          <WatchlistEntryEdit2 w={w} t={t} onDone={() => setEditing(false)} />
+        ) : (
+          <React.Fragment>
+            <div>
+              <MonoTxt size={9.5} color={t.faint} style={{ letterSpacing: '0.14em', textTransform: 'uppercase', display: 'block', marginBottom: 8 }}>Core argument</MonoTxt>
+              <div style={{ fontSize: 12.5, color: t.dim, lineHeight: 1.55, paddingTop: 8, borderTop: `1px solid ${t.hair}` }}>{w.core_argument}</div>
             </div>
-            <button onClick={onClose} className="f2-press" style={{ width: 28, height: 28, borderRadius: 7, border: 'none', background: 'transparent', color: t.dim, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><path d="M3 3l8 8M11 3l-8 8"></path></svg>
-            </button>
-          </div>
-          <div style={{ padding: '18px 22px 40px', display: 'flex', flexDirection: 'column', gap: 24 }}>
-            {editing ? (
-              <WatchlistEntryEdit2 w={w} t={t} onDone={() => setEditing(false)} />
-            ) : (
-              <React.Fragment>
-                <div>
-                  <MonoTxt size={9.5} color={t.faint} style={{ letterSpacing: '0.14em', textTransform: 'uppercase', display: 'block', marginBottom: 8 }}>Core argument</MonoTxt>
-                  <div style={{ fontSize: 12.5, color: t.dim, lineHeight: 1.55, paddingTop: 8, borderTop: `1px solid ${t.hair}` }}>{w.core_argument}</div>
-                </div>
-                <div>
-                  <MonoTxt size={9.5} color={t.faint} style={{ letterSpacing: '0.14em', textTransform: 'uppercase', display: 'block', marginBottom: 2 }}>Entry triggers</MonoTxt>
-                  {w.entry_triggers.length > 0 ? w.entry_triggers.map((trig, i) => (
-                    <div key={i} style={{ padding: '9px 0', borderTop: `1px solid ${t.hair}`, fontSize: 12.5, color: t.dim }}>{trig}</div>
-                  )) : <div style={{ padding: '9px 0', borderTop: `1px solid ${t.hair}`, fontSize: 12.5, color: t.faint, fontStyle: 'italic' }}>No triggers set.</div>}
-                </div>
-                <div>
-                  <MonoTxt size={9.5} color={t.faint} style={{ letterSpacing: '0.14em', textTransform: 'uppercase', display: 'block', marginBottom: 2 }}>Settings</MonoTxt>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 14, padding: '9px 0', borderTop: `1px solid ${t.hair}`, fontSize: 12.5, color: t.dim }}>
-                    <span>Conviction</span><span style={{ fontFamily: t.mono, color: t.ink, whiteSpace: 'nowrap' }}>{w.conviction}</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 14, padding: '9px 0', borderTop: `1px solid ${t.hair}`, fontSize: 12.5, color: t.dim }}>
-                    <span>Trailing stop</span><span style={{ fontFamily: t.mono, color: t.ink, whiteSpace: 'nowrap' }}>{w.trailing_stop_pct != null ? w.trailing_stop_pct + '%' : '—'}</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 14, padding: '9px 0', borderTop: `1px solid ${t.hair}`, fontSize: 12.5, color: t.dim }}>
-                    <span>Classification</span><span style={{ fontFamily: t.mono, color: t.ink, whiteSpace: 'nowrap' }}>{w.layer != null ? 'Layer ' + w.layer + ' · ' : ''}{w.thesis_type}</span>
-                  </div>
-                </div>
-                <div style={{ display: 'flex', gap: 18 }}>
-                  <button className="f2-press" onClick={() => setEditing(true)} style={{ fontFamily: t.sans, fontSize: 12, fontWeight: 600, color: t.accent, background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}>Edit entry →</button>
-                  <button className="f2-press" onClick={archive} disabled={busy} style={{ fontFamily: t.sans, fontSize: 12, fontWeight: 600, color: t.red, background: 'none', border: 'none', padding: 0, cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.5 : 1 }}>{busy ? 'Archiving…' : 'Archive'}</button>
-                </div>
-              </React.Fragment>
-            )}
-          </div>
-        </div>
+            <div>
+              <MonoTxt size={9.5} color={t.faint} style={{ letterSpacing: '0.14em', textTransform: 'uppercase', display: 'block', marginBottom: 2 }}>Entry triggers</MonoTxt>
+              {w.entry_triggers.length > 0 ? w.entry_triggers.map((trig, i) => (
+                <div key={i} style={{ padding: '9px 0', borderTop: `1px solid ${t.hair}`, fontSize: 12.5, color: t.dim }}>{trig}</div>
+              )) : <div style={{ padding: '9px 0', borderTop: `1px solid ${t.hair}`, fontSize: 12.5, color: t.faint, fontStyle: 'italic' }}>No triggers set.</div>}
+            </div>
+            <div>
+              <MonoTxt size={9.5} color={t.faint} style={{ letterSpacing: '0.14em', textTransform: 'uppercase', display: 'block', marginBottom: 2 }}>Settings</MonoTxt>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 14, padding: '9px 0', borderTop: `1px solid ${t.hair}`, fontSize: 12.5, color: t.dim }}>
+                <span>Conviction</span><span style={{ fontFamily: t.mono, color: t.ink, whiteSpace: 'nowrap' }}>{w.conviction}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 14, padding: '9px 0', borderTop: `1px solid ${t.hair}`, fontSize: 12.5, color: t.dim }}>
+                <span>Trailing stop</span><span style={{ fontFamily: t.mono, color: t.ink, whiteSpace: 'nowrap' }}>{w.trailing_stop_pct != null ? w.trailing_stop_pct + '%' : '—'}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 14, padding: '9px 0', borderTop: `1px solid ${t.hair}`, fontSize: 12.5, color: t.dim }}>
+                <span>Classification</span><span style={{ fontFamily: t.mono, color: t.ink, whiteSpace: 'nowrap' }}>{w.layer != null ? 'Layer ' + w.layer + ' · ' : ''}{w.thesis_type}</span>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 18 }}>
+              <button className="f2-press" onClick={() => setEditing(true)} style={{ fontFamily: t.sans, fontSize: 12, fontWeight: 600, color: t.accent, background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}>Edit entry →</button>
+              <button className="f2-press" onClick={archive} disabled={busy} style={{ fontFamily: t.sans, fontSize: 12, fontWeight: 600, color: t.red, background: 'none', border: 'none', padding: 0, cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.5 : 1 }}>{busy ? 'Archiving…' : 'Archive'}</button>
+            </div>
+          </React.Fragment>
+        )
       )}
-    </Drawer2>
+    </DetailDrawer2>
   );
 }
 

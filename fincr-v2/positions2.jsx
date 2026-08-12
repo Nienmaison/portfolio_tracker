@@ -91,15 +91,17 @@ function ThesisCard2({ th, highlight }) {
   );
 }
 
-// C2-D156 — per-section empty-state row for Card B, styled to match
-// f2RulesBlock's own group-label rhythm (a MonoTxt label + one row) so an
-// empty section reads as part of the same visual system, not a bolted-on
-// placeholder. Deliberately PER-SECTION rather than whole-card: the owner
+// C2-D156 — per-section empty-state row for the Rulebook group, styled to
+// match f2RulesBlock's own group-label rhythm (a MonoTxt label + one row) so
+// an empty section reads as part of the same visual system, not a bolted-on
+// placeholder. Deliberately PER-SECTION rather than whole-group: the owner
 // cleared rebalancing/value_gap/trailing_stops as never-decided placeholder
 // data, but a future state where e.g. rebalancing gets set for real via
 // Finn while the other two are still empty should show one real section and
 // two empty ones — not fall back to an all-or-nothing empty message that
-// would need revisiting the moment the first real rule lands.
+// would need revisiting the moment the first real rule lands. Still used
+// as-is inside DecisionRulesDrawer2 below (C2-D161) — moved container, same
+// component, same reasoning.
 function DecisionRuleEmptySection({ label, first, t }) {
   return (
     <div style={{ marginTop: first ? 8 : 14 }}>
@@ -109,27 +111,162 @@ function DecisionRuleEmptySection({ label, first, t }) {
   );
 }
 
+// C2-D161 — Decision Rules, moved from two side-by-side fold-cards (C2-D146/
+// 147/148) into a drawer. The C2-D148 Show/Hide fold UI is retired entirely
+// — per the build spec, "the drawer is the fold now": a closed drawer already
+// hides all of this content, so a second, nested collapse control inside it
+// would be redundant chrome, not a feature. f2RulesBlock() itself, and
+// DecisionRuleEmptySection above, are UNCHANGED — only where they're mounted
+// moved. The mock's own two per-card "Set up with agent" seed buttons
+// collapse into ONE footer button here (confirmed against the mock's actual
+// RULES template, which has a single trailing button, not two) — a real
+// simplification the two-card layout couldn't make since each card needed
+// its own conversation starter; one drawer can have one.
+function DecisionRulesDrawer2({ open, onClose, t }) {
+  const F = window.FINCR;
+  const rulebookHasAny = !!(F.decisionRules && (F.decisionRules.rebalancing || F.decisionRules.value_gap || F.decisionRules.trailing_stops));
+  return (
+    <DetailDrawer2 open={open} onClose={onClose} title="Decision rules">
+      {F.decisionRules && F.decisionRules.tranche_selling ? (
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+            <MonoTxt size={10} color={t.faint} style={{ letterSpacing: '0.14em', textTransform: 'uppercase' }}>Tranche selling</MonoTxt>
+            <Chip2 tone="accent">Enforced</Chip2>
+          </div>
+          {/* showHeading/showGroupLabels both false — the header above already
+              names this group; f2RulesBlock's own heading would repeat it. */}
+          {f2RulesBlock({ tranche_selling: F.decisionRules.tranche_selling }, t, false, false)}
+        </div>
+      ) : (
+        <div style={{ fontSize: 12.5, color: t.faint, fontStyle: 'italic' }}>No decision rules on record.</div>
+      )}
+
+      {F.decisionRules ? (
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+            <MonoTxt size={10} color={t.faint} style={{ letterSpacing: '0.14em', textTransform: 'uppercase' }}>Rulebook</MonoTxt>
+            {rulebookHasAny && <Chip2 tone="mute">Not yet enforced</Chip2>}
+          </div>
+          {F.decisionRules.rebalancing
+            ? f2RulesBlock({ rebalancing: F.decisionRules.rebalancing }, t, false)
+            : <DecisionRuleEmptySection label="Rebalancing" first t={t} />}
+          {F.decisionRules.value_gap
+            ? f2RulesBlock({ value_gap: F.decisionRules.value_gap }, t, false)
+            : <DecisionRuleEmptySection label="Value gap" t={t} />}
+          {F.decisionRules.trailing_stops
+            ? f2RulesBlock({ trailing_stops: F.decisionRules.trailing_stops }, t, false)
+            : <DecisionRuleEmptySection label="Trailing stops" t={t} />}
+        </div>
+      ) : (
+        <div style={{ fontSize: 12.5, color: t.faint, fontStyle: 'italic' }}>No rulebook on record.</div>
+      )}
+
+      <button
+        className="f2-press"
+        onClick={() => {
+          window.__fincrAgentSeed = { text: "Let's review my decision rules." };
+          window.dispatchEvent(new CustomEvent('fincr:go-tab', { detail: { tab: 'agent' } }));
+        }}
+        style={{ alignSelf: 'flex-start', fontFamily: t.sans, fontSize: 12, fontWeight: 600, color: t.accent, background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+      >Set these up with the agent →</button>
+    </DetailDrawer2>
+  );
+}
+
+// C2-D161 — Panel 1, "Needs a thesis". Renders only when there's something to
+// triage. Reuses the exact scaffold-sentinel predicate (isWritten, passed in
+// from PositionsTab2) — confirmed byte-identical across positions2.jsx/
+// agent2.jsx/drawer2.jsx despite differing em-dash source encoding, so this
+// is the same real check, not a re-derivation. Row click opens the existing
+// PositionDrawer2 (money/P&L/ledger) via store.actions.openDrawer — NOT the
+// agent; the agent link lives only in the footer, for working through the
+// whole list at once.
+function TriagePanel2({ missingHoldings, t, F, store }) {
+  if (missingHoldings.length === 0) return null;
+  const sum = missingHoldings.reduce((s, h) => s + h.value, 0);
+  return (
+    <div style={{ border: `1px solid ${t.hair}`, borderRadius: 14, background: 'rgba(23,27,36,0.32)', padding: '16px 16px 6px' }}>
+      <MonoTxt size={10} color={t.faint} style={{ letterSpacing: '0.16em', textTransform: 'uppercase', fontWeight: 500, display: 'block' }}>Needs a thesis</MonoTxt>
+      <div style={{ fontSize: 11.5, color: t.ghost, marginBottom: 10 }}>{missingHoldings.length} holdings · {F.eur(sum)} held without a written reason.</div>
+      {missingHoldings.map((h) => (
+        <div key={h.ticker} onClick={() => store.actions.openDrawer(h.ticker)} style={{ display: 'grid', gridTemplateColumns: '14px 1fr auto', gap: 10, alignItems: 'center', padding: '8px 0', borderTop: `1px solid ${t.hair}`, cursor: 'pointer' }}>
+          <span style={{ width: 3, height: 13, borderRadius: 2, background: h.color }}></span>
+          <span style={{ fontSize: 12.5, fontWeight: 600, color: t.ink }}>{h.ticker}</span>
+          <MonoTxt size={11.5} color={t.faint}>{F.eur(h.value)}</MonoTxt>
+        </div>
+      ))}
+      <div style={{ borderTop: `1px solid ${t.hair}`, padding: '12px 0 10px' }}>
+        <button
+          className="f2-press"
+          onClick={() => {
+            window.__fincrAgentSeed = { text: "Let's work through my holdings without a thesis." };
+            window.dispatchEvent(new CustomEvent('fincr:go-tab', { detail: { tab: 'agent' } }));
+          }}
+          style={{ fontFamily: t.sans, fontSize: 12, fontWeight: 600, color: t.accent, background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+        >Work through these with the agent →</button>
+      </div>
+    </div>
+  );
+}
+
+// C2-D161 — Panel 2, "Thesis coverage". Always renders (unlike Panel 1). The
+// "Oldest reviewed" sub-block from the mock is explicitly SKIPPED here — it
+// depends on last_reviewed_at, which doesn't exist yet (a separate, later
+// spec in this sequence). The seam comment inside marks exactly where that
+// sub-block plugs in once the field lands, so that spec doesn't need to
+// re-discover this panel's structure.
+function CoveragePanel2({ written, total, t }) {
+  const pct = total > 0 ? Math.round((written / total) * 100) : 0;
+  return (
+    <div style={{ border: `1px solid ${t.hair}`, borderRadius: 14, background: 'rgba(23,27,36,0.32)', padding: '16px 16px 6px' }}>
+      <MonoTxt size={10} color={t.faint} style={{ letterSpacing: '0.16em', textTransform: 'uppercase', fontWeight: 500, display: 'block' }}>Thesis coverage</MonoTxt>
+      <div style={{ height: 4, borderRadius: 999, background: t.press, overflow: 'hidden', margin: '2px 0 9px' }}>
+        <span style={{ display: 'block', height: '100%', background: t.accent, opacity: 0.75, width: pct + '%' }}></span>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: 11.5, color: t.ghost, paddingBottom: 4 }}>
+        <span style={{ fontFamily: t.mono, fontSize: 12.5, color: t.ink }}>{written} / {total}</span>
+        <span>holdings with a written reason</span>
+      </div>
+      {/* SEAM for last_reviewed_at (next spec in this sequence) — plugs in
+          right here: a bordered "Oldest reviewed" sub-block, reusing the
+          same 3-column row shape as TriagePanel2's rows above (14px bar /
+          ticker / mono relative-time), listing the N holdings with the
+          oldest last_reviewed_at. Shown per the mock only once there's
+          nothing left to triage — not built here because the field the
+          whole sub-block depends on doesn't exist on disk yet. */}
+    </div>
+  );
+}
+
+// C2-D161 — Panel 3, "Desk rules". The one-line state is derived from real
+// F.decisionRules, not the mock's literal example text — confirmed live
+// against production thesis.json before writing this (tranche_selling
+// present, rebalancing/value_gap/trailing_stops all absent), so the mock's
+// exact wording ("Tranche selling active. Rulebook not yet set.") happens to
+// match today's real state, but the sentence recomputes from scratch either
+// way and will read correctly once that changes.
+function DeskRulesPanel2({ t, F, onOpenRules }) {
+  const trancheActive = !!(F.decisionRules && F.decisionRules.tranche_selling);
+  const rulebookSet = !!(F.decisionRules && (F.decisionRules.rebalancing || F.decisionRules.value_gap || F.decisionRules.trailing_stops));
+  const note = (trancheActive ? 'Tranche selling active.' : 'Tranche selling not set.') + ' ' + (rulebookSet ? 'Rulebook set.' : 'Rulebook not yet set.');
+  return (
+    <div style={{ border: `1px solid ${t.hair}`, borderRadius: 14, background: 'rgba(23,27,36,0.32)', padding: '16px 16px 6px' }}>
+      <MonoTxt size={10} color={t.faint} style={{ letterSpacing: '0.16em', textTransform: 'uppercase', fontWeight: 500, display: 'block' }}>Desk rules</MonoTxt>
+      <div style={{ fontSize: 11.5, color: t.ghost }}>{note}</div>
+      <div style={{ borderTop: `1px solid ${t.hair}`, marginTop: 10, padding: '12px 0 10px' }}>
+        <button className="f2-press" onClick={onOpenRules} style={{ fontFamily: t.sans, fontSize: 12, fontWeight: 600, color: t.accent, background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}>Open decision rules →</button>
+      </div>
+    </div>
+  );
+}
+
 function PositionsTab2({ highlight }) {
   const t = useTheme2();
   const F = window.FINCR;
-  // C2-D148 — whole-card fold for both Decision Rules cards, collapsed by
-  // default so the tab loads compact (owner feedback: Card B was still too
-  // long even side by side with Card A). Reuses closedpositions2.jsx's live
-  // Show/Hide text-button convention (className="f2-press", plain mono
-  // button, no chevron/animation) — the only whole-SECTION fold still live in
-  // this codebase. (ThesisCard2 briefly had its own whole-card fold, C2-D126,
-  // same plain-text-button styling, but it was fully retired by C2-D129 once
-  // the grid became server-capped — dead code now, not something to extend;
-  // its styling choice is corroborating evidence for reusing the plain-text
-  // convention here rather than inventing a chevron.) Per-card state (not
-  // one shared toggle) since the spec calls for independent whole-card fold,
-  // not a per-subsection accordion. No persistence across reloads — like
-  // closedpositions2.jsx's own `collapsed` state, this resets to its default
-  // (folded) on every remount; ASSUMPTION: fine since the spec only asks for
-  // fresh-collapsed-on-load behavior, not persistence, and no existing
-  // fold convention in this codebase persists across reloads either.
-  const [collapsedA, setCollapsedA] = React.useState(true);
-  const [collapsedB, setCollapsedB] = React.useState(true);
+  const store = useStore2();
+  // C2-D161 — replaces collapsedA/collapsedB (C2-D148's per-card fold state,
+  // retired along with the fold UI itself). One state, one drawer.
+  const [rulesDrawerOpen, setRulesDrawerOpen] = React.useState(false);
   // C2-D129 — grid data lives on F.thesisGrid (GET /thesis/grid, C2-D128), a
   // second, independent fetch from F.thesis/loadThesis. Fetched per Positions-
   // tab mount (this component remounts on every tab switch via shell2.jsx's
@@ -147,235 +284,77 @@ function PositionsTab2({ highlight }) {
   const written = F.holdings.filter((h) =>
     thesisGrid.some((x) => x.ticker === h.ticker && isWritten(x))
   ).length;
-  const missing = Math.max(0, F.holdings.length - written);
-  // Authored theses render as cards; stubs/unwritten fall through to gap cards.
+  const total = F.holdings.length;
+  const missingHoldings = F.holdings.filter((h) => !thesisGrid.some((x) => x.ticker === h.ticker && isWritten(x)));
+  // Authored theses render as cards; stubs/unwritten no longer render inline
+  // here at all (C2-D161) — they surface exclusively via TriagePanel2 in the
+  // triage column now, so the card grid is only ever real, written theses.
   const authored = thesisGrid.filter(isWritten);
+  // C2-D161 — the triage column (Panel 1/2/3) disappears entirely once there
+  // is nothing left to triage, matching the mock's "nocolumn" state (cards
+  // widen to three-up, no dead space where the column was) rather than
+  // leaving an empty-Panel-1 column sitting at 296px alongside a narrower
+  // card grid. The mock's own toggle UI only ever demonstrates two states
+  // (5-of-14 / all-14, both WITH the column) — "nocolumn" is real code in
+  // the mock but has no button wired to reach it there. Read literally
+  // against the spec's own later, more specific instruction ("card grid
+  // should widen to three-up... no dead space where the column was") rather
+  // than its earlier, looser phrasing ("this panel is what the column
+  // keeps") — those two read as in tension; this build takes the concrete
+  // one. Flagged here for the Validator rather than silently picking one.
+  const hasTriageColumn = missingHoldings.length > 0;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 34 }}>
-      <section>
-        <SecHead n="01" right={<MonoTxt size={10.5} color={t.faint}>{written} WRITTEN · {missing} MISSING</MonoTxt>}>Thesis on record</SecHead>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 16, marginTop: 16 }}>
-          {authored.map((th) => <ThesisCard2 key={th.ticker} th={th} highlight={highlight} />)}
-          {/* positions without a written thesis — honest gap, not filler */}
-          {F.holdings.filter((h) => !thesisGrid.some((x) => x.ticker === h.ticker && isWritten(x))).map((h) => (
-            <div key={h.ticker} style={{ border: `1px dashed ${t.hairStrong}`, borderRadius: 12, padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: 8, justifyContent: 'center' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ width: 3, height: 24, borderRadius: 2, background: h.color }}></span>
-                <div>
-                  <div style={{ fontSize: 14.5, fontWeight: 700, color: t.ink }}>{h.ticker}</div>
-                  <div style={{ fontSize: 11.5, color: t.faint }}>{h.name}</div>
-                </div>
-              </div>
-              <div style={{ fontSize: 12.5, color: t.faint, lineHeight: 1.5 }}>No thesis on record. You hold <Money size={12} color={t.dim}>{F.eur(h.value)}</Money> without a written reason.</div>
-              <button
-                className="f2-press"
-                onClick={() => {
-                  // Pass 2 — seed the agent chat with this ticker so the conversation
-                  // opens already in context. window.__fincrAgentSeed is a one-shot
-                  // slot (mirrors store2.jsx's window.__fincrDrawerPrefill convention);
-                  // fincr:go-tab is the existing tab-switch event (already used
-                  // elsewhere in agent2.jsx, e.g. the "Set API key in Settings" link).
-                  window.__fincrAgentSeed = { ticker: h.ticker, text: `Let's work on the thesis for ${h.ticker}.` };
-                  window.dispatchEvent(new CustomEvent('fincr:go-tab', { detail: { tab: 'agent' } }));
-                }}
-                style={{ alignSelf: 'flex-start', fontFamily: t.sans, fontSize: 12, fontWeight: 600, color: t.accent, background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}>Write one with the agent →</button>
-            </div>
-          ))}
+      {/* C2-D161 — page header replaces the old numbered SecHead-at-the-top
+          convention for this page specifically (SecHead itself is untouched
+          and still used below, just no longer the very first thing on the
+          page). "18px above / 22px below" the hairline rule per the mock:
+          18px is this div's own bottom padding, 22px is its marginBottom
+          pushing the split-grid down. */}
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 16, paddingBottom: 18, marginBottom: 22, borderBottom: `1px solid ${t.hair}` }}>
+        <h1 style={{ margin: 0, fontSize: 19, fontWeight: 600, letterSpacing: '-0.01em', color: t.ink }}>Positions</h1>
+        <MonoTxt size={10.5} color={t.faint} style={{ letterSpacing: '0.14em', textTransform: 'uppercase', paddingBottom: 2 }}>{total} HOLDINGS · {written} WITH A THESIS</MonoTxt>
+        <div style={{ flex: 1 }}></div>
+        <button className="f2-press" onClick={() => setRulesDrawerOpen(true)} style={{ fontFamily: t.sans, fontSize: 12.5, fontWeight: 600, color: t.dim, background: 'transparent', border: `1px solid ${t.hair}`, borderRadius: 8, padding: '6px 12px', cursor: 'pointer' }}>Decision rules</button>
+      </div>
+
+      {/* C2-D161 — responsive override for the split grid below: inline
+          styles can't express a media query, so (same convention shell2.jsx
+          already uses for hover states) a small injected <style> block
+          handles just the one breakpoint the mock calls for. Below ~1100px
+          the split collapses to a single column, which — because both the
+          card grid and the triage column are DOM siblings in that order —
+          stacks the column under the cards for free, matching the spec's
+          "the column drops under the grid" requirement with no extra JS.
+          The triage column's own position:sticky is disabled in the same
+          breakpoint so it doesn't try to stick to the viewport top while
+          the (now much taller, single-column) page scrolls past it. */}
+      <style>{`
+        @media (max-width: 1100px) {
+          .f2-pos-split { grid-template-columns: 1fr !important; }
+          .f2-triage-col { position: static !important; top: auto !important; }
+        }
+      `}</style>
+
+      <div className="f2-pos-split" style={{ display: 'grid', gridTemplateColumns: hasTriageColumn ? '1fr 296px' : '1fr', gap: 28, alignItems: 'start' }}>
+        <div>
+          <SecHead n="01" right={<MonoTxt size={10.5} color={t.faint}>{written} WRITTEN</MonoTxt>}>Thesis on record</SecHead>
+          <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fill, minmax(${hasTriageColumn ? 320 : 340}px, 1fr))`, gap: 16, marginTop: 16 }}>
+            {authored.map((th) => <ThesisCard2 key={th.ticker} th={th} highlight={highlight} />)}
+          </div>
         </div>
-      </section>
 
-      {/* C2-D160 — the "02 Watchlist" section that used to sit here has moved
-          to its own route (watchlist2.jsx). SecHead numbering below is left
-          as-is ("03 Decision rules" stays "03") rather than renumbered to
-          "02" — same "gap tolerance" precedent this file already established
-          when C2-D147 retired "04 Rulebook" as a standalone header and
-          explicitly chose not to renumber closedpositions2.jsx's "05" down
-          to "04" afterward (see that section's own comment below). */}
-
-      {/* C2-D146 split Card A (tranche_selling) from Card B ("Rulebook":
-          rebalancing/value_gap/trailing_stops) — see those comments (preserved
-          below) for why the split exists. C2-D147 (this change): the two cards
-          stacked vertically with a full "04 RULEBOOK" section header between
-          them, which the owner found too long/heavy for what's meant to read as
-          one paired unit. Reused this file's own existing side-by-side-card
-          convention (the "01 Thesis on record" grid above, line ~113 —
-          `repeat(auto-fill, minmax(Npx, 1fr))`) instead of inventing a new
-          layout: it's the same grid CSS this exact card pair used pre-C2-D145,
-          before the fixture was replaced with real data. auto-fill/minmax is
-          why no explicit mobile breakpoint is needed — a track collapses to a
-          single column on its own once the viewport can't fit two 320px+
-          cards side by side, same as the Thesis-on-record grid already relies
-          on. Per the reused precedent (a shared section header over a card
-          grid, not a header per card), Card B's standalone "04 Rulebook"
-          SecHead is dropped — the single "03 Decision rules" header above now
-          covers both. closedpositions2.jsx's SecHead stays "05" unchanged (out
-          of scope here) even though "04" is no longer used by any header —
-          per this spec, not to be renumbered back. Neither card's content,
-          f2RulesBlock() call, nor the seed button changed — container only. */}
-      <section>
-        <SecHead n="03">Decision rules</SecHead>
-        {/* C2-D157 — alignItems: 'start' added. CSS Grid defaults to
-            align-items: stretch, so with C2-D148's fold toggle, a collapsed
-            Card A (short) sat next to an expanded Card B (tall) and grid
-            stretched Card A's box to match Card B's height — it visually
-            looked expanded even though its content was still fully
-            collapsed. Scoped to this grid instance only: this is a separate
-            inline style object from the Thesis-on-record grid above (line
-            ~149, `repeat(auto-fill, minmax(340px, 1fr))`), not a shared
-            class, so this change cannot affect that grid at all — confirmed
-            by inspection, not just assumed, and left untouched. */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 16, marginTop: 16, alignItems: 'start' }}>
-          {/* Card A — tranche_selling, the ACTIVELY ENFORCED rule
-              (triggerdistance2.jsx + the morning briefing agent both read and
-              act on it) — unchanged formatting/data, on its own. C2-D148:
-              header row (title + fold toggle) is new; f2RulesBlock() call
-              and its content are untouched, just conditionally shown below
-              the header instead of always. No badge here — Card A is the
-              enforced side, nothing to distinguish it from. */}
-          {F.decisionRules && F.decisionRules.tranche_selling ? (
-            <div style={{ background: t.card, backdropFilter: t.blur, WebkitBackdropFilter: t.blur, boxShadow: t.cardShadow, border: `1px solid ${t.cardBorder}`, borderRadius: 16, padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: collapsedA ? 0 : 14 }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-                <MonoTxt size={10.5} color={t.faint} style={{ letterSpacing: '0.08em', textTransform: 'uppercase' }}>Tranche selling</MonoTxt>
-                <button
-                  className="f2-press"
-                  onClick={() => setCollapsedA((c) => !c)}
-                  style={{ fontFamily: t.mono, fontSize: 10.5, fontWeight: 600, letterSpacing: '0.06em', color: t.accent, background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px' }}
-                >{collapsedA ? 'Show' : 'Hide'}</button>
-              </div>
-              {!collapsedA && (
-                <React.Fragment>
-                  {/* C2-D150 — showHeading: false, same reasoning as ever:
-                      card header above already shows "Tranche selling", so
-                      f2RulesBlock's internal "Decision rules" heading is
-                      suppressed. C2-D151 — showGroupLabels: false too: Card A
-                      has exactly one group, and that group's own label is
-                      "Tranche selling" — identical to the card's header text
-                      above — so it repeated the same words twice even after
-                      C2-D150 removed the "Decision rules" heading. Card B
-                      keeps showGroupLabels at its true default: its three
-                      group labels (Rebalancing/Value gap/Trailing stops)
-                      aren't redundant with its "Rulebook" title. */}
-                  {f2RulesBlock({ tranche_selling: F.decisionRules.tranche_selling }, t, false, false)}
-                  {/* C2-D151 — seed button, copy-pasted from Card B's exact
-                      mechanism (window.__fincrAgentSeed + fincr:go-tab, no
-                      auto-send) with tranche-selling-appropriate seed text.
-                      Parity with Card B, per owner request — tranche selling
-                      is already live-enforced elsewhere, but the owner still
-                      wants a way to start a conversation about it here. */}
-                  <button
-                    className="f2-press"
-                    onClick={() => {
-                      window.__fincrAgentSeed = { text: "Let's review my tranche selling rules." };
-                      window.dispatchEvent(new CustomEvent('fincr:go-tab', { detail: { tab: 'agent' } }));
-                    }}
-                    style={{ alignSelf: 'flex-start', fontFamily: t.sans, fontSize: 12, fontWeight: 600, color: t.accent, background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
-                  >Set up with agent →</button>
-                </React.Fragment>
-              )}
-            </div>
-          ) : (
-            <div style={{ fontSize: 12.5, color: t.faint }}>No decision rules on record.</div>
-          )}
-
-          {/* Card B — "Rulebook": rebalancing/value_gap/trailing_stops, named to
-              read as declared-but-not-yet-enforced (unlike Card A, nothing
-              currently reads or acts on these). "Set up with agent" reuses the
-              exact one-shot seed mechanism as the "Write one with the agent"
-              button above and drawer2.jsx's thesis-formulation entry points
-              (window.__fincrAgentSeed + the fincr:go-tab event, C2-D123/
-              C2-D127) — agent2.jsx's seed consumer only ever reads seed.text
-              (seed.ticker in the button above is unused there too), so this
-              seed carries text only; decision_rules has no ticker to scope it
-              to anyway (a single global object, per thesisoverlay2.jsx's own
-              comment). Per the C2-D123 auto-send correction, this only
-              populates the agent input and focuses it — it does NOT send; the
-              owner reviews and hits Send themselves. This button starts a
-              conversation only — no new agent capability or write-back path
-              for decision_rules exists yet (deferred to Part B, see
-              decisions.md [C2-D146]). Button lives on Card B only, not Card A:
-              tranche_selling is already live-enforced elsewhere, so there's
-              nothing to "set up" for it yet.
-
-              C2-D148 — header row (title + badge + fold toggle) is new,
-              collapsed by default. The "Not yet enforced" badge reuses Chip2
-              (ui2.jsx) — the same tag component ThesisCard2/watchlist already
-              use for stance/conviction — tone="mute" (dim/neutral, not an
-              alert color) since this is a factual state, not a warning.
-              Restores the active-vs-declared distinction the old standalone
-              "04 Rulebook" header used to carry before C2-D147 merged both
-              cards under one shared section header. Badge stays visible even
-              collapsed (per spec); f2RulesBlock() call and the seed button
-              are unchanged, just hidden behind the fold along with everything
-              else in the card body.
-
-              C2-D156 — rebalancing/value_gap/trailing_stops were cleared as
-              never-decided placeholder data (owner-confirmed; see
-              decisions.md [C2-D156]). The card itself now always renders
-              once F.decisionRules has loaded at all (the outer ternary below
-              only falls back to "No rulebook on record" when the document
-              itself failed to load, e.g. no API key) — emptiness lives
-              PER-SECTION inside the card (DecisionRuleEmptySection above),
-              not as a whole-card replacement, so a future state where only
-              some of the three sections have real Finn-set data renders
-              correctly with no further changes. The badge is hidden when
-              all three sections are empty — there is nothing to badge as
-              "declared but unenforced" when nothing is declared — and
-              reappears automatically the moment any one of them has real
-              data again. The seed button is unconditional: it's the
-              explicit path forward from this empty state, per spec. */}
-          {F.decisionRules ? (
-            <div style={{ background: t.card, backdropFilter: t.blur, WebkitBackdropFilter: t.blur, boxShadow: t.cardShadow, border: `1px solid ${t.cardBorder}`, borderRadius: 16, padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: collapsedB ? 0 : 14 }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <MonoTxt size={10.5} color={t.faint} style={{ letterSpacing: '0.08em', textTransform: 'uppercase' }}>Rulebook</MonoTxt>
-                  {(F.decisionRules.rebalancing || F.decisionRules.value_gap || F.decisionRules.trailing_stops) && (
-                    <Chip2 tone="mute">Not yet enforced</Chip2>
-                  )}
-                </div>
-                <button
-                  className="f2-press"
-                  onClick={() => setCollapsedB((c) => !c)}
-                  style={{ fontFamily: t.mono, fontSize: 10.5, fontWeight: 600, letterSpacing: '0.06em', color: t.accent, background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px' }}
-                >{collapsedB ? 'Show' : 'Hide'}</button>
-              </div>
-              {!collapsedB && (
-                <React.Fragment>
-                  {/* C2-D150 — showHeading: false, same reasoning as Card A:
-                      this card's own "Rulebook" header + badge above already
-                      titles the section, so f2RulesBlock's internal
-                      "Decision rules" heading is suppressed here too.
-                      C2-D156 — split into three independent per-section
-                      calls (was one call covering all three) so each section
-                      can fall back to its own empty message instead of only
-                      the whole call disappearing when all three are absent.
-                      f2RulesBlock() itself is unchanged either way. */}
-                  {F.decisionRules.rebalancing
-                    ? f2RulesBlock({ rebalancing: F.decisionRules.rebalancing }, t, false)
-                    : <DecisionRuleEmptySection label="Rebalancing" first t={t} />}
-                  {F.decisionRules.value_gap
-                    ? f2RulesBlock({ value_gap: F.decisionRules.value_gap }, t, false)
-                    : <DecisionRuleEmptySection label="Value gap" t={t} />}
-                  {F.decisionRules.trailing_stops
-                    ? f2RulesBlock({ trailing_stops: F.decisionRules.trailing_stops }, t, false)
-                    : <DecisionRuleEmptySection label="Trailing stops" t={t} />}
-                  <button
-                    className="f2-press"
-                    onClick={() => {
-                      window.__fincrAgentSeed = { text: "Let's set up my rebalancing, value gap, and trailing-stop rules." };
-                      window.dispatchEvent(new CustomEvent('fincr:go-tab', { detail: { tab: 'agent' } }));
-                    }}
-                    style={{ alignSelf: 'flex-start', fontFamily: t.sans, fontSize: 12, fontWeight: 600, color: t.accent, background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
-                  >Set up with agent →</button>
-                </React.Fragment>
-              )}
-            </div>
-          ) : (
-            <div style={{ fontSize: 12.5, color: t.faint }}>No rulebook on record.</div>
-          )}
-        </div>
-      </section>
+        {hasTriageColumn && (
+          <div className="f2-triage-col" style={{ position: 'sticky', top: 18, display: 'flex', flexDirection: 'column', gap: 22 }}>
+            <TriagePanel2 missingHoldings={missingHoldings} t={t} F={F} store={store} />
+            <CoveragePanel2 written={written} total={total} t={t} />
+            <DeskRulesPanel2 t={t} F={F} onOpenRules={() => setRulesDrawerOpen(true)} />
+          </div>
+        )}
+      </div>
 
       <ClosedPositions2 />
+      <DecisionRulesDrawer2 open={rulesDrawerOpen} onClose={() => setRulesDrawerOpen(false)} t={t} />
     </div>
   );
 }
