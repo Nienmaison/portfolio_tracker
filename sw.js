@@ -8,7 +8,7 @@
 // Bump CACHE_VERSION after any significant frontend change to force a full
 // cache flush on all clients.
 
-const CACHE_VERSION = 'fincr-v82'; // C2-D164: fixed hardcoded dark-only panel background in the Positions triage column (Paper-mode legibility)
+const CACHE_VERSION = 'fincr-v83'; // C2-D165: Activity badges spelled out (SELL/CLSD), simplified description text
 
 const SHELL_ASSETS = [
   './index.html',

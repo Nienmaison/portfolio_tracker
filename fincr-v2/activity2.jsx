@@ -214,7 +214,7 @@ function ActivityTab2() {
         </div>
       </div>
       <p style={{ margin: '-14px 0 0', fontSize: 12, color: t.ghost, lineHeight: 1.5, maxWidth: 640 }}>
-        Closed positions and partial-sell rotations were two views of one event — a sell. This is one chronological ledger: every sell, what it realised, and where the proceeds went.
+        Realised shows what each sale actually gained or lost. Rotation tracks where the proceeds go next. Reinvesting doesn't count against your True Return until you withdraw from the portfolio.
       </p>
 
       {/* stat strip — mono 19px figures, mono 9px uppercase labels */}
@@ -251,9 +251,9 @@ function ActivityTab2() {
                   own SEL/CLS badges) + ticker + date */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
                 {r.kind === 'SEL' ? (
-                  <span style={{ fontFamily: t.mono, fontSize: 9, fontWeight: 700, letterSpacing: '0.06em', color: t.red, border: `1px solid ${t.redSoft}`, background: t.redSoft, borderRadius: 4, padding: '2px 5px' }}>SEL</span>
+                  <span style={{ fontFamily: t.mono, fontSize: 9, fontWeight: 700, letterSpacing: '0.06em', color: t.red, border: `1px solid ${t.redSoft}`, background: t.redSoft, borderRadius: 4, padding: '2px 5px' }}>SELL</span>
                 ) : (
-                  <span style={{ fontFamily: t.mono, fontSize: 9, fontWeight: 700, letterSpacing: '0.06em', color: t.dim, border: `1px solid ${t.hairStrong}`, borderRadius: 4, padding: '2px 5px' }}>CLS</span>
+                  <span style={{ fontFamily: t.mono, fontSize: 9, fontWeight: 700, letterSpacing: '0.06em', color: t.dim, border: `1px solid ${t.hairStrong}`, borderRadius: 4, padding: '2px 5px' }}>CLSD</span>
                 )}
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontSize: 13, fontWeight: 700, color: t.ink }}>{r.ticker}</div>
