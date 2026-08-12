@@ -8,7 +8,7 @@
 // Bump CACHE_VERSION after any significant frontend change to force a full
 // cache flush on all clients.
 
-const CACHE_VERSION = 'fincr-v81'; // C2-D163: Rotations renamed to Activity, unified sell ledger table
+const CACHE_VERSION = 'fincr-v82'; // C2-D164: fixed hardcoded dark-only panel background in the Positions triage column (Paper-mode legibility)
 
 const SHELL_ASSETS = [
   './index.html',
