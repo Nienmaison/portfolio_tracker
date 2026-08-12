@@ -8,7 +8,7 @@
 // Bump CACHE_VERSION after any significant frontend change to force a full
 // cache flush on all clients.
 
-const CACHE_VERSION = 'fincr-v80'; // C2-D162: last_reviewed_at stamping + Oldest reviewed panel, f2FormatRelativeTime month/year support
+const CACHE_VERSION = 'fincr-v81'; // C2-D163: Rotations renamed to Activity, unified sell ledger table
 
 const SHELL_ASSETS = [
   './index.html',

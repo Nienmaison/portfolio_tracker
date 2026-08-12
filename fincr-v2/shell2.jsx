@@ -2,9 +2,8 @@
    row, ⌘K palette, provenance status bar. IA: Charts live inside Overview,
    Import inside Settings ▸ Data. Keyboard: ⌘K palette, number keys switch
    views (1=Overview, 2=Positions, 3=Agent, 4=Add assets, 5=Settings,
-   6=Watchlist — Rotations has never had a number key; this list was stale
-   before C2-D160, confirmed against the actual handler below rather than
-   assumed). */
+   6=Watchlist, 7=Activity — the renamed Rotations/Activity tab never had a
+   number key before C2-D163, same as it never had one as "Rotations"). */
 
 const NAV2 = [
 { id: 'overview', label: 'Overview', d: 'M3 9.5L10 4l7 5.5V17a1 1 0 01-1 1h-3v-5H7v5H4a1 1 0 01-1-1z' },
@@ -13,8 +12,14 @@ const NAV2 = [
 // (a simple eye) taken directly from the Claude Design handoff's mock
 // (ROUTES entry for 'watchlist' in "Fincr Positions - Calmer.html").
 { id: 'watchlist', label: 'Watchlist', d: 'M2 10s3-6 8-6 8 6 8 6-3 6-8 6-8-6-8-6z' },
+// C2-D163 — renamed from 'rotations'/"Rotations" to 'activity'/"Activity"
+// (owner's explicit naming choice — the mock this was transcribed from still
+// says "Transactions" throughout, a naming difference only, not followed).
+// Icon path (the rotation-arrow glyph) kept exactly as it was under the old
+// id/label — the mock's own 'transactions' ROUTES entry reuses this exact
+// same path, confirming it wasn't meant to change with the rename.
 // C2-D104 — sell-gated: rendered only once the user has made ≥1 sell ever (see hasSells).
-{ id: 'rotations', label: 'Rotations', d: 'M16 10a6 6 0 11-1.8-4.3M16 5v3h-3', sellGated: true },
+{ id: 'activity', label: 'Activity', d: 'M16 10a6 6 0 11-1.8-4.3M16 5v3h-3', sellGated: true },
 { id: 'agent', label: 'Agent', d: 'M10 3a4 4 0 014 4v1a4 4 0 01-8 0V7a4 4 0 014-4zM4 17a6 6 0 0112 0' },
 { id: 'import', label: 'Add assets', d: 'M10 3v9M6 8l4 4 4-4M4 16h12' }];
 
@@ -57,7 +62,18 @@ function f2FormatRelativeTime(ms) {
 function Shell2() {
   const [mode, setMode] = React.useState(() => localStorage.getItem('fincr2-mode') || 'ink');
   const [density, setDensity] = React.useState(() => localStorage.getItem('fincr2-density') || 'comfortable');
-  const [tab, setTab] = React.useState(() => localStorage.getItem('fincr2-tab') || 'overview');
+  // C2-D163 — compat shim: 'rotations' persisted to localStorage under the old
+  // id/label for as long as that tab existed. Without this remap, a returning
+  // user with that value stored would match none of the tab-render switch's
+  // branches below and silently fall through to the final `else` (Settings) —
+  // the exact migration hazard flagged during the IA-overhaul Researcher pass,
+  // now real rather than hypothetical. Remapped once, at read time, so every
+  // downstream consumer of `tab` (the render switch, NAV2's active-highlight
+  // check, the persistence effect a few lines down) only ever sees 'activity'.
+  const [tab, setTab] = React.useState(() => {
+    const stored = localStorage.getItem('fincr2-tab');
+    return stored === 'rotations' ? 'activity' : (stored || 'overview');
+  });
   const [discrete, setDiscrete] = React.useState(() => localStorage.getItem('fincr2-discrete') === '1');
   const [railOpen, setRailOpen] = React.useState(() => localStorage.getItem('fincr2-rail') !== '0');
   const [palette, setPalette] = React.useState(false);
@@ -226,7 +242,11 @@ function Shell2() {
       // found 1-5 already mapped exactly as above, with 'rotations' having
       // no key at all — left untouched here, per the build spec's explicit
       // instruction not to disturb that existing quirk).
-      if (e.key === '6') guardedSetTab('watchlist');
+      if (e.key === '6') guardedSetTab('watchlist');else
+      // C2-D163 — '7' confirmed free before assignment (1-6 already mapped
+      // exactly as above, confirmed live by reading this exact handler, not
+      // assumed). 'rotations'/'activity' never had a number key before this.
+      if (e.key === '7') guardedSetTab('activity');
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -244,7 +264,8 @@ function Shell2() {
   if (tab === 'positions') content = <PositionsTab2 highlight={highlight} />;else
   // C2-D160 — Watchlist's own route (extracted from Positions).
   if (tab === 'watchlist') content = <WatchlistTab2 />;else
-  if (tab === 'rotations') content = hasSells ? <RotationsTab2 /> : <OverviewTab2 go={setTab} />;else
+  // C2-D163 — renamed from 'rotations'/RotationsTab2 to 'activity'/ActivityTab2.
+  if (tab === 'activity') content = hasSells ? <ActivityTab2 /> : <OverviewTab2 go={setTab} />;else
   if (tab === 'agent') content = <AgentTab2 />;else
   if (tab === 'import') content = <ImportTab2 go={setTab} />;else
   content = <SettingsTab2 mode={mode} setMode={setMode} density={density} setDensity={setDensity} discrete={discrete} setDiscrete={setDiscrete} />;
@@ -366,7 +387,7 @@ function Shell2() {
               {/* NYSE indicator removed — deferred to P3 ([C2-D45]) */}
               <span style={{ flex: 1 }}></span>
               <span>⌘K COMMANDS</span>
-              <span>1–6 VIEWS</span>
+              <span>1–7 VIEWS</span>
             </div>
           </footer>
         </div>

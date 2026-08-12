@@ -19,6 +19,10 @@ function CmdPalette2({ open, onClose, actions }) {
       // by the Researcher pass, not assumed) — that gap is untouched here, out of
       // scope for this build. Watchlist gets one since it's the new route.
       { k: 'go-watchlist', label: 'Go to Watchlist', hint: '6', run: () => actions.go('watchlist') },
+      // C2-D163 — renamed from 'rotations'; no "Go to Rotations" entry existed
+      // here before (confirmed live during the IA-overhaul Researcher pass),
+      // so this is a new entry, not a rename of an existing one.
+      { k: 'go-activity', label: 'Go to Activity', hint: '7', run: () => actions.go('activity') },
       { k: 'add-position', label: 'Add position — record a buy', hint: 'new', run: () => actions.addPosition && actions.addPosition() },
       { k: 'discrete', label: 'Toggle discrete mode', hint: 'blur figures', run: actions.toggleDiscrete },
       { k: 'rail', label: 'Toggle sidebar', hint: 'collapse / expand', run: actions.toggleRail },
