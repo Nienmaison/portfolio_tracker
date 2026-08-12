@@ -98,10 +98,29 @@ function DetailDrawer2({ open, onClose, title, children }) {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [open, onClose]);
+  // Bug fix (found during the Activity build, C2-D163, verified against the
+  // owner's real browser — which turned out to actually be in Paper/light
+  // mode, not Ink, exposing this): the values transcribed from the Claude
+  // Design handoff's mock are dark-mode-only (the mock has no light variant
+  // at all). This component's own text uses theme-aware t.ink/t.dim/t.hair,
+  // which correctly resolve to dark-on-light values in Paper mode — against
+  // a background hardcoded to the mock's dark navy regardless of theme, that
+  // produced dark text on a dark background, nearly illegible. Affects every
+  // existing consumer (WatchlistDrawer2 since C2-D161, DecisionRulesDrawer2
+  // since C2-D161), not just this build's new one — fixed here, once, at the
+  // shared shell, rather than patched per-consumer. Light-mode values follow
+  // this codebase's own existing dark/light pairing convention for glass
+  // surfaces (Modal2/Drawer2's scrim opacity ratio; g2Plate's white-based,
+  // not lightened-navy, light-mode background) rather than inventing a new
+  // one.
+  const scrimBg = t.dark ? 'rgba(6,9,18,0.5)' : 'rgba(23,25,30,0.28)';
+  const panelBg = t.dark ? 'rgba(19,23,33,0.92)' : 'rgba(255,255,255,0.92)';
+  const panelBorder = t.dark ? 'rgba(255,255,255,0.10)' : 'rgba(23,25,30,0.12)';
+  const panelShadow = t.dark ? '-30px 0 70px -34px rgba(0,0,0,0.85)' : '-30px 0 70px -34px rgba(23,25,30,0.32)';
   return ReactDOM.createPortal(
     <div onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
-      style={{ position: 'fixed', inset: 0, zIndex: 94, background: 'rgba(6,9,18,0.5)', backdropFilter: 'blur(2px)', WebkitBackdropFilter: 'blur(2px)', opacity: open ? 1 : 0, pointerEvents: open ? 'auto' : 'none', transition: 'opacity 0.22s' }}>
-      <div style={{ position: 'absolute', top: 0, right: 0, height: '100%', width: 420, maxWidth: '92vw', background: 'rgba(19,23,33,0.92)', backdropFilter: 'blur(26px) saturate(150%)', WebkitBackdropFilter: 'blur(26px) saturate(150%)', borderLeft: '1px solid rgba(255,255,255,0.10)', boxShadow: '-30px 0 70px -34px rgba(0,0,0,0.85)', transform: open ? 'translateX(0)' : 'translateX(100%)', transition: 'transform 0.28s cubic-bezier(.2,.7,.3,1)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      style={{ position: 'fixed', inset: 0, zIndex: 94, background: scrimBg, backdropFilter: 'blur(2px)', WebkitBackdropFilter: 'blur(2px)', opacity: open ? 1 : 0, pointerEvents: open ? 'auto' : 'none', transition: 'opacity 0.22s' }}>
+      <div style={{ position: 'absolute', top: 0, right: 0, height: '100%', width: 420, maxWidth: '92vw', background: panelBg, backdropFilter: 'blur(26px) saturate(150%)', WebkitBackdropFilter: 'blur(26px) saturate(150%)', borderLeft: `1px solid ${panelBorder}`, boxShadow: panelShadow, transform: open ? 'translateX(0)' : 'translateX(100%)', transition: 'transform 0.28s cubic-bezier(.2,.7,.3,1)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '20px 22px 16px', borderBottom: `1px solid ${t.hair}`, flexShrink: 0 }}>
           <div style={{ flex: 1, minWidth: 0, fontSize: 15, fontWeight: 600, color: t.ink }}>{title}</div>
           <button onClick={onClose} className="f2-press" style={{ width: 28, height: 28, borderRadius: 7, border: `1px solid ${t.hair}`, background: 'transparent', color: t.dim, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
