@@ -240,6 +240,13 @@
         target: (h.target_price != null) ? '€' + Number(h.target_price).toLocaleString() : null,
         indicators: h.thesis_indicators || [],   // already capped to 2 server-side
         indicatorCount: h.indicator_count || 0,
+        // Positions Triage build — raw ISO string or null (never written
+        // through /thesis/update yet). Passed through as-is, not parsed to
+        // millis here — positions2.jsx's oldest-reviewed panel does that
+        // itself right before handing off to f2FormatRelativeTime, same
+        // "raw backend field, parse at the point of use" posture as every
+        // other pass-through field in this transform.
+        lastReviewedAt: h.last_reviewed_at || null,
       };
     });
 

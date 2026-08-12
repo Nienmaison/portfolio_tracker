@@ -209,14 +209,29 @@ function TriagePanel2({ missingHoldings, t, F, store }) {
   );
 }
 
-// C2-D161 — Panel 2, "Thesis coverage". Always renders (unlike Panel 1). The
-// "Oldest reviewed" sub-block from the mock is explicitly SKIPPED here — it
-// depends on last_reviewed_at, which doesn't exist yet (a separate, later
-// spec in this sequence). The seam comment inside marks exactly where that
-// sub-block plugs in once the field lands, so that spec doesn't need to
-// re-discover this panel's structure.
-function CoveragePanel2({ written, total, t }) {
+// C2-D161 — Panel 2, "Thesis coverage". Always renders (unlike Panel 1).
+// last_reviewed_at build (C2-D162) — fills the seam left above: an "Oldest
+// reviewed" sub-block, reusing the same 3-column row shape as TriagePanel2's
+// rows (14px color bar / ticker / mono value — here the value is relative
+// age, not a EUR figure). Only ever pulls from `authored` (real, written
+// theses) — an unwritten holding isn't "reviewed", it's already surfaced in
+// Panel 1, and mixing the two lists would double-count the same ticker in
+// two different panels for two different reasons.
+function CoveragePanel2({ written, total, authored, t, F, store }) {
   const pct = total > 0 ? Math.round((written / total) * 100) : 0;
+  // Null last_reviewed_at (never stamped — either a genuinely never-reviewed
+  // thesis, or, right now, EVERY thesis written before this build shipped,
+  // since no backfill was done, per spec) sorts first: -Infinity beats any
+  // real timestamp, and "never reviewed" is a more overdue state than any
+  // finite age. Oldest 3, matching the mock.
+  const oldest = authored
+    .slice()
+    .sort((a, b) => {
+      const av = a.lastReviewedAt ? new Date(a.lastReviewedAt).getTime() : -Infinity;
+      const bv = b.lastReviewedAt ? new Date(b.lastReviewedAt).getTime() : -Infinity;
+      return av - bv;
+    })
+    .slice(0, 3);
   return (
     <div style={{ border: `1px solid ${t.hair}`, borderRadius: 14, background: 'rgba(23,27,36,0.32)', padding: '16px 16px 6px' }}>
       <MonoTxt size={10} color={t.faint} style={{ letterSpacing: '0.16em', textTransform: 'uppercase', fontWeight: 500, display: 'block' }}>Thesis coverage</MonoTxt>
@@ -227,13 +242,26 @@ function CoveragePanel2({ written, total, t }) {
         <span style={{ fontFamily: t.mono, fontSize: 12.5, color: t.ink }}>{written} / {total}</span>
         <span>holdings with a written reason</span>
       </div>
-      {/* SEAM for last_reviewed_at (next spec in this sequence) — plugs in
-          right here: a bordered "Oldest reviewed" sub-block, reusing the
-          same 3-column row shape as TriagePanel2's rows above (14px bar /
-          ticker / mono relative-time), listing the N holdings with the
-          oldest last_reviewed_at. Shown per the mock only once there's
-          nothing left to triage — not built here because the field the
-          whole sub-block depends on doesn't exist on disk yet. */}
+      {oldest.length > 0 && (
+        <div style={{ borderTop: `1px solid ${t.hair}`, marginTop: 12, paddingTop: 11 }}>
+          <div style={{ fontSize: 11.5, color: t.ghost, marginBottom: 8 }}>Oldest reviewed — a thesis you have not revisited in a while.</div>
+          {oldest.map((th) => {
+            const h = F.holdings.find((x) => x.ticker === th.ticker);
+            return (
+              <div key={th.ticker} onClick={() => store.actions.openThesisOverlay(th.ticker)} style={{ display: 'grid', gridTemplateColumns: '14px 1fr auto', gap: 10, alignItems: 'center', padding: '8px 0', borderTop: `1px solid ${t.hair}`, cursor: 'pointer' }}>
+                <span style={{ width: 3, height: 13, borderRadius: 2, background: h ? h.color : t.hairStrong }}></span>
+                <span style={{ fontSize: 12.5, fontWeight: 600, color: t.ink }}>{th.ticker}</span>
+                {/* Uppercase, matching the mono AGO-string convention every
+                    other value in this row shape already uses (Panel 1's
+                    EUR figures, the day/hour/minute suffixes themselves) —
+                    "never reviewed" isn't a blank or an error state, it's a
+                    real value that happens to describe an absence. */}
+                <MonoTxt size={11.5} color={t.faint}>{th.lastReviewedAt ? f2FormatRelativeTime(new Date(th.lastReviewedAt).getTime()) : 'NEVER REVIEWED'}</MonoTxt>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -347,7 +375,7 @@ function PositionsTab2({ highlight }) {
         {hasTriageColumn && (
           <div className="f2-triage-col" style={{ position: 'sticky', top: 18, display: 'flex', flexDirection: 'column', gap: 22 }}>
             <TriagePanel2 missingHoldings={missingHoldings} t={t} F={F} store={store} />
-            <CoveragePanel2 written={written} total={total} t={t} />
+            <CoveragePanel2 written={written} total={total} authored={authored} t={t} F={F} store={store} />
             <DeskRulesPanel2 t={t} F={F} onOpenRules={() => setRulesDrawerOpen(true)} />
           </div>
         )}

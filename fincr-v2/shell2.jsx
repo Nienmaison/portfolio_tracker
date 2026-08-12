@@ -19,7 +19,23 @@ const NAV2 = [
 { id: 'import', label: 'Add assets', d: 'M10 3v9M6 8l4 4 4-4M4 16h12' }];
 
 // Short relative-time strings for the provenance bar: "JUST NOW", "2M AGO",
-// "1H AGO", "3D AGO".
+// "1H AGO", "3D AGO" — extended (Positions Triage build) for month/year-scale
+// durations: "5 MO AGO", "2 YR AGO". Originally capped at days (an unbounded
+// day count, e.g. "412D AGO", was the only output past 24h) because the one
+// consumer at the time (the provenance bar's SYNC indicator) never has
+// anything month-old to show — a sync that stale would mean the app hasn't
+// been opened in over a month. last_reviewed_at genuinely can be that old
+// (a thesis written once and never revisited), so this is a real gap being
+// filled, not a cosmetic one. Threshold choice (Builder's call, per spec):
+// 30-day months / 12-month years, pure duration arithmetic — consistent
+// with how hours-per-day (24) and minutes-per-hour (60) are already fixed
+// constants here rather than calendar-aware month/year lengths; this file
+// does no calendar math anywhere, so a fixed 30/12 approximation matches
+// its existing spirit rather than introducing a new kind of precision.
+// "MO"/"YR" (two letters + a space) rather than a bare "M"/"Y" specifically
+// to avoid colliding with the existing minute suffix ('M AGO', no space) —
+// space is the only visual distinction between "5M AGO" (minutes) and
+// "5 MO AGO" (months), so it's load-bearing, not a style choice to drop.
 function f2FormatRelativeTime(ms) {
   const diff = Date.now() - ms;
   const sec = Math.floor(diff / 1000);
@@ -30,7 +46,11 @@ function f2FormatRelativeTime(ms) {
   const hr = Math.floor(min / 60);
   if (hr < 24) return hr + 'H AGO';
   const days = Math.floor(hr / 24);
-  return days + 'D AGO';
+  if (days < 30) return days + 'D AGO';
+  const months = Math.floor(days / 30);
+  if (months < 12) return months + ' MO AGO';
+  const years = Math.floor(months / 12);
+  return years + ' YR AGO';
 }
 
 
